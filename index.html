@@ -430,67 +430,107 @@ function difficultyAt(f){
 
 /* ================================================================
    5. Palette
-   One blue-grey ramp. An asset takes its fill from how bright the
-   sky is behind it AT ITS OWN HEIGHT, and always carries the
-   opposite colour as an outline - so the zone 5 gradient reads
-   white at the top and dark at the bottom without a special case,
-   and deep space inverts the whole world for free.
+   A SNES-era palette: every material owns a four-step ramp - dark
+   outline, shadow, base, highlight - and sprites keep their own
+   colours over any background. Skies are three-stop gradients with
+   a dithered seam, the way the hardware faked more colours than it
+   had.
    ================================================================ */
 const SKY = [
-  [0,     [131,148,157], [186,196,201]],
-  [4000,  [112,130,141], [163,176,184]],
-  [9000,  [ 86,104,118], [135,152,163]],
-  [14000, [ 58, 74, 88], [104,124,138]],
-  [22000, [ 14, 19, 26], [116,134,146]],   // zone 5a: dark lid, lit floor
-  [28000, [  7, 10, 15], [ 20, 27, 35]],   // zone 5b: blackout
-  [46000, [  4,  6, 10], [  8, 11, 17]],
-  [80000, [  2,  3,  6], [  4,  6, 10]]
+  [0,     [ 79,163,217], [143,208,238], [242,217,168]],
+  [4000,  [ 62,144,206], [119,191,230], [207,228,239]],
+  [9000,  [ 42,111,184], [ 79,154,214], [169,207,232]],
+  [14000, [ 27, 79,156], [ 47,114,190], [111,167,216]],
+  [22000, [ 11, 20, 54], [ 36, 48,107], [ 94,111,168]],   // dark lid, lit floor
+  [28000, [  6,  7, 18], [ 11, 13, 34], [ 22, 25, 52]],   // blackout
+  [46000, [  4,  4, 13], [  7,  7, 26], [ 11, 11, 34]],
+  [80000, [  2,  2,  9], [  5,  5, 18], [  8,  8, 26]]
 ];
 function skyAt(f){
   let i = 0;
   while (i < SKY.length-2 && f > SKY[i+1][0]) i++;
   const a = SKY[i], b = SKY[i+1];
   const t = clamp((f - a[0]) / (b[0] - a[0]), 0, 1);
-  return [mixRGB(a[1],b[1],t), mixRGB(a[2],b[2],t)];
+  return [mixRGB(a[1],b[1],t), mixRGB(a[2],b[2],t), mixRGB(a[3],b[3],t)];
 }
 
-/* Two complete sets: dark-on-bright, and light-on-dark. */
-const DARKSET  = { base:'#141C24', hi:'#37444F', lo:'#070B0F', edge:'#EDF3F6', trim:'#9AA8B2' };
-const LIGHTSET = { base:'#E4EDF1', hi:'#FFFFFF', lo:'#8D9DA8', edge:'#070B10', trim:'#5E6E79' };
+/* Material ramps. edge is the outline, and every sprite gets one. */
+const MAT = {
+  brass:  { edge:'#2A1C06', lo:'#8A5E12', base:'#D79B27', hi:'#F5D478' },
+  glass:  { edge:'#18384A', lo:'#2E6E86', base:'#57A8C4', hi:'#A6E2F2' },
+  steel:  { edge:'#141A24', lo:'#39414F', base:'#6C7A8C', hi:'#AEBCCB' },
+  crane:  { edge:'#241A06', lo:'#A8600B', base:'#E89A1C', hi:'#FFCB56' },
+  rust:   { edge:'#26160D', lo:'#6B3E22', base:'#A9663B', hi:'#D49463' },
+  cargo:  { edge:'#26120E', lo:'#7A2F22', base:'#B84A36', hi:'#E08468' },
+  pigeon: { edge:'#151A26', lo:'#39415A', base:'#5B6680', hi:'#9BA8C0' },
+  gull:   { edge:'#1A2130', lo:'#93A4B8', base:'#DCE6F0', hi:'#FFFFFF' },
+  heli:   { edge:'#13200E', lo:'#37502E', base:'#5E7D4A', hi:'#93B276' },
+  plane:  { edge:'#1A202A', lo:'#93A2B4', base:'#DCE4EC', hi:'#FFFFFF' },
+  jet:    { edge:'#141B26', lo:'#566475', base:'#96A3B4', hi:'#D0DAE6' },
+  meteor: { edge:'#2A1608', lo:'#8A4A1E', base:'#E0863A', hi:'#FFEBB4' },
+  junk:   { edge:'#121824', lo:'#465266', base:'#8A94A6', hi:'#C9D3E0' },
+  solar:  { edge:'#0C1530', lo:'#1E3A78', base:'#2E56A8', hi:'#6790DE' },
+  gold:   { edge:'#2A1E06', lo:'#96701A', base:'#D8A63A', hi:'#F2D384' },
+  rock:   { edge:'#221C16', lo:'#433A32', base:'#6E6257', hi:'#A3937F' },
+  alien:  { edge:'#0C2818', lo:'#2E7A46', base:'#4FBF6E', hi:'#A2EDB2' },
+  comet:  { edge:'#103044', lo:'#3E9AC8', base:'#7FD8F2', hi:'#EEFBFF' },
+  flame:  { edge:'#4A1A06', lo:'#E8721C', base:'#FFC247', hi:'#FFF6D2' },
+  person: { edge:'#0E1220', lo:'#242B3E', base:'#3C4560', hi:'#E8DCC4' }
+};
+const MAGENTA = '#FF5CC8';
 const RED_HI = '#FF4438', RED_LO = '#9B1B12';
 
-const C = { top:[0,0,0], bot:[0,0,0], far:'#000', mid:'#000', near:'#000',
-            win:'#000', cloud:'#000', cloudLo:'#000', star:'#FFFFFF' };
+/* Background colours, derived from the sky so distance reads as haze. */
+const C = { top:[0,0,0], mid:[0,0,0], bot:[0,0,0] };
 let hudInkNow = '';
 
 function lumAt(y){
-  const c = mixRGB(C.top, C.bot, clamp(y / H, 0, 1));
+  const t = clamp(y / H, 0, 1);
+  const c = t < 0.5 ? mixRGB(C.top, C.mid, t*2) : mixRGB(C.mid, C.bot, (t-0.5)*2);
   return (c[0]*0.3 + c[1]*0.59 + c[2]*0.11) / 255;
 }
-/* The palette an asset at this screen height should wear. */
-function paintAt(y){
-  if (garage > 0.45) return LIGHTSET;     /* dark garage, lit car */
-  return lumAt(y) > 0.33 ? DARKSET : LIGHTSET;
-}
 function redPulse(){ return (Math.floor(runTime * 5) % 2) ? RED_LO : RED_HI; }
+/* HUD and floating text sit on whatever the sky is doing up there. */
+function uiSet(){ return lumAt(H*0.2) > 0.34 ? UI_DARK : UI_LIGHT; }
+const UI_DARK  = { base:'#0B1020', edge:'#F2F7FA' };
+const UI_LIGHT = { base:'#F2F7FA', edge:'#0B1020' };
 
 function updatePalette(){
   const s = skyAt(feet);
-  C.top = s[0]; C.bot = s[1];
-  const b = C.bot;
-  C.far     = rgb(mixRGB(b, [11,17,22], 0.22));
-  C.mid     = rgb(mixRGB(b, [11,17,22], 0.46));
-  C.near    = rgb(mixRGB(b, [11,17,22], 0.70));
-  C.win     = rgb(mixRGB(b, [238,246,250], 0.74));
-  C.cloud   = rgb(mixRGB(b, [255,255,255], 0.40));
-  C.cloudLo = rgb(mixRGB(b, [11,17,22], 0.18));
-  /* the HUD sits at the top of the screen, so it reads the sky there */
-  const dark = lumAt(H * 0.08) <= 0.33;
-  const hud = dark ? '#EEF4F7' : '#070B10';
+  C.top = s[0]; C.mid = s[1]; C.bot = s[2];
+  const b = C.bot, haze = C.mid;
+  /* aerial perspective: the further back, the more it dissolves into sky */
+  C.far   = rgb(mixRGB(haze, [ 92,106,150], 0.42));
+  C.farHi = rgb(mixRGB(haze, [120,134,176], 0.52));
+  C.mid1  = rgb(mixRGB(b, [ 66, 76,110], 0.70));
+  C.mid1Hi= rgb(mixRGB(b, [ 92,104,142], 0.76));
+  C.near  = rgb(mixRGB(b, [ 48, 56, 84], 0.88));
+  C.nearHi= rgb(mixRGB(b, [ 74, 84,118], 0.92));
+  C.nearLo= rgb(mixRGB(b, [ 28, 33, 52], 0.94));
+  C.win   = rgb(mixRGB(b, [255,214,122], 0.86));
+  C.winDim= rgb(mixRGB(b, [ 32, 38, 62], 0.8));
+  C.cloudHi = rgb(mixRGB(b, [255,255,255], 0.80));
+  C.cloud   = rgb(mixRGB(b, [226,238,248], 0.62));
+  C.cloudLo = rgb(mixRGB(b, [150,172,200], 0.52));
+  const dark = lumAt(H * 0.08) <= 0.34;
+  const hud = dark ? '#EEF4F7' : '#0A1020';
   if (hud !== hudInkNow){
     hudInkNow = hud;
     stage.style.setProperty('--hudInk', hud);
-    stage.style.setProperty('--hudVeil', dark ? 'rgba(4,6,10,.66)' : 'rgba(240,245,248,.62)');
+    stage.style.setProperty('--hudVeil', dark ? 'rgba(6,8,20,.62)' : 'rgba(244,248,251,.60)');
+  }
+}
+
+/* checkerboard dither between two colours - the era's gradient trick */
+function dither(x, y, w, h, cB, ratio){
+  ctx.fillStyle = cB;
+  const step = PIX * 2;
+  for (let yy = snap(y); yy < y + h; yy += PIX){
+    const row = (yy / PIX) | 0;
+    for (let xx = snap(x) + ((row % 2) ? PIX : 0); xx < x + w; xx += step){
+      if (ratio < 1 && Math.abs(Math.sin(xx*0.7 + yy*1.3)) > ratio) continue;
+      ctx.fillRect(xx, yy, PIX, PIX);
+    }
   }
 }
 
@@ -546,6 +586,9 @@ const Sound = (() => {
     pop(){    noise(0.26, 0.22); tone(420, 0.24, 'square', 0.08, 120); },
     boost(){  tone(220, 0.5, 'sawtooth', 0.09, 1200); noise(0.4, 0.14); },
     crash(){  noise(0.9, 0.38); tone(150, 0.7, 'sawtooth', 0.10, 40); },
+    gameover(){ tone(392, 0.30, 'square', 0.09);
+                setTimeout(()=>tone(311, 0.34, 'square', 0.09), 220);
+                setTimeout(()=>tone(196, 0.75, 'square', 0.09), 470); },
     toggle(){
       on = !on;
       try { localStorage.setItem('madElevator.mute', on ? '0' : '1'); } catch(e){}
@@ -583,8 +626,9 @@ let state = S.MENU;
 
 /* intro beats, in seconds */
 const I_BURST = 1.5, I_IGNITE = 2.1, I_END = 3.5;
-/* crash beats, in seconds */
-const X_FLASH = 1.0, X_FREEZE = 1.5, X_FADE = 2.35;
+/* crash beats, in seconds: a jiggle, a held frame, a red wipe
+   carrying GAME OVER, a beat to read it, then the fade to black */
+const X_JIG = 0.5, X_FREEZE = 1.05, X_SLIDE = 1.6, X_HOLD = 2.3, X_END = 2.95;
 
 let playerY = PLAYER_Y;
 const player = {
@@ -595,7 +639,7 @@ const player = {
 
 let px = 0, feet = 0, speed = SPEED_MIN, topSpeed = 0;
 let diff = 0, runTime = 0, seqT = 0;
-let shake = 0, flash = 0, redFlash = 0, fade = 0, garage = 1;
+let shake = 0, flash = 0, slide = 0, fade = 0, garage = 1;
 let spawnT = 0, lastBlockerPx = -1e9, lastGapX = W/2;
 let nearMiss = 0, nextMilestone = 2500, recordBeaten = false;
 let nextShieldFeet = SHIELD_AT, nextRocketFeet = ROCKET_AT, zoneSeen = 1;
@@ -724,7 +768,7 @@ function start(){
   obstacles.length = 0; clouds.length = 0; bits.length = 0; popups.length = 0;
   wallL.length = 0; wallR.length = 0; skyline.length = 0; marks.length = 0;
   px = 0; feet = 0; speed = 40; topSpeed = 0; nearMiss = 0;
-  diff = 0; seqT = 0; shake = 0; flash = 0; redFlash = 0; fade = 0; garage = 1;
+  diff = 0; seqT = 0; shake = 0; flash = 0; slide = 0; fade = 0; garage = 1;
   spawnT = 3.0; lastBlockerPx = -1e9; lastGapX = W/2;
   nextMilestone = 2500; recordBeaten = false; zoneSeen = 1;
   nextShieldFeet = SHIELD_AT; nextRocketFeet = ROCKET_AT;
@@ -746,7 +790,7 @@ function start(){
 function toMenu(){
   state = S.MENU;
   obstacles.length = 0; bits.length = 0; popups.length = 0;
-  px = 0; feet = 0; speed = 80; fade = 0; garage = 0;
+  px = 0; feet = 0; speed = 80; fade = 0; slide = 0; garage = 0;
   player.x = W/2; player.vx = 0; playerY = PLAYER_Y;
   player.shield = false; player.boost = 0; player.invT = 0;
   nextMark = 0; nextDeepFeet = 76000; groundPx = 0;
@@ -1079,9 +1123,9 @@ function burstRing(x, y, n){
 }
 function thrust(){
   for (let i=0;i<2;i++){
-    bits.push({ x: player.x + rnd(-16,16), y: playerY + PLAYER_H/2 - 4,
-                vx: rnd(-30,30) - player.vx*0.25, vy: rnd(110,240),
-                life: rnd(0.12,0.3), max:0.3, r: rnd(1,3), g:0 });
+    bits.push({ x: player.x + rnd(-26,26), y: playerY + PLAYER_H/2 - 4,
+                vx: rnd(-90,90) - player.vx*0.3, vy: rnd(60,170),
+                life: rnd(0.08,0.2), max:0.2, r: rnd(1,3), g:0 });
   }
 }
 function popup(text, red){
@@ -1137,7 +1181,8 @@ function crash(x, y){
   player.crashVy = -180;
   player.crashSpin = (player.vx > 0 ? 1 : -1) * rnd(2.2, 4.4);
   player.crashRot = 0;
-  shake = 26; redFlash = 1;
+  shake = 30; slide = 0; fade = 0;
+  el.hud.classList.remove('on');        /* the readout gets out of the way */
   burst(x, y, 44, 640, true);
   burst(player.x, playerY, 26, 420, true);
   Sound.crash();
@@ -1327,21 +1372,22 @@ function update(dt){
 
   } else if (state === S.CRASH){
     seqT += dt;
-    speed = Math.max(0, speed - 1200 * dt);
+    speed = Math.max(0, speed - 1600 * dt);
     player.crashVy += 900 * dt;
     player.crashY  += player.crashVy * dt;
     player.crashX  += player.vx * 0.6 * dt;
     player.crashRot += player.crashSpin * dt;
-    if (seqT >= X_FLASH) state = S.FREEZE;
+    if (seqT >= X_JIG){ state = S.FREEZE; shake = 0; }
 
   } else if (state === S.FREEZE){
-    seqT += dt;
-    if (seqT >= X_FREEZE) state = S.FADE;
+    seqT += dt;                                  /* the held frame */
+    if (seqT >= X_FREEZE){ state = S.FADE; Sound.gameover(); }
 
   } else if (state === S.FADE){
     seqT += dt;
-    fade = clamp((seqT - X_FREEZE) / (X_FADE - X_FREEZE), 0, 1);
-    if (seqT >= X_FADE) results();
+    slide = easeOut(clamp((seqT - X_FREEZE) / (X_SLIDE - X_FREEZE), 0, 1));
+    fade  = clamp((seqT - X_HOLD) / (X_END - X_HOLD), 0, 1);
+    if (seqT >= X_END) results();
 
   } else if (state === S.MENU){
     speed = 80;
@@ -1360,20 +1406,35 @@ function update(dt){
     skyGroundY += scroll * 0.2;
     if (feet < 9600){ fillWall(wallL, -1); fillWall(wallR, 1); }
   }
-  shake    = Math.max(0, shake - 60 * dt);
-  flash    = Math.max(0, flash - 2.6 * dt);
-  redFlash = Math.max(0, redFlash - 2.4 * dt);
+  shake = Math.max(0, shake - (state === S.CRASH ? 70 : 60) * dt);
+  flash = Math.max(0, flash - 2.6 * dt);
 }
 
 /* ================================================================
    15. Rendering
    ================================================================ */
 function drawSky(){
-  const g = ctx.createLinearGradient(0,0,0,H);
-  g.addColorStop(0, rgb(C.top));
-  g.addColorStop(1, rgb(C.bot));
-  ctx.fillStyle = g;
-  ctx.fillRect(0,0,W,H);
+  const bands = 22;
+  const at = t => t < 0.5 ? mixRGB(C.top, C.mid, t*2) : mixRGB(C.mid, C.bot, (t-0.5)*2);
+  for (let i = 0; i < bands; i++){
+    const y0 = snap(H * i / bands), y1 = snap(H * (i+1) / bands);
+    ctx.fillStyle = rgb(at(i / bands));
+    ctx.fillRect(0, y0, W, y1 - y0 + PIX);
+  }
+  for (let i = 1; i < bands; i++){                 /* dithered seams */
+    const y = snap(H * i / bands);
+    dither(0, y - PIX*4, W, PIX*4, rgb(at(i / bands)), 1);
+  }
+  const sun = clamp(1 - feet / 15000, 0, 1);
+  if (sun > 0.02){                                  /* low sun haze */
+    ctx.save();
+    ctx.globalAlpha = sun * 0.5;
+    const g = ctx.createRadialGradient(W*0.76, H*0.82, 10, W*0.76, H*0.82, 420);
+    g.addColorStop(0, 'rgba(255,240,198,.9)');
+    g.addColorStop(1, 'rgba(255,214,150,0)');
+    ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+    ctx.restore();
+  }
 }
 
 function drawStars(){
@@ -1384,7 +1445,7 @@ function drawStars(){
     const y = ((s.y + px * s.p) % H + H) % H;
     const tw = 0.55 + 0.45 * Math.sin(runTime * 1.7 + s.tw);
     ctx.globalAlpha = a * tw;
-    ctx.fillStyle = '#FFFFFF';
+    ctx.fillStyle = s.r > 1.55 ? '#FFFFFF' : (s.tw % 2 > 1 ? '#BFD8FF' : '#FFF2CF');
     ctx.fillRect(snap(s.x), snap(y), PIX, PIX);
     if (s.r > 1.55){                       /* the bright ones get a cross */
       ctx.globalAlpha = a * tw * 0.5;
@@ -1416,12 +1477,11 @@ function discArc(cx, cy, r, color, from, to){
 }
 
 function drawMark(m){
-  const F = paintAt(m.y);
   const x = snap(m.x), y = snap(m.y);
   ctx.save();
   ctx.translate(x, y);
   if (m.kind === 'cn' || m.kind === 'wtc' || m.kind === 'burj'){
-    ctx.fillStyle = C.mid;
+    ctx.fillStyle = C.far;
     if (m.kind === 'cn'){
       ctx.fillRect(-PIX*2, PIX*26, PIX*4, PIX*300);        /* shaft */
       ctx.fillRect(-PIX, 0, PIX*2, PIX*26);                /* spire */
@@ -1450,45 +1510,49 @@ function drawMark(m){
   /* space bodies */
   const s = m.s;
   if (m.kind === 'moon'){
-    disc(0, 0, 108*s, '#C8D4DA');
-    discArc(0, 0, 108*s, '#A6B4BC', 0.52, 1);
+    disc(0, 0, 108*s, '#E4E0C8');
+    discArc(0, 0, 108*s, '#BFB9A0', 0.5, 1);
+    discArc(0, 0, 108*s, '#98917C', 0.78, 1);
     for (let i = 0; i < 9; i++){
       const a = m.spin + i*1.4, rr = (18 + (i%4)*13) * s;
-      disc(Math.cos(a)*58*s, Math.sin(a)*54*s, rr*0.36, '#A2B0B8');
+      disc(Math.cos(a)*58*s, Math.sin(a)*54*s, rr*0.36, '#B3AC93');
     }
   } else if (m.kind === 'mars'){
-    disc(0, 0, 92*s, '#B9AEA6');
-    discArc(0, 0, 92*s, '#94897F', 0.55, 1);
-    ctx.fillStyle = '#8B8078';
+    disc(0, 0, 92*s, '#D07A44');
+    discArc(0, 0, 92*s, '#A8532A', 0.52, 1);
+    discArc(0, 0, 92*s, '#7E3A1E', 0.8, 1);
+    ctx.fillStyle = '#8E4423';
     for (let i = 0; i < 4; i++) ctx.fillRect(snap(-70*s), snap((-40 + i*26)*s), snap(140*s), PIX*3);
-    disc(0, -80*s, 22*s, '#E6EEF2');                        /* polar cap */
+    disc(0, -80*s, 22*s, '#F0F4F8');                        /* polar cap */
   } else if (m.kind === 'planet'){
-    disc(0, 0, 76*s, '#9FB0BC');
-    discArc(0, 0, 76*s, '#7A8B98', 0.58, 1);
-    ctx.fillStyle = '#B6C6D0';
+    disc(0, 0, 76*s, '#6FA8D8');
+    discArc(0, 0, 76*s, '#3F79B4', 0.55, 1);
+    ctx.fillStyle = '#A6D2EE';
     for (let i = 0; i < 5; i++) ctx.fillRect(snap(-62*s), snap((-46 + i*22)*s), snap(124*s), PIX*4);
+    disc(-26*s, -24*s, 18*s, '#BFE2F6');
   } else if (m.kind === 'ringed'){
-    disc(0, 0, 66*s, '#C2CED6');
-    discArc(0, 0, 66*s, '#94A3AD', 0.6, 1);
-    ctx.fillStyle = '#DCE6EC';
+    disc(0, 0, 66*s, '#E2C583');
+    discArc(0, 0, 66*s, '#B99755', 0.54, 1);
+    ctx.fillStyle = '#F4E7BE';
     for (let i = 0; i < 3; i++){
       const rr = (96 + i*13) * s;
+      ctx.fillStyle = i === 1 ? '#C9A96A' : '#F4E7BE';
       for (let a = 0; a < Math.PI*2; a += 0.06){
         ctx.fillRect(snap(Math.cos(a)*rr), snap(Math.sin(a)*rr*0.3), PIX, PIX);
       }
     }
   } else if (m.kind === 'nebula'){
     ctx.save();
-    for (let i = 0; i < 150; i++){
-      const a = m.spin + i*0.7, rr = (i/150) * 150 * s;
-      ctx.globalAlpha = 0.16 * (1 - i/170);
-      ctx.fillStyle = i % 3 ? '#9FB6C6' : '#D8E4EC';
+    for (let i = 0; i < 170; i++){
+      const a = m.spin + i*0.7, rr = (i/170) * 160 * s;
+      ctx.globalAlpha = 0.2 * (1 - i/190);
+      ctx.fillStyle = i % 3 === 0 ? '#8A4FD8' : i % 3 === 1 ? '#2E9BD8' : '#E064B8';
       ctx.fillRect(snap(Math.cos(a)*rr*rnd(0.6,1.3)), snap(Math.sin(a)*rr*rnd(0.5,1.1)),
                    PIX*rndi(2,5), PIX*rndi(2,5));
     }
     ctx.restore();
   } else {                                                  /* voyager 1 */
-    const L = { base:'#D4DEE4', hi:'#FFFFFF', lo:'#8494A0', edge:'#0A0F14' };
+    const L = MAT.junk;
     ctx.scale(s, s);
     edged(F2 => {
       disc(0, -14, 26, forceColor || F2.base);              /* the dish */
@@ -1568,6 +1632,9 @@ function drawCity(){
       const top = snap(gy - b.h);
       if (top > H) continue;
       ctx.fillRect(b.x, top, b.w, H - top + PIX);
+      ctx.fillStyle = C.farHi;
+      ctx.fillRect(b.x, top, b.w, PIX);
+      ctx.fillStyle = C.far;
     }
     ctx.globalAlpha = skyFade * 0.5;
     for (const b of skyline) windows(b, b.x, snap(gy - b.h), 0.5);
@@ -1578,7 +1645,7 @@ function drawCity(){
   if (wallFade <= 0.01) return;
   ctx.save();
   ctx.globalAlpha = wallFade;
-  const F = { base: C.near, hi: C.mid, lo: rgb(mixRGB(C.bot, [11,17,22], 0.86)) };
+  const F = { base: C.near, hi: C.nearHi, lo: C.nearLo };
   for (const side of [wallL, wallR]){
     for (const b of side){
       const top = snap(b.top);
@@ -1599,10 +1666,13 @@ function drawClouds(front){
     ctx.globalAlpha = clamp(c.a, 0, 1);
     ctx.fillStyle = C.cloud;
     for (const r of c.rows) ctx.fillRect(snap(x+r.dx), snap(y+r.dy), snap(r.w), snap(r.h));
+    ctx.fillStyle = C.cloudHi;
+    for (const r of c.rows) ctx.fillRect(snap(x+r.dx), snap(y+r.dy), snap(r.w), PIX*2);
     ctx.fillStyle = C.cloudLo;
     for (const r of c.rows){
       if (r.dy !== 0) continue;
-      ctx.fillRect(snap(x+r.dx), snap(y+r.dy+r.h)-PIX*2, snap(r.w), PIX*2);
+      ctx.fillRect(snap(x+r.dx), snap(y+r.dy+r.h)-PIX*3, snap(r.w), PIX*3);
+      dither(snap(x+r.dx), snap(y+r.dy+r.h)-PIX*5, snap(r.w), PIX*2, C.cloudLo, 1);
     }
     ctx.globalAlpha = 1;
   }
@@ -1613,7 +1683,7 @@ function drawSpeedLines(){
   if (a <= 0.01) return;
   ctx.save();
   ctx.globalAlpha = a;
-  ctx.fillStyle = paintAt(H*0.5).edge;
+  ctx.fillStyle = uiSet().base;
   for (let i = 0; i < 14; i++){
     const sx = ((i * 97.3 + (px * 1.6) % 1000) % (W + 120)) - 60;
     const sy = ((i * 211.7 + px * 2.1) % (H + 300)) - 150;
@@ -1665,9 +1735,12 @@ function craneBeam(o, F){
   }
   if (o.load){
     const lx = o.gapX > 120 ? o.gapX * 0.5 : g1 + (W - g1) * 0.5;
-    wf(F.base, lx, top + 40, 2, o.loadDrop);
-    wf(F.base, lx - 26, top + 40 + o.loadDrop, 52, 8);
-    wf(F.lo,   lx - 22, top + 48 + o.loadDrop, 44, 22);
+    wf(MAT.steel.base, lx, top + 40, 2, o.loadDrop);
+    wf(MAT.steel.lo,   lx - 26, top + 40 + o.loadDrop, 52, 8);
+    wf(MAT.cargo.base, lx - 22, top + 48 + o.loadDrop, 44, 22);
+    wf(MAT.cargo.hi,   lx - 22, top + 48 + o.loadDrop, 44, 4);
+    wf(MAT.cargo.lo,   lx - 18, top + 54 + o.loadDrop, 6, 14);
+    wf(MAT.cargo.lo,   lx + 4,  top + 54 + o.loadDrop, 6, 14);
   }
 }
 function craneSwingShape(o, F){
@@ -1686,9 +1759,10 @@ function craneSwingShape(o, F){
   const dx = o.bx - o.pivot, dy = o.by - (armY + 26);
   const n = Math.max(1, Math.round(Math.max(Math.abs(dx), Math.abs(dy)) / PIX));
   for (let i = 0; i <= n; i++) wf(F.base, o.pivot + dx*i/n, armY + 26 + dy*i/n, 3, 3);
-  wf(F.base, o.bx - 20, o.by - 14, 40, 28);
-  wf(F.base, o.bx - 14, o.by - 20, 28, 40);
-  wf(F.hi,   o.bx - 12, o.by - 14, 10, 8);
+  wf(MAT.steel.base, o.bx - 20, o.by - 14, 40, 28);
+  wf(MAT.steel.base, o.bx - 14, o.by - 20, 28, 40);
+  wf(MAT.steel.hi,   o.bx - 12, o.by - 14, 10, 8);
+  wf(MAT.steel.lo,   o.bx - 16, o.by + 6, 32, 8);
 }
 function rigShape(o, F){
   const w = Math.round(o.w/PIX/2), h = Math.round(o.h/PIX/2);
@@ -1707,8 +1781,8 @@ function rigShape(o, F){
   }
 }
 function heliShape(o, F){
-  pf(F.base,-14,-8,22,15); pf(F.base,8,-5,7,9);
-  pf(F.hi,6,-5,6,5);
+  pf(F.base,-14,-8,22,15); pf(F.hi,-14,-8,22,3); pf(F.base,8,-5,7,9);
+  pf(MAT.glass.base,6,-5,6,5); pf(MAT.glass.hi,6,-5,3,2);
   pf(F.base,-34,-4,21,5);
   pf(F.base,-39,-13,5,11);
   pf(F.lo,-14,9,27,2); pf(F.lo,-10,7,2,2); pf(F.lo,6,7,2,2);
@@ -1721,8 +1795,9 @@ function propShape(o, F){
   pf(F.base,-24,-4,44,9); pf(F.hi,-24,-4,40,2);
   pf(F.base,20,-3,7,7);
   pf(F.base,-12,3,30,3); pf(F.base,-6,6,16,2);
-  pf(F.base,-29,-12,6,9); pf(F.base,-31,-2,11,3);
-  pf(F.hi,2,-7,8,4);
+  pf(MAT.cargo.base,-29,-12,6,9); pf(F.base,-31,-2,11,3);
+  pf(MAT.cargo.base,-24,-1,40,2);
+  pf(MAT.glass.base,2,-7,8,4); pf(MAT.glass.hi,2,-7,4,2);
   const b = Math.abs(Math.sin(o.rotor)) * 9 + 2;
   pf(F.lo, 27, -b, 2, b*2);
 }
@@ -1730,9 +1805,10 @@ function jetShape(o, F){
   pf(F.base,-32,-4,62,9); pf(F.hi,-32,-4,56,2);
   pf(F.base,30,-3,9,6); pf(F.base,39,-2,5,3);
   pf(F.base,-16,4,32,3); pf(F.base,-6,7,18,3);
-  pf(F.base,-14,-12,6,9); pf(F.base,-26,-14,6,11);
+  pf(F.base,-14,-12,6,9); pf(MAT.cargo.base,-26,-14,6,11);
   pf(F.lo,-12,-1,12,4);
-  pf(F.hi,-37,-2,5,5);
+  pf(MAT.flame.hi,-37,-2,5,5); pf(MAT.flame.base,-42,-1,5,3);
+  pf(MAT.glass.base,16,-3,7,3);
 }
 function satShape(o, F){
   pf(F.base,-8,-13,16,26); pf(F.hi,-8,-13,16,2);
@@ -1740,8 +1816,9 @@ function satShape(o, F){
   for (const d of [-1,1]){
     for (let i = 0; i < 3; i++){
       const x = d > 0 ? 12 + i*10 : -12 - (i+1)*10 + 1;
-      pf(F.lo, x, -8, 9, 16);
-      pf(F.hi, x, -8, 9, 1);
+      pf(MAT.solar.base, x, -8, 9, 16);
+      pf(MAT.solar.hi, x, -8, 9, 2);
+      pf(MAT.solar.lo, x, -1, 9, 1);
     }
   }
   pf(F.base,-6,-19,12,4); pf(F.base,-1,-16,2,3);
@@ -1773,11 +1850,13 @@ function sdebrisShape(o, F){
   }
 }
 function alienShape(o, F){
-  pf(F.base,-6,-14,12,4); pf(F.base,-11,-10,22,4);
-  pf(F.hi,-9,-13,8,2);
-  pf(F.base,-20,-6,40,5);
+  pf(MAT.glass.base,-6,-14,12,4); pf(MAT.glass.base,-11,-10,22,4);
+  pf(MAT.glass.hi,-9,-13,8,2);
+  pf(F.base,-20,-6,40,5); pf(F.hi,-20,-6,40,2);
   pf(F.base,-28,-1,56,5);
   pf(F.lo,-16,4,32,3); pf(F.lo,-7,7,14,3);
+  const lamp = Math.floor(runTime * 6) % 5;
+  for (let i = 0; i < 5; i++) pf(i === lamp ? '#FFFFFF' : MAGENTA, -18 + i*8, -1, 3, 3);
 }
 function cometShape(o, F){
   const d = -Math.sign(o.vx || 1);
@@ -1793,12 +1872,19 @@ function meteorShape(o, F){
     pf(F.hi, d*i*4, -i*5, Math.max(1, 4 - Math.floor(i/2)), Math.max(1, 3 - Math.floor(i/3)));
   }
   pf(F.base,-5,-5,10,10);
-  pf(F.hi,-5,-5,6,3);
-  pf(F.lo,1,1,3,3);
+  pf(F.hi,-5,-5,6,4);
+  pf('#FFFFFF',-3,-4,3,2);
+  pf(F.lo,1,1,4,4);
 }
 
+const HAZMAT = {
+  pigeon:'pigeon', bird:'gull', craneStatic:'crane', craneMove:'crane',
+  craneSwing:'crane', rig:'rust', heli:'heli', prop:'plane', jet:'jet',
+  meteor:'meteor', sdebris:'junk', sat:'gold', rock:'rock', alien:'alien',
+  comet:'comet', shield:'steel', rocket:'steel'
+};
 function drawObstacle(o){
-  const F = paintAt(o.t === 'craneSwing' ? o.by : o.y);
+  const F = MAT[HAZMAT[o.t]] || MAT.steel;
   if (o.t === 'craneStatic' || o.t === 'craneMove'){
     edged(() => craneBeam(o, F), F);
     if (Math.sin(runTime * 7) > -0.1){
@@ -1869,7 +1955,7 @@ function rocketGlyph(){
 function drawPowerUp(o, glyph, F){
   const r = 26 + Math.sin(runTime * 4 + o.phase) * 3;
   const shape = () => { ring(r); glyph(); };
-  ctx.fillStyle = F.base;
+  ctx.fillStyle = '#1C0E14';
   for (const d of OUT8){ ctx.save(); ctx.translate(d[0], d[1]); shape(); ctx.restore(); }
   ctx.fillStyle = redPulse();
   shape();
@@ -1880,36 +1966,43 @@ function drawPowerUp(o, glyph, F){
 }
 
 /* ---- the car ----------------------------------------------------- */
-function carShape(F){
-  pf(F.base,-15,-19,3,38); pf(F.base,12,-19,3,38);       /* posts */
-  pf(F.hi,-15,-19,1,38);
-  pf(F.base,-15,-19,30,3); pf(F.hi,-15,-19,30,1);        /* head rail */
-  pf(F.base,-15,-7,30,2);                                /* waist rail */
-  pf(F.base,-1,-19,2,33);                                /* mullion */
-  pf(F.base,-15,14,30,5); pf(F.lo,-15,17,30,2);          /* floor */
-  pf(F.base,-17,-24,34,5); pf(F.hi,-17,-24,34,1);        /* roof */
-  pf(F.base,-11,-28,22,4);
-  pf(F.base,0,-34,1,6);                                  /* antenna */
-  pf(F.base,-17,19,34,3);                                /* base plate */
-  pf(F.lo,-11,22,5,3); pf(F.lo,-2,22,4,3); pf(F.lo,7,22,5,3);
-  pf(F.lo,-11,-4,3,8);                                   /* call panel */
-  pf(F.lo,4,-5,4,4); pf(F.lo,3,-1,6,9);                  /* passenger */
-  pf(F.lo,4,8,2,6); pf(F.lo,7,8,2,6);
-  pf(F.hi,-12,-16,2,7); pf(F.hi,-9,-12,2,4);             /* glass glint */
+function carShape(){
+  const B = MAT.brass, G = MAT.glass, S = MAT.steel, P = MAT.person;
+  pf(G.base,-13,-17,26,31);                              /* glazing */
+  pf(G.lo,-13,4,26,10);
+  pf(G.hi,-12,-16,3,26); pf(G.hi,-7,-14,2,12);           /* glints */
+  pf(P.base,4,-5,4,4); pf(P.hi,4,-5,4,2);                /* passenger */
+  pf(P.lo,3,-1,6,9); pf(P.base,4,8,2,6); pf(P.base,7,8,2,6);
+  pf(S.lo,-11,-4,3,8); pf(S.hi,-11,-4,3,1);              /* call panel */
+  pf(B.base,-15,-19,3,38); pf(B.hi,-15,-19,1,38);        /* posts */
+  pf(B.base,12,-19,3,38); pf(B.lo,14,-19,1,38);
+  pf(B.base,-15,-19,30,3); pf(B.hi,-15,-19,30,1);        /* head rail */
+  pf(B.base,-15,-7,30,2); pf(B.hi,-15,-7,30,1);          /* waist rail */
+  pf(B.base,-1,-19,2,33);                                /* mullion */
+  pf(B.base,-15,14,30,5); pf(B.lo,-15,17,30,2);          /* floor */
+  pf(B.base,-17,-24,34,5); pf(B.hi,-17,-24,34,2);        /* roof */
+  pf(B.base,-11,-28,22,4); pf(B.hi,-11,-28,22,1);
+  pf(S.base,0,-34,1,6);                                  /* antenna */
+  pf(B.base,-17,19,34,3); pf(B.lo,-17,21,34,1);          /* base plate */
+  pf(S.base,-11,22,5,3); pf(S.base,-2,22,4,3); pf(S.base,7,22,5,3);
+  pf(S.lo,-11,24,5,1); pf(S.lo,-2,24,4,1); pf(S.lo,7,24,5,1);
 }
+
 function flameShape(strength){
   const wide = strength > 2.4, base = wide ? 5 : 3;
   const len = Math.min(16, Math.max(2, Math.round(strength * 5)));
   for (const dx of [-9, -1, 7]){
     const n = len + rndi(-1, 1);
     for (let i = 0; i < n; i++){
-      const w = Math.max(1, Math.round(base * (1 - (i / Math.max(1,n)) * 0.8)));
-      ctx.fillRect((dx + Math.round((base - w)/2) - (wide?1:0)) * PIX, (25 + i) * PIX, w*PIX, PIX);
+      const t = i / Math.max(1, n);
+      const w = Math.max(1, Math.round(base * (1 - t * 0.8)));
+      const x = (dx + Math.round((base - w)/2) - (wide?1:0)) * PIX;
+      ctx.fillStyle = forceColor || (t < 0.25 ? MAT.flame.hi : t < 0.6 ? MAT.flame.base : MAT.flame.lo);
+      ctx.fillRect(x, (25 + i) * PIX, w*PIX, PIX);
     }
   }
 }
 function drawElevator(x, y, rot, broken){
-  const F = paintAt(y);
   const burning = (state === S.PLAY || state === S.MENU || state === S.PAUSE ||
                   (state === S.INTRO && ignited));
   ctx.save();
@@ -1919,19 +2012,19 @@ function drawElevator(x, y, rot, broken){
   if (burning){
     const strength = 1 + clamp((speed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN), 0, 1) * 1.1
                        + boostEnv() * 2.6;
-    ctx.fillStyle = F.base;
+    forceColor = MAT.flame.edge;
     for (const d of OUT8){ ctx.save(); ctx.translate(d[0], d[1]); flameShape(strength); ctx.restore(); }
-    ctx.fillStyle = LIGHTSET.base;
+    forceColor = null;
     flameShape(strength);
   }
-  edged(carShape, F);
+  edged(carShape, MAT.brass);
   if (broken){
-    ctx.fillStyle = F.edge;
-    pf(F.edge,-9,-15,3,3); pf(F.edge,5,-12,3,3); pf(F.edge,-6,3,3,3);
+    ctx.fillStyle = MAT.glass.hi;
+    pf(MAT.glass.hi,-9,-15,3,3); pf(MAT.glass.hi,5,-12,3,3); pf(MAT.glass.hi,-6,3,3,3);
   }
   if (Math.sin(runTime * 7) > -0.2){                     /* beacon */
-    pf(F.base,-2,-37,3,3);
-    pf(F.edge,-1,-36,1,1);
+    pf(MAT.steel.lo,-2,-37,3,3);
+    pf('#FFF3C4',-1,-36,1,1);
   }
   ctx.restore();
 
@@ -1942,7 +2035,7 @@ function drawElevator(x, y, rot, broken){
       ctx.save();
       ctx.translate(snap(x), snap(y) - PIX*2);
       if (!player.shield) ctx.globalAlpha = 0.5;
-      ctx.fillStyle = F.base;
+      ctx.fillStyle = '#20121A';
       for (const d of OUT8){ ctx.save(); ctx.translate(d[0], d[1]); ring(r); ctx.restore(); }
       ctx.fillStyle = redPulse();
       ring(r);
@@ -1953,7 +2046,7 @@ function drawElevator(x, y, rot, broken){
   if (env > 0.02){                                        /* F1 wake */
     ctx.save();
     ctx.globalAlpha = env;
-    ctx.fillStyle = LIGHTSET.base;
+    ctx.fillStyle = MAT.flame.hi;
     for (let i = 0; i < 10; i++){
       ctx.fillRect(snap(x + rnd(-60,60)), snap(y + 50 + ((runTime*1400 + i*97) % 320)),
                    PIX, snap(24 + env*60));
@@ -1965,43 +2058,64 @@ function drawElevator(x, y, rot, broken){
 /* ---- the garage the run starts in -------------------------------- */
 function drawGarage(){
   if (garage <= 0.01) return;
+  const CONC = '#4A4B52', CONC_HI = '#6B6C75', CONC_LO = '#2E2F36',
+        DARK = '#17181D', PAINT = '#C9A227', LAMP = '#FFE9A8';
   ctx.save();
   ctx.globalAlpha = garage;
-  ctx.fillStyle = '#080C12';
+  ctx.fillStyle = DARK;
   ctx.fillRect(0, 0, W, H);
   const shaft = 150, sx0 = snap(W/2 - shaft/2), sx1 = snap(W/2 + shaft/2);
-  /* deck slabs marching past on both sides of the shaft */
-  ctx.fillStyle = '#1B222B';
-  const off = (px * 1.0) % 170;
+  const off = px % 170;
   for (let y = -170 + off; y < H + 170; y += 170){
-    ctx.fillRect(0, snap(y), sx0, PIX*13);
-    ctx.fillRect(sx1, snap(y), W - sx1, PIX*13);
-    ctx.fillStyle = '#2C3742';
-    ctx.fillRect(0, snap(y), sx0, PIX*2);
-    ctx.fillRect(sx1, snap(y), W - sx1, PIX*2);
-    ctx.fillStyle = '#1B222B';
+    const yy = snap(y);
+    /* deck slab */
+    ctx.fillStyle = CONC;    ctx.fillRect(0, yy, sx0, PIX*13);
+    ctx.fillRect(sx1, yy, W - sx1, PIX*13);
+    ctx.fillStyle = CONC_HI; ctx.fillRect(0, yy, sx0, PIX*2);
+    ctx.fillRect(sx1, yy, W - sx1, PIX*2);
+    ctx.fillStyle = CONC_LO; ctx.fillRect(0, yy + PIX*11, sx0, PIX*2);
+    ctx.fillRect(sx1, yy + PIX*11, W - sx1, PIX*2);
+    ctx.fillStyle = PAINT;                                  /* deck stripe */
+    for (let x = 6; x < sx0; x += 40) ctx.fillRect(snap(x), yy + PIX*6, PIX*9, PIX*2);
+    for (let x = sx1 + 6; x < W; x += 40) ctx.fillRect(snap(x), yy + PIX*6, PIX*9, PIX*2);
     /* parked cars, seen end on */
     for (let i = 0; i < 3; i++){
-      ctx.fillRect(snap(20 + i*44), snap(y - 26), snap(32), snap(24));
-      ctx.fillRect(snap(sx1 + 16 + i*44), snap(y - 26), snap(32), snap(24));
+      for (const bx of [20 + i*44, sx1 + 16 + i*44]){
+        if (bx > sx0 && bx < sx1) continue;
+        ctx.fillStyle = i % 3 === 0 ? '#7A3B33' : i % 3 === 1 ? '#35506B' : '#4A5054';
+        ctx.fillRect(snap(bx), snap(y - 26), snap(32), snap(24));
+        ctx.fillStyle = '#9FC4D8';
+        ctx.fillRect(snap(bx + 4), snap(y - 22), snap(24), snap(8));
+        ctx.fillStyle = '#1C1E24';
+        ctx.fillRect(snap(bx), snap(y - 6), snap(32), snap(4));
+      }
     }
+    /* strip light under each deck */
+    ctx.fillStyle = LAMP;
+    ctx.fillRect(snap(24), yy - PIX*4, PIX*22, PIX*2);
+    ctx.fillRect(snap(W - 70), yy - PIX*4, PIX*22, PIX*2);
+    ctx.save();
+    ctx.globalAlpha = garage * 0.16;
+    ctx.fillStyle = LAMP;
+    ctx.fillRect(snap(10), yy - PIX*4, PIX*46, PIX*14);
+    ctx.fillRect(snap(W - 86), yy - PIX*4, PIX*46, PIX*14);
+    ctx.restore();
   }
   /* shaft walls and guide rails */
-  ctx.fillStyle = '#141A22';
+  ctx.fillStyle = CONC_LO;
   ctx.fillRect(sx0 - PIX*5, 0, PIX*5, H);
   ctx.fillRect(sx1, 0, PIX*5, H);
-  ctx.fillStyle = '#2C3742';
-  for (let y = -60 + ((px*1.0) % 60); y < H; y += 60){
+  ctx.fillStyle = MAT.steel.base;
+  for (let y = -60 + (px % 60); y < H; y += 60){
     ctx.fillRect(sx0 - PIX*4, snap(y), PIX*3, PIX*18);
     ctx.fillRect(sx1 + PIX*1, snap(y), PIX*3, PIX*18);
   }
   /* the street slab, arriving exactly on cue */
   const slabY = lerp(-220, PLAYER_Y - 58, clamp(seqT / I_BURST, 0, 1));
-  ctx.fillStyle = '#2C3742';
-  ctx.fillRect(0, snap(slabY), W, PIX*16);
-  ctx.fillStyle = '#3A4754';
-  ctx.fillRect(0, snap(slabY), W, PIX*3);
-  ctx.fillStyle = '#141A22';
+  ctx.fillStyle = CONC;    ctx.fillRect(0, snap(slabY), W, PIX*16);
+  ctx.fillStyle = CONC_HI; ctx.fillRect(0, snap(slabY), W, PIX*3);
+  ctx.fillStyle = CONC_LO; ctx.fillRect(0, snap(slabY + PIX*13), W, PIX*3);
+  ctx.fillStyle = MAT.rust.lo;
   for (let x = 0; x < W; x += 46) ctx.fillRect(snap(x), snap(slabY + PIX*6), PIX*10, PIX*4);
   ctx.restore();
 }
@@ -2011,8 +2125,9 @@ function drawBits(){
   for (const b of bits){
     const a = clamp(b.life / b.max, 0, 1);
     if (a < 0.3 && (Math.floor(b.life * 20) % 2)) continue;
-    const F = paintAt(b.y);
-    ctx.fillStyle = b.red ? redPulse() : b.dark ? F.base : LIGHTSET.base;
+    ctx.fillStyle = b.red ? redPulse()
+                  : b.dark ? (a > 0.6 ? MAT.steel.lo : MAT.rust.lo)
+                  : (a > 0.7 ? MAT.flame.hi : a > 0.4 ? MAT.flame.base : MAT.flame.lo);
     const s = a > 0.55 ? PIX*2 : PIX;
     ctx.fillRect(snap(b.x), snap(b.y), s, s);
   }
@@ -2025,7 +2140,7 @@ function drawPopups(){
   for (const p of popups){
     const a = clamp(p.life / 1.5, 0, 1);
     if (a < 0.4 && (Math.floor(p.life * 12) % 2)) continue;
-    const F = paintAt(p.y), y = snap(p.y);
+    const F = uiSet(), y = snap(p.y);
     ctx.fillStyle = F.edge;
     for (const d of OUT8) ctx.fillText(p.text, W/2 + d[0], y + d[1]);
     ctx.fillStyle = p.red ? redPulse() : F.base;
@@ -2067,14 +2182,44 @@ function draw(){
     ctx.save(); ctx.globalAlpha = clamp(flash,0,1) * 0.8;
     ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0,0,W,H); ctx.restore();
   }
-  if (redFlash > 0.01){
-    ctx.save(); ctx.globalAlpha = clamp(redFlash,0,1) * 0.85;
-    ctx.fillStyle = '#D8281C'; ctx.fillRect(0,0,W,H); ctx.restore();
-  }
+  if (slide > 0.001) drawGameOver();
   if (fade > 0.001){
     ctx.save(); ctx.globalAlpha = clamp(fade,0,1);
     ctx.fillStyle = '#04060A'; ctx.fillRect(0,0,W,H); ctx.restore();
   }
+}
+
+/* The red curtain: it wipes down over the held frame, carrying the
+   words with its leading edge, then settles at the middle. */
+function drawGameOver(){
+  const bottom = snap(H * slide);
+  ctx.save();
+  ctx.fillStyle = '#B21C14';
+  ctx.fillRect(0, 0, W, bottom);
+  ctx.fillStyle = '#8A130D';
+  dither(0, 0, W, bottom, '#8A130D', 1);
+  ctx.fillStyle = '#7A0F0A';
+  ctx.fillRect(0, bottom - PIX*5, W, PIX*3);
+  ctx.fillStyle = '#FF6A5A';
+  ctx.fillRect(0, bottom - PIX*2, W, PIX*2);
+
+  const ty = Math.min(H * 0.44, bottom - 150);
+  if (ty > -40){
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '44px "Press Start 2P", ui-monospace, monospace';
+    ctx.fillStyle = '#5A0A06';
+    for (const d of OUT8) ctx.fillText('GAME', W/2 + d[0], snap(ty) + d[1]);
+    ctx.fillText('GAME', W/2 + PIX*3, snap(ty) + PIX*3);
+    ctx.fillStyle = '#FFF0E4';
+    ctx.fillText('GAME', W/2, snap(ty));
+    ctx.fillStyle = '#5A0A06';
+    for (const d of OUT8) ctx.fillText('OVER', W/2 + d[0], snap(ty + 62) + d[1]);
+    ctx.fillText('OVER', W/2 + PIX*3, snap(ty + 62) + PIX*3);
+    ctx.fillStyle = '#FFF0E4';
+    ctx.fillText('OVER', W/2, snap(ty + 62));
+  }
+  ctx.restore();
 }
 
 /* ================================================================

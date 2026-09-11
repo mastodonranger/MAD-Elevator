@@ -1,7 +1,7 @@
 # MAD-Elevator
 
 An endless runner that calculates high scores — vertically, drawn as
-16-bit pixel art in one desaturated blue-grey ramp.
+SNES-era 16-bit pixel art.
 
 Car 3 is stuck in a parking garage. Maintenance has a different idea: the
 car climbs its shaft, punches through the street slab, lights its rockets
@@ -85,23 +85,39 @@ Labelled `F1 SYSTEM SPEED`.
 The game renders into a canvas that is **270×480 device pixels**. Everything
 is authored in 540×960 world units and the context is scaled by `1/PIX`, so
 the rasteriser itself does the pixelating and CSS blows the result back up
-with nearest-neighbour sampling. Sprites are built from rects on that grid
-in three tones — base, highlight, shadow — and anything that spins snaps to
-quarter turns so nothing ever lands off-grid.
+with nearest-neighbour sampling.
 
-There is one palette: a desaturated blue-grey ramp, plus red for power-ups.
-Everything else is derived from the sky by value — the parallax layers, the
-window lights, the clouds.
+It is built the way a 16-bit game was. Every material owns a four-step ramp
+— dark outline, shadow, base, highlight — and sprites carry their own
+colours over any background, always outlined, the way sprite tables worked:
+brass and cyan glass for the car, safety orange for the cranes, olive
+helicopters, white airliners with a red tail, gold foil and blue solar
+panels on the satellites, green saucers with magenta lamps. Skies are
+twenty-two flat horizontal bands with a **dithered seam** between each pair,
+which is how the hardware faked gradients it could not afford, and the same
+checkerboard shades the undersides of clouds and the red of the game-over
+curtain. The parallax layers take their colour from the sky, so distance
+reads as haze rather than as a darker grey.
 
-**How an asset picks its colour** is the one rule worth knowing. It reads
-the brightness of the sky *at its own height on the screen* and takes the
-opposite: dark-on-bright below, light-on-dark above, always with an outline
-in the other set. Zone 5's darkening lid then does what you would want
-without a special case — hazards enter the frame white against the black
-top and turn dark as they fall into the lit bottom half — and the full
-inversion of deep space falls out of the same rule. Contrast is a fairness
-requirement here, not a finish: it is what keeps the game playable at
-50,000 ft and legible to a player who cannot rely on hue.
+Anything that spins snaps to quarter turns so nothing ever lands off-grid,
+and the whole palette is one table near the top of the script: change `MAT`
+and `SKY` and the game changes era.
+
+Contrast is a fairness requirement, not a finish. Every sprite is mid-to-
+bright against its sky and carries a dark outline, so a hazard never
+dissolves into a cloud, a building or the black of space; power-ups pulse
+red — the one colour nothing else uses — and are outlined too, so they never
+rely on hue alone; and the HUD flips its ink and its backing together with
+the sky, holding the same contrast at 500 ft and at 50,000.
+
+## Crashing
+
+The run does not simply stop. The car tumbles through a short screen jiggle
+and the frame **freezes**, debris hanging in mid-air. A red curtain then
+wipes down over the held frame carrying **GAME OVER** on its leading edge,
+holds for a beat, and fades to black — and the results come up behind it:
+the logo, a quip, the feet travelled, your best, top speed and the zone you
+reached, and buttons for riding again or going back to the menu.
 
 ## Layout of `index.html`
 
@@ -112,6 +128,6 @@ particles, simulation, rendering, main loop, boot.
 Tuning knobs worth knowing: `FEET_PER_PX` (how much altitude a pixel of
 travel is worth), `SPEED_MIN` / `SPEED_MAX`, `ZONE_TAIL` (how far the last
 zone keeps ramping), `SHIELD_AT` / `ROCKET_AT` / `BOOST_*`, `PIX` (the size
-of a pixel), the intro and crash beats (`I_*` and `X_*`), and the `ZONES`
-table, which maps an altitude to the hazards that spawn there and drives
+of a pixel), the `MAT` material ramps and the `SKY` table, the intro and
+crash beats (`I_*` and `X_*`), and the `ZONES` table, which maps an altitude to the hazards that spawn there and drives
 the difficulty curve through `difficultyAt()`.
