@@ -27,7 +27,10 @@
     --steel:#8A98A0;     /* secondary type               */
     --paper:#B4BEC4;     /* primary type                 */
     --hot:#EDF3F5;       /* the one bright value         */
-    --hudInk:#0B1116;    /* flips with the sky, from JS  */
+    --hudInk:#080C10;    /* flips with the sky, from JS  */
+    --hudVeil:rgba(238,244,247,.72);
+    --red:#FF4438;
+    --red-dim:#9B1B12;
     --display:"Press Start 2P", ui-monospace, "Courier New", monospace;
     --body:"Silkscreen", ui-monospace, "Courier New", monospace;
   }
@@ -67,9 +70,9 @@
   /* ---- HUD ---------------------------------------------------- */
   #hud{padding:calc(var(--u)*18) calc(var(--u)*20);opacity:0;transition:opacity .2s steps(3)}
   #hud.on{opacity:1}
-  #hud::before{            /* scrim, so the readout survives a pale sky */
-    content:'';position:absolute;left:0;right:0;top:0;height:calc(var(--u)*210);
-    background:linear-gradient(180deg,rgba(4,6,10,.42),rgba(4,6,10,0));
+  #hud::before{     /* backing that flips with the ink, so contrast holds */
+    content:'';position:absolute;left:0;right:0;top:0;height:calc(var(--u)*190);
+    background:linear-gradient(180deg, var(--hudVeil) 0%, var(--hudVeil) 46%, transparent 100%);
     pointer-events:none;
   }
   #hud .row{position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:calc(var(--u)*12)}
@@ -89,17 +92,32 @@
     text-transform:uppercase;color:var(--hudInk);
     padding:calc(var(--u)*5) calc(var(--u)*9);
     border:calc(var(--u)*2) solid var(--hudInk);
+    background:var(--hudVeil);
   }
   #zone.flash{animation:hardBlink .34s steps(1) 3}
-  #shieldChip{
-    margin-top:calc(var(--u)*9);display:inline-block;
-    font-size:calc(var(--u)*13);font-weight:700;letter-spacing:calc(var(--u)*2);
-    text-transform:uppercase;color:var(--hot);
-    padding:calc(var(--u)*5) calc(var(--u)*9);
-    border:calc(var(--u)*2) solid var(--hot);
-    animation:hardBlink 1.4s steps(1) infinite;
+  /* ---- power-up labels, stacked at the top -------------------- */
+  #powerups{
+    position:absolute;left:0;right:0;top:calc(var(--u)*232);
+    display:flex;flex-direction:column;align-items:center;
+    gap:calc(var(--u)*9);pointer-events:none;
   }
-  #shieldChip[hidden]{display:none}
+  .pwr{
+    font-family:var(--display);
+    font-size:calc(var(--u)*13);line-height:1;
+    letter-spacing:calc(var(--u)*1);
+    text-transform:uppercase;
+    color:var(--red);
+    background:rgba(5,8,11,.85);
+    border:calc(var(--u)*2) solid var(--red);
+    padding:calc(var(--u)*9) calc(var(--u)*12);
+    animation:redPulse .9s steps(1) infinite;
+  }
+  .pwr[hidden]{display:none}
+  @keyframes redPulse{
+    0%,49%  {color:var(--red);border-color:var(--red)}
+    50%,100%{color:#FF8C83;border-color:var(--red-dim)}
+  }
+  @media (prefers-reduced-motion:reduce){ .pwr{animation:none} }
   @keyframes hardBlink{0%,49%{opacity:1}50%,100%{opacity:.15}}
 
   /* ---- screens (title / crash / pause) ------------------------ */
@@ -196,7 +214,7 @@
     z-index:4;pointer-events:auto;cursor:pointer;
     font-family:var(--body);font-size:calc(var(--u)*14);font-weight:700;
     letter-spacing:calc(var(--u)*1.6);
-    color:var(--hudInk);background:transparent;
+    color:var(--hudInk);background:var(--hudVeil);
     border:calc(var(--u)*2) solid var(--hudInk);
     padding:calc(var(--u)*7) calc(var(--u)*10);
     opacity:.75;
@@ -221,12 +239,15 @@
         <div class="label">Altitude</div>
         <div id="altWrap"><span id="alt" class="mono">0</span><span id="altUnit">FT</span></div>
         <div id="zone">Ground Level</div>
-        <div id="shieldChip" hidden>Shield Up</div>
       </div>
       <div id="bestWrap">
         <div class="label">Best</div>
         <div id="best" class="mono">0 FT</div>
       </div>
+    </div>
+    <div id="powerups">
+      <div class="pwr" id="vmsLabel" hidden>VMS3 Activated</div>
+      <div class="pwr" id="f1Label" hidden>F1 System Speed</div>
     </div>
   </div>
 
@@ -279,15 +300,19 @@
    ================================================================ */
 const W = 540, H = 960;
 const FEET_PER_PX   = 0.75;   // one logical pixel of travel = 9 inches
-const BAND_TAIL     = 20000;  // how far the last band keeps ramping
-const SPEED_MIN     = 210;    // px/s of climb at launch - a slow lift-off
-const SPEED_MAX     = 1080;   // px/s of climb once fully ramped
-const SHIELD_FIRST  = 9200;   // first bubble, just inside Flight Level
+const BAND_TAIL     = 22000;  // how far the last band keeps ramping
+const SPEED_MIN     = 150;    // px/s of climb at launch - a slow lift-off
+const SPEED_MAX     = 900;    // px/s of climb once fully ramped
+const SHIELD_FIRST  = 14200;  // first VMS3 bubble, just inside Flight Level
 const SHIELD_INV    = 1.3;    // seconds of mercy after a bubble pops
+const ROCKET_FIRST  = 17000;  // first F1 booster, shortly after
+const BOOST_TIME    = 3.0;    // seconds of F1 burn
+const BOOST_RISE    = 200 / FEET_PER_PX;  // the car climbs 200ft up the screen
+const BOOST_MULT    = 2.6;    // how much faster the world runs during it
 const PLAYER_Y      = H * 0.70;
 const PLAYER_W      = 84, PLAYER_H = 118;
-const PLAYER_ACCEL  = 2600;   // keyboard steering acceleration, px/s^2
-const PLAYER_MAXV   = 640;
+const PLAYER_ACCEL  = 2200;   // keyboard steering acceleration, px/s^2
+const PLAYER_MAXV   = 560;
 const WALL_PAD      = 10;
 
 /* ================================================================
@@ -350,13 +375,14 @@ window.addEventListener('orientationchange', () => setTimeout(resize, 120), {pas
    shows. spawnable weights are relative to each other.
    ================================================================ */
 const ZONES = [
-  { from:0,     name:'Low Airspace',   mix:[['bird',1]] },
-  { from:1800,  name:'Construction',   mix:[['bird',0.55],['crane',1]] },
-  { from:4500,  name:'Debris Field',   mix:[['bird',0.25],['crane',0.55],['debris',1]] },
-  { from:9000,  name:'Flight Level',   mix:[['debris',0.5],['crane',0.4],['plane',1]] },
-  { from:16000, name:'Stratosphere',   mix:[['plane',1],['debris',0.55],['sat',0.35]] },
-  { from:24000, name:'Low Orbit',      mix:[['plane',0.35],['sat',0.7],['ufo',1]] },
-  { from:36000, name:'Deep Space',     mix:[['ufo',1],['sat',0.7],['debris',0.6],['crane',0.25]] }
+  { from:0,     name:'City Level',   mix:[['bird',1]] },
+  { from:3000,  name:'High Rise Construction',
+                                      mix:[['crane',1],['swing',0.85],['bird',0.4]] },
+  { from:8000,  name:'Debris Field',  mix:[['crane',0.8],['swing',0.6],['debris',1],['bird',0.2]] },
+  { from:14000, name:'Flight Level',  mix:[['debris',0.5],['crane',0.4],['plane',1]] },
+  { from:22000, name:'Stratosphere',  mix:[['plane',1],['debris',0.55],['sat',0.35]] },
+  { from:32000, name:'Low Orbit',     mix:[['plane',0.35],['sat',0.7],['ufo',1]] },
+  { from:44000, name:'Deep Space',    mix:[['ufo',1],['sat',0.7],['debris',0.6],['crane',0.25]] }
 ];
 function zoneFor(feet){
   let z = ZONES[0];
@@ -396,8 +422,13 @@ function skyAt(f){
 /* Every colour on screen is derived from the sky by value alone.
    Nothing gets a hue of its own; depth reads as contrast. */
 const INK = [11,17,22];
-const C = { ink: rgb(INK), rim:'#C6D2D8', hot:'#EDF3F5', rimA:0 };
+/* The one colour in the game. Power-ups own it, so red always means
+   "this helps you" - and it is paired with an ink outline, never
+   carrying meaning by hue alone. */
+const RED_HI = '#FF4438', RED_LO = '#9B1B12';
+const C = { ink: rgb(INK), rim:'#E4EDF1', hot:'#F4F9FB', rimA:0 };
 let hudInkNow = '';
+function redPulse(){ return (Math.floor(runTime * 5) % 2) ? RED_LO : RED_HI; }
 function updatePalette(){
   const [t, b] = skyAt(feet);
   C.skyTop  = rgb(t);
@@ -411,8 +442,15 @@ function updatePalette(){
   /* once the sky is dark, silhouettes take a backlit rim so they read */
   const lum = (b[0]*0.3 + b[1]*0.59 + b[2]*0.11) / 255;
   C.rimA = clamp((0.34 - lum) / 0.15, 0, 1);
-  const hud = lum > 0.30 ? rgb(INK) : '#DCE6EA';
-  if (hud !== hudInkNow){ hudInkNow = hud; stage.style.setProperty('--hudInk', hud); }
+  /* HUD ink flips with the sky, and its backing flips with it, so the
+     readout keeps the same contrast at every altitude. */
+  const dark = lum <= 0.30;
+  const hud = dark ? '#EEF4F7' : '#080C10';
+  if (hud !== hudInkNow){
+    hudInkNow = hud;
+    stage.style.setProperty('--hudInk', hud);
+    stage.style.setProperty('--hudVeil', dark ? 'rgba(4,6,10,.66)' : 'rgba(240,245,248,.62)');
+  }
 }
 
 /* ================================================================
@@ -463,6 +501,7 @@ const Sound = (() => {
               setTimeout(()=>tone(784, 0.14, 'triangle', 0.08), 80);
               setTimeout(()=>tone(1046, 0.20, 'triangle', 0.07), 160); },
     pop(){    noise(0.26, 0.22); tone(420, 0.24, 'square', 0.08, 120); },
+    boost(){  tone(220, 0.5, 'sawtooth', 0.09, 1200); noise(0.4, 0.14); },
     crash(){  noise(0.9, 0.35); tone(150, 0.7, 'sawtooth', 0.10, 40); },
     toggle(){
       on = !on;
@@ -498,9 +537,10 @@ function saveBest(v){
 const S = { MENU:0, PLAY:1, CRASH:2, OVER:3, PAUSE:4 };
 let state = S.MENU;
 
+let playerY = PLAYER_Y;          /* the F1 booster lifts this up the screen */
 const player = {
   x: W/2, vx: 0, tilt: 0,
-  shield: false, invT: 0, bubble: 0,
+  shield: false, invT: 0, bubble: 0, boost: 0,
   crashT: 0, crashVy: 0, crashSpin: 0, crashRot: 0, crashX: 0, crashY: 0
 };
 
@@ -518,9 +558,11 @@ let lastBlockerPx = -1e9;  // px-travel stamp of the last full-width hazard
 let lastGapX  = W/2;
 let nextMilestone = 2500;
 let nextShieldFeet = SHIELD_FIRST;
+let nextRocketFeet = ROCKET_FIRST;
 let recordBeaten = false;
 
 const obstacles = [];
+const scenery   = [];   /* background frames - never a hazard */
 const clouds    = [];
 const bits      = [];   // particles
 const popups    = [];   // floating text
@@ -617,7 +659,8 @@ const el = {
   alt:      document.getElementById('alt'),
   best:     document.getElementById('best'),
   zone:     document.getElementById('zone'),
-  shieldChip: document.getElementById('shieldChip'),
+  vms:      document.getElementById('vmsLabel'),
+  f1:       document.getElementById('f1Label'),
   title:    document.getElementById('title'),
   over:     document.getElementById('over'),
   pause:    document.getElementById('pause'),
@@ -656,13 +699,16 @@ function syncHUD(){
 
 function start(){
   obstacles.length = 0; clouds.length = 0; bits.length = 0; popups.length = 0;
+  scenery.length = 0; sceneryT = 0;
   px = 0; feet = 0; speed = SPEED_MIN; topSpeed = 0; nearMiss = 0;
   diff = 0; runTime = 0; shake = 0; flash = 0;
-  spawnT = 1.9; lastBlockerPx = -1e9; lastGapX = W/2;
-  nextMilestone = 2500; nextShieldFeet = SHIELD_FIRST; recordBeaten = false;
+  spawnT = 2.6; lastBlockerPx = -1e9; lastGapX = W/2;
+  nextMilestone = 2500; recordBeaten = false;
+  nextShieldFeet = SHIELD_FIRST; nextRocketFeet = ROCKET_FIRST;
   player.x = W/2; player.vx = 0; player.tilt = 0;
-  player.shield = false; player.invT = 0; player.bubble = 0;
-  el.shieldChip.hidden = true;
+  player.shield = false; player.invT = 0; player.bubble = 0; player.boost = 0;
+  playerY = PLAYER_Y;
+  el.vms.hidden = true; el.f1.hidden = true;
   player.crashT = 0; player.crashRot = 0; player.crashSpin = 0; player.crashVy = 0;
   pointerOn = false;
   buildSkyline();
@@ -701,7 +747,7 @@ function gameOver(){
   document.getElementById('titleBest').textContent = commas(best) + ' FT';
   el.over.hidden = false;
   el.hud.classList.remove('on');
-  el.shieldChip.hidden = true;
+  el.vms.hidden = true; el.f1.hidden = true;
 }
 
 /* ================================================================
@@ -712,22 +758,45 @@ function gameOver(){
 function takeShield(){
   player.shield = true;
   player.bubble = 1;                     /* drives the inflate animation */
-  el.shieldChip.hidden = false;
-  popup('SHIELD UP', '#EDF3F5');
+  el.vms.hidden = false;
+  popup('VMS3', RED_HI);
   Sound.shield();
 }
 function popShield(x, y){
   player.shield = false;
   player.invT = SHIELD_INV;
-  el.shieldChip.hidden = true;
+  el.vms.hidden = true;
   shake = 14;
-  burstRing(player.x, PLAYER_Y, 26);
-  popup('SHIELD GONE', '#C6D2D8');
+  burstRing(player.x, playerY, 26);
+  popup('VMS3 SPENT', '#C6D2D8');
   Sound.pop();
+}
+function takeRocket(){
+  player.boost = BOOST_TIME;
+  el.f1.hidden = false;
+  popup('F1 SPEED', RED_HI);
+  Sound.boost();
+}
+/* Quick in, hold, slow out - the tail is what tells you it is ending. */
+function boostEnv(){
+  if (player.boost <= 0) return 0;
+  const t = 1 - player.boost / BOOST_TIME;
+  if (t < 0.15) return easeOut(t / 0.15);
+  if (t < 0.62) return 1;
+  return 1 - easeOut((t - 0.62) / 0.38);
 }
 
 function rectsOf(o){
-  if (o.t === 'shield') return [{ x: o.x - 34, y: o.y - 34, w: 68, h: 68 }];
+  if (o.t === 'shield' || o.t === 'rocket')
+    return [{ x: o.x - 34, y: o.y - 34, w: 68, h: 68 }];
+  if (o.t === 'swing'){
+    const armY = o.y - 15;
+    return [
+      o.side > 0 ? { x: o.armEnd, y: armY, w: W - o.armEnd + 40, h: 30 }
+                 : { x: -40, y: armY, w: o.armEnd + 40, h: 30 },
+      { x: o.bx - 26, y: o.by - 26, w: 52, h: 52 }
+    ];
+  }
   if (o.t === 'crane'){
     const top = o.y - o.h/2;
     return [
@@ -775,7 +844,8 @@ function spawnCrane(){
                    loadDrop: rnd(60, 130) });
 }
 function spawnDebris(){
-  const kind = pick(['brick','slab','beam']);
+  const kind = feet < 16000 ? (Math.random() < 0.78 ? 'brick' : 'slab')
+                            : pick(['brick','slab','beam']);
   const size = kind === 'beam' ? rnd(84, 132) : rnd(44, 82);
   obstacles.push({ t:'debris', kind, x: rnd(50, W-50), y: -70,
                    w: size, h: kind === 'beam' ? size*0.34 : size*0.8,
@@ -793,6 +863,26 @@ function spawnUFO(){
                    vx: 0, vy: rnd(40, 90), phase: rnd(0,6.28),
                    homing: rnd(60, 150), passed:false });
 }
+/* A jib arm off one edge with a wrecking ball swinging under it. The
+   arm never reaches far enough to close the lane the ball swings in. */
+function spawnSwing(){
+  const side = Math.random() < 0.5 ? -1 : 1;          /* -1: arm on the left */
+  const reach = rnd(215, 285);
+  const armEnd = side > 0 ? W - reach : reach;
+  const pivot  = armEnd + (side > 0 ? 46 : -46);
+  obstacles.push({ t:'swing', x: W/2, y: -230, w: W, h: 30,
+                   side, armEnd, pivot,
+                   cable: rnd(150, 235), amp: rnd(0.42, 0.7),
+                   phase: rnd(0, 6.28), rate: rnd(1.0, 1.7),
+                   bx: pivot, by: -100, vx:0, vy:0, passed:false });
+  lastBlockerPx = px;
+}
+function spawnRocket(){
+  const o = { t:'rocket', x: rnd(70, W-70), y: -80, w: 76, h: 76,
+              vx: 0, vy: rnd(20, 55), phase: rnd(0, 6.28), passed: true };
+  o.baseX = o.x;
+  obstacles.push(o);
+}
 function spawnShield(){
   const o = { t:'shield', x: rnd(70, W-70), y: -80, w: 76, h: 76,
               vx: 0, vy: rnd(20, 55), phase: rnd(0, 6.28), passed: true };
@@ -805,7 +895,8 @@ function spawnSat(){
                    rot: rnd(-0.4, 0.4), spin: rnd(-0.35, 0.35), passed:false });
 }
 const SPAWNERS = { bird:spawnBird, crane:spawnCrane, debris:spawnDebris,
-                   plane:spawnPlane, ufo:spawnUFO, sat:spawnSat };
+                   plane:spawnPlane, ufo:spawnUFO, sat:spawnSat, swing:spawnSwing };
+const BLOCKERS = { crane:1, swing:1 };
 
 function spawnOne(){
   const mix = zoneFor(feet).mix;
@@ -813,9 +904,11 @@ function spawnOne(){
   for (const m of mix) total += m[1];
   let r = Math.random() * total, chosen = mix[0][0];
   for (const m of mix){ r -= m[1]; if (r <= 0){ chosen = m[0]; break; } }
-  /* full-width hazards need breathing room from each other */
-  if (chosen === 'crane' && px - lastBlockerPx < lerp(520, 380, diff)){
-    chosen = mix.length > 1 ? (mix.find(m => m[0] !== 'crane') || mix[0])[0] : 'bird';
+  /* the big structures need breathing room from each other */
+  if (BLOCKERS[chosen] && px - lastBlockerPx < lerp(700, 430, diff)){
+    const small = mix.find(m => !BLOCKERS[m[0]]);
+    if (!small) return;                       /* rather nothing than a wall */
+    chosen = small[0];
   }
   (SPAWNERS[chosen] || spawnBird)();
 }
@@ -833,7 +926,7 @@ function burst(x, y, n, colors, power){
 }
 function thrust(){
   for (let i=0;i<2;i++){
-    bits.push({ x: player.x + rnd(-24, 24), y: PLAYER_Y + PLAYER_H/2 - 4,
+    bits.push({ x: player.x + rnd(-24, 24), y: playerY + PLAYER_H/2 - 4,
                 vx: rnd(-40, 40) - player.vx*0.25, vy: rnd(120, 260),
                 life: rnd(0.14, 0.32), max: 0.32, r: rnd(2, 5),
                 c: pick(['#FFFFFF','#EDF3F5','#C6D2D8','#8C9AA2']), g: 0 });
@@ -850,7 +943,7 @@ function burstRing(x, y, n){
 }
 function popup(text, color){
   popups.push({ text, color: color || '#EDF3F5',
-                y: PLAYER_Y - 140 - popups.length * 44, life: 1.5 });
+                y: PLAYER_Y - 205 - popups.length * 44, life: 1.5 });
 }
 
 /* ================================================================
@@ -858,18 +951,18 @@ function popup(text, color){
    ================================================================ */
 function crash(x, y){
   if (state !== S.PLAY) return;
-  if (player.invT > 0) return;
+  if (player.invT > 0 || player.boost > 0) return;
   if (player.shield){ popShield(x, y); return; }
   state = S.CRASH;
   player.crashT = 0;
   player.crashX = player.x;
-  player.crashY = PLAYER_Y;
+  player.crashY = playerY;
   player.crashVy = -180;
   player.crashSpin = (player.vx > 0 ? 1 : -1) * rnd(2.2, 4.4);
   player.crashRot = 0;
   shake = 26; flash = 1;
   burst(x, y, 46, ['#FFFFFF','#EDF3F5','#C6D2D8','#8C9AA2','#0B1116'], 640);
-  burst(player.x, PLAYER_Y, 28, ['#EDF3F5','#B4BEC4','#0B1116'], 420);
+  burst(player.x, playerY, 28, ['#EDF3F5','#B4BEC4','#0B1116'], 420);
   Sound.crash();
 }
 
@@ -887,11 +980,10 @@ function updatePlayer(dt){
   const minX = PLAYER_W/2 + WALL_PAD, maxX = W - PLAYER_W/2 - WALL_PAD;
   if (player.x < minX){ player.x = minX; player.vx *= -0.25; }
   if (player.x > maxX){ player.x = maxX; player.vx *= -0.25; }
-  player.tilt = lerp(player.tilt, clamp(player.vx / PLAYER_MAXV, -1, 1) * 0.26, Math.min(1, 10*dt));
 }
 
 function playerRect(){
-  return { x: player.x - 33, y: PLAYER_Y - 50, w: 66, h: 100 };
+  return { x: player.x - 33, y: playerY - 50, w: 66, h: 100 };
 }
 
 function updateObstacles(dt, scroll){
@@ -922,9 +1014,14 @@ function updateObstacles(dt, scroll){
       o.x += o.vx * dt;
       o.rot += o.spin * dt;
       if (o.x < 30 || o.x > W - 30){ o.vx *= -1; o.x = clamp(o.x, 30, W-30); }
-    } else if (o.t === 'shield'){
+    } else if (o.t === 'shield' || o.t === 'rocket'){
       o.phase += dt * 1.9;
       o.x = clamp(o.baseX + Math.sin(o.phase) * 40, 54, W - 54);
+    } else if (o.t === 'swing'){
+      o.phase += dt * o.rate;
+      const a = Math.sin(o.phase) * o.amp;
+      o.bx = o.pivot + Math.sin(a) * o.cable;
+      o.by = o.y + 15 + Math.cos(a) * o.cable;
     }
 
     o.y += (scroll + (o.vy || 0) * dt);
@@ -934,17 +1031,18 @@ function updateObstacles(dt, scroll){
       let hit = null;
       for (const r of rectsOf(o)) if (overlap(pbox, r)){ hit = r; break; }
       if (hit){
-        if (o.t === 'shield'){
-          takeShield();
+        if (o.t === 'shield' || o.t === 'rocket'){
+          if (o.t === 'shield') takeShield(); else takeRocket();
           obstacles.splice(i, 1);
           continue;
         }
-        crash(clamp(player.x, hit.x, hit.x + hit.w), clamp(PLAYER_Y, hit.y, hit.y + hit.h));
+        crash(clamp(player.x, hit.x, hit.x + hit.w), clamp(playerY, hit.y, hit.y + hit.h));
       }
     }
 
     /* near miss bookkeeping, scored the moment it clears the car */
-    if (!o.passed && o.y - o.h/2 > PLAYER_Y + 54){
+    const passY = o.t === 'swing' ? Math.min(o.by, o.y) : o.y - o.h/2;
+    if (!o.passed && passY > playerY + 54){
       o.passed = true;
       if (state === S.PLAY){
         let gap = Infinity;
@@ -961,9 +1059,24 @@ function updateObstacles(dt, scroll){
       }
     }
 
-    const off = o.t === 'crane' ? 200 : (o.h + 220);
-    if (o.t === 'shield' && o.y - o.h > H) { obstacles.splice(i, 1); continue; }
+    const off = (o.t === 'crane') ? 200 : (o.t === 'swing') ? -(o.cable + 200) : (o.h + 220);
+    if ((o.t === 'shield' || o.t === 'rocket') && o.y - o.h > H){ obstacles.splice(i, 1); continue; }
     if (o.y - off > H) obstacles.splice(i, 1);
+  }
+}
+
+let sceneryT = 0;
+function updateScenery(dt, scroll){
+  sceneryT -= dt;
+  if (feet > 2400 && feet < 9200 && sceneryT <= 0){
+    sceneryT = rnd(1.0, 2.6);
+    scenery.push({ side: Math.random() < 0.5 ? -1 : 1,
+                   y: -rnd(160, 420), h: rnd(380, 760), w: snap(rnd(66, 118)),
+                   par: rnd(0.4, 0.62), decks: rndi(2, 4) });
+  }
+  for (let i = scenery.length - 1; i >= 0; i--){
+    scenery[i].y += scroll * scenery[i].par;
+    if (scenery[i].y - scenery[i].h > H + 80) scenery.splice(i, 1);
   }
 }
 
@@ -1018,8 +1131,14 @@ function update(dt){
   runTime += dt;
   if (state === S.PLAY){
     diff  = difficultyAt(feet);
-    speed = lerp(SPEED_MIN, SPEED_MAX, diff);
+    const env = boostEnv();
+    playerY = PLAYER_Y - env * BOOST_RISE;      /* 200ft up the screen */
+    speed = lerp(SPEED_MIN, SPEED_MAX, diff) * (1 + (BOOST_MULT - 1) * env);
     if (speed > topSpeed) topSpeed = speed;
+    if (player.boost > 0){
+      player.boost = Math.max(0, player.boost - dt);
+      if (player.boost === 0){ el.f1.hidden = true; playerY = PLAYER_Y; }
+    }
 
     px += speed * dt;
     feet = px * FEET_PER_PX;
@@ -1043,13 +1162,18 @@ function update(dt){
     spawnT -= dt;
     if (spawnT <= 0){
       spawnOne();
-      spawnT = lerp(1.85, 0.40, diff) * rnd(0.85, 1.25);
+      spawnT = lerp(2.45, 0.44, diff) * rnd(0.85, 1.25);
     }
 
-    /* bubbles: one waiting in Flight Level, then at random heights */
+    /* power-ups: the first of each waits in Flight Level, then they
+       turn up at random heights - and they stack. */
     if (feet >= nextShieldFeet){
       if (!player.shield) spawnShield();
-      nextShieldFeet = feet + rnd(6500, 12000);
+      nextShieldFeet = feet + rnd(7000, 13000);
+    }
+    if (feet >= nextRocketFeet){
+      if (player.boost <= 0) spawnRocket();
+      nextRocketFeet = feet + rnd(8000, 15000);
     }
     syncHUD();
   } else if (state === S.CRASH){
@@ -1070,6 +1194,7 @@ function update(dt){
   const scroll = (state === S.PAUSE) ? 0 : speed * dt;
   if (state !== S.PAUSE){
     updateObstacles(dt, scroll);
+    updateScenery(dt, scroll);
     updateClouds(dt, scroll);
     updateBits(dt);
   }
@@ -1082,17 +1207,33 @@ function update(dt){
    Flat silhouettes on a 180x320 grid. Depth is value, never hue,
    and the exhaust plume is the only bright thing in the world.
    ================================================================ */
-const RIM_OFF = [[-PIX,0],[PIX,0],[0,-PIX],[0,PIX]];
+const RIM_OFF  = [[-PIX,0],[PIX,0],[0,-PIX],[0,PIX]];
+const RIM_OFF2 = [[-PIX,-PIX],[PIX,-PIX],[-PIX,PIX],[PIX,PIX],
+                  [-PIX*2,0],[PIX*2,0],[0,-PIX*2],[0,PIX*2]];
+
+/* Draw a shape in ink, then the same shape in a chosen colour on top -
+   an outline that never lets a sprite dissolve into the sky. */
+function outlined(shape, fill){
+  ctx.fillStyle = C.ink;
+  for (const o of RIM_OFF){ ctx.save(); ctx.translate(o[0], o[1]); shape(); ctx.restore(); }
+  ctx.fillStyle = fill;
+  shape();
+}
 
 /* Draw a shape in ink. Once the sky is dark enough to swallow a
    plain silhouette, halo it with a one-pixel backlit rim. */
 function sprite(shape){
   if (C.rimA > 0.03){
     ctx.save();
-    ctx.globalAlpha = C.rimA;
+    ctx.globalAlpha = Math.min(1, C.rimA * 1.35);
     ctx.fillStyle = C.rim;
     for (const o of RIM_OFF){
       ctx.save(); ctx.translate(o[0], o[1]); shape(); ctx.restore();
+    }
+    if (C.rimA > 0.45){                    /* two pixels once it is properly dark */
+      for (const o of RIM_OFF2){
+        ctx.save(); ctx.translate(o[0], o[1]); shape(); ctx.restore();
+      }
     }
     ctx.restore();
   }
@@ -1183,11 +1324,11 @@ function skylineLayer(list, groundY, fill, lit, fade){
 }
 
 function drawCity(){
-  const farY  = H * 0.84 + px * 0.10;
-  const midY  = H * 0.90 + px * 0.34;
+  const farY  = H * 0.82 + px * 0.055;
+  const midY  = H * 0.90 + px * 0.22;
   const nearY = H * 0.97 + px * 0.62;
-  if (farY - 600 > H) return;
-  const fade = clamp(1 - feet / 4200, 0, 1);
+  if (farY - 640 > H) return;
+  const fade = clamp(1 - (feet - 2300) / 1500, 0, 1);
   if (fade <= 0.01) return;
   ctx.save();
   ctx.globalAlpha = fade;
@@ -1212,6 +1353,23 @@ function drawCity(){
     }
   }
   ctx.restore();
+}
+
+function drawScenery(){
+  if (!scenery.length) return;
+  ctx.fillStyle = C.mid;                 /* background value, never ink */
+  for (const f of scenery){
+    const x = f.side < 0 ? 0 : snap(W - f.w);
+    const top = snap(f.y - f.h), bot = snap(f.y);
+    ctx.fillRect(x, top, PIX*3, bot - top);
+    ctx.fillRect(x + f.w - PIX*3, top, PIX*3, bot - top);
+    for (let y = top; y < bot; y += PIX*9) ctx.fillRect(x, y, f.w, PIX*2);
+    for (let d = 0; d < f.decks; d++){
+      const dy = top + PIX*14 + d * Math.round((f.h/PIX) / (f.decks + 1)) * PIX;
+      if (dy > bot) break;
+      ctx.fillRect(f.side < 0 ? x : x - PIX*14, dy, f.w + PIX*14, PIX*3);
+    }
+  }
 }
 
 function drawClouds(front){
@@ -1291,9 +1449,10 @@ function drawCrane(o){
   });
   /* gap lamps: bright, because they are what you aim at */
   if (Math.sin(runTime * 7) > -0.1){
-    ctx.fillStyle = C.hot;
-    ctx.fillRect(g0 - PIX*3, top + PIX*5, PIX*3, PIX*3);
-    ctx.fillRect(g1,         top + PIX*5, PIX*3, PIX*3);
+    outlined(() => {
+      ctx.fillRect(g0 - PIX*3, top + PIX*5, PIX*3, PIX*3);
+      ctx.fillRect(g1,         top + PIX*5, PIX*3, PIX*3);
+    }, C.hot);
   }
 }
 
@@ -1378,7 +1537,32 @@ function drawSat(o){
   ctx.restore();
 }
 
-/* ---- the bubble ----------------------------------------------- */
+function drawSwing(o){
+  const armY = snap(o.y - 15);
+  const x0 = o.side > 0 ? snap(o.armEnd) : -PIX*12;
+  const x1 = o.side > 0 ? W + PIX*12 : snap(o.armEnd);
+  const bx = snap(o.bx), by = snap(o.by), pv = snap(o.pivot);
+  sprite(() => {
+    ctx.fillRect(x0, armY, x1 - x0, PIX*3);            /* arm chords */
+    ctx.fillRect(x0, armY + PIX*7, x1 - x0, PIX*3);
+    for (let x = x0; x < x1 - PIX; x += PIX*6) ctx.fillRect(x, armY, PIX*2, PIX*10);
+    const mx = o.side > 0 ? snap(W - 48) : snap(12);   /* mast at the edge */
+    ctx.fillRect(mx, armY - PIX*90, PIX*3, PIX*90);
+    ctx.fillRect(mx + PIX*9, armY - PIX*90, PIX*3, PIX*90);
+    for (let y = armY - PIX*88; y < armY; y += PIX*8) ctx.fillRect(mx, y, PIX*12, PIX*2);
+    pixelLine(pv, armY + PIX*10, bx, by, PIX*2);                        /* cable */
+    ctx.fillRect(bx - PIX*5, by - PIX*8, PIX*10, PIX*16);               /* ball */
+    ctx.fillRect(bx - PIX*8, by - PIX*5, PIX*16, PIX*10);
+    ctx.fillRect(bx - PIX*7, by - PIX*7, PIX*14, PIX*14);
+  });
+}
+
+/* ---- power-ups ------------------------------------------------- */
+function pixelLine(x0, y0, x1, y1, w){
+  const dx = x1 - x0, dy = y1 - y0;
+  const n = Math.max(1, Math.round(Math.max(Math.abs(dx), Math.abs(dy)) / PIX));
+  for (let i = 0; i <= n; i++) ctx.fillRect(snap(x0 + dx*i/n), snap(y0 + dy*i/n), w, w);
+}
 function pixelRing(cx, cy, r){
   const steps = Math.max(28, Math.round(r / PIX * 2.4));
   for (let i = 0; i < steps; i++){
@@ -1389,21 +1573,26 @@ function pixelRing(cx, cy, r){
 function shieldGlyph(){
   pr(-3,-5,6,1); pr(-4,-4,8,4); pr(-3,0,6,2); pr(-2,2,4,1); pr(-1,3,2,1);
 }
-function drawShield(o){
+function rocketGlyph(){
+  pr(-1,-9,2,2); pr(-2,-7,4,2);          /* nose  */
+  pr(-3,-5,6,9);                          /* body  */
+  pr(-6,1,3,4); pr(3,1,3,4);              /* fins  */
+  pr(-2,4,4,2); pr(-1,6,2,2);             /* flame */
+}
+function drawPowerUp(o, glyph){
+  const red = redPulse();
   ctx.save();
   ctx.translate(snap(o.x), snap(o.y));
   const r = 30 + Math.sin(runTime * 4 + o.phase) * 3;
-  sprite(() => pixelRing(0, 0, r));
-  ctx.fillStyle = C.ink;
-  for (const off of RIM_OFF){ ctx.save(); ctx.translate(off[0], off[1]); shieldGlyph(); ctx.restore(); }
-  ctx.fillStyle = C.hot;
-  shieldGlyph();
-  ctx.save();
-  ctx.globalAlpha = 0.45;
+  outlined(() => pixelRing(0, 0, r), red);
+  outlined(glyph, red);
+  ctx.globalAlpha = 0.5;
+  ctx.fillStyle = red;
   pixelRing(0, 0, r + PIX*4);
   ctx.restore();
-  ctx.restore();
 }
+function drawShield(o){ drawPowerUp(o, shieldGlyph); }
+function drawRocket(o){ drawPowerUp(o, rocketGlyph); }
 
 function drawObstacle(o){
   switch(o.t){
@@ -1413,23 +1602,27 @@ function drawObstacle(o){
     case 'plane':  drawPlane(o);  break;
     case 'ufo':    drawUFO(o);    break;
     case 'sat':    drawSat(o);    break;
+    case 'swing':  drawSwing(o);  break;
     case 'shield': drawShield(o); break;
+    case 'rocket': drawRocket(o); break;
   }
 }
 
 /* ---- the car --------------------------------------------------- */
 function drawFlames(strength){
-  const len = Math.max(2, Math.round(strength * 7));
-  ctx.fillStyle = C.hot;
-  for (const dx of [-9, -1, 6]){
-    const n = len + rndi(-1, 1);
-    for (let i = 0; i < n; i++){
-      const w = Math.max(1, 3 - Math.floor(i / 2));
-      pr(dx + (w === 3 ? 0 : 1), 23 + i, w, 1);
+  const wide = strength > 2.4;
+  const base = wide ? 5 : 3;
+  const len  = Math.min(15, Math.max(2, Math.round(strength * 5.5)));
+  const plume = () => {
+    for (const dx of [-9, -1, 6]){
+      const n = len + rndi(-1, 1);
+      for (let i = 0; i < n; i++){
+        const w = Math.max(1, Math.round(base * (1 - (i / Math.max(1, n)) * 0.8)));
+        pr(dx + Math.round((base - w) / 2) - (wide ? 1 : 0), 23 + i, w, 1);
+      }
     }
-  }
-  ctx.fillStyle = '#B4BEC4';
-  for (const dx of [-9, -1, 6]) pr(dx, 23 + len, 3, 1);
+  };
+  outlined(plume, C.hot);          /* outlined, so it reads on a pale sky too */
 }
 
 function carShape(){
@@ -1451,9 +1644,10 @@ function drawElevator(x, y, rot, broken){
   const thrusting = (state === S.PLAY || state === S.MENU || state === S.PAUSE);
   ctx.save();
   ctx.translate(snap(x), snap(y));
-  ctx.rotate(rot);
+  if (rot) ctx.rotate(Math.round(rot / (Math.PI/4)) * (Math.PI/4));
   if (thrusting){
-    drawFlames(1 + (speed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN) * 1.1);
+    drawFlames(1 + (speed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN) * 1.1
+                 + boostEnv() * 2.6);
   }
   sprite(carShape);
   if (broken){                                /* blow the glass out */
@@ -1466,18 +1660,30 @@ function drawElevator(x, y, rot, broken){
   }
   ctx.restore();
 
-  /* the bubble rides outside the car */
+  /* VMS3 rides outside the car, in the one colour that means "help" */
   if (player.shield || player.invT > 0){
     const inflate = 1 - player.bubble * 0.35;
     const r = (80 + Math.sin(runTime * 3) * 3) * inflate;
     const blink = player.invT > 0 && (Math.floor(player.invT * 14) % 2 === 0);
     if (!blink){
       ctx.save();
-      ctx.globalAlpha = player.shield ? 0.9 : 0.45;
-      ctx.fillStyle = C.hot;
-      pixelRing(snap(x), snap(y) - PIX*2, r);
+      if (!player.shield) ctx.globalAlpha = 0.5;
+      outlined(() => pixelRing(snap(x), snap(y) - PIX*2, r), redPulse());
       ctx.restore();
     }
+  }
+  /* F1 burn: a wake of streaks so the surge and its tail are visible */
+  const env = boostEnv();
+  if (env > 0.02){
+    ctx.save();
+    ctx.globalAlpha = env;
+    ctx.fillStyle = C.hot;
+    for (let i = 0; i < 9; i++){
+      const sx = snap(x + rnd(-70, 70));
+      const sy = snap(y + 60 + ((runTime * 1400 + i * 97) % 340));
+      ctx.fillRect(sx, sy, PIX, snap(30 + env * 70));
+    }
+    ctx.restore();
   }
 }
 
@@ -1519,6 +1725,7 @@ function draw(){
   drawStars();
   drawEarthLimb();
   drawCity();
+  drawScenery();
   drawClouds(false);
   drawSpeedLines();
 
@@ -1528,7 +1735,7 @@ function draw(){
     drawElevator(player.crashX, player.crashY, player.crashRot, true);
   } else if (state !== S.OVER){
     const bob = state === S.MENU ? Math.sin(runTime * 2.2) * 6 : 0;
-    drawElevator(player.x, PLAYER_Y + bob, player.tilt, false);
+    drawElevator(player.x, playerY + bob, 0, false);
   }
 
   drawBits();
