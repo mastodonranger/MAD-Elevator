@@ -87,38 +87,48 @@ is authored in 540×960 world units and the context is scaled by `1/PIX`, so
 the rasteriser itself does the pixelating and CSS blows the result back up
 with nearest-neighbour sampling.
 
-The colour is built the way a Hyper Light Drifter scene is: **one hue family
-per zone, lit by its complement.** Each zone owns a dominant hue and an
-accent that sits roughly opposite it on the wheel — crimson dusk with cyan
-window lights, plum construction with amber lamps, a jade skyline with red
-ones — and *everything* is generated from that pair. The sky, the three
-silhouette layers, the window lights, the motes and all twenty-one sprite
-ramps come out of `updatePalette()`; no sprite carries a colour of its own,
-only a small bias toward one. Change `ZONE_HUE` and the whole game changes
-mood.
+The world is built as a **Hyper Light Drifter scene**, which is a matter of
+structure before it is a matter of colour.
 
-Three rules do the rest:
+**Four layers of built silhouette.** You do not fly past a skyline; you fly
+up a canyon. Four layers of props run from a hazy monument layer at the back
+(`0.10` parallax) through two layers of architecture to a near-black frame at
+the very edges (`0.96`) drawn *in front of* everything, the way a Drifter
+scene is vignetted by foreground rock. Each prop is a stack of chunky masses
+with stepped shoulders, blocks jutting over the lane, antennae with lit tips,
+and **big glowing inset panels** — the panels are the detail that carries the
+style, and they recede with their layer so the background never reads as
+something you could hit. `topUpProps()` keeps each layer stocked as you climb,
+so the canyon is continuous.
 
-- **Backlighting.** The horizon is the brightest thing in frame, so every
-  sprite takes a dark separation outline all round plus a bright rim on its
-  *underside* — lit from below, the way a backlit silhouette actually reads.
-- **Bloom.** Anything meant to be a light source gets a radial glow: the
-  thrusters, the power-ups, meteors and comets, the burning horizon. The car
-  carries a pool of warm light with it up the shaft — it is the lamp of the
-  scene, the way the campfire is in Drifter's crimson town.
-- **Accent points.** Tiny saturated dots do a lot of work: lamps on the far
-  towers, lights on the scaffolding, stars, drifting motes. They are the
-  only fully saturated pixels on screen.
+**What gets built changes with altitude.** City blocks to 10,500 ft, then
+towering cloud banks through the airspace zones, then pitted rock and bolted-on
+derelicts out in the belt — with angular **crystal growths** on the near layers
+throughout, glowing in the zone's accent.
+
+**One hue family per zone, lit by its complement.** Each zone owns a dominant
+hue and an accent roughly opposite it — crimson dusk with cyan lights, plum
+construction with amber, a jade skyline with red, magenta upper atmosphere with
+cyan. The sky, all four layer tones, the panel lights, the motes and all
+twenty-one sprite ramps are generated from that pair in `updatePalette()`; no
+sprite owns a colour, only a small bias toward one. Change `ZONE_HUE` and the
+whole game changes mood.
+
+**Backlighting and bloom.** The horizon is the brightest thing in frame, so
+every sprite takes a dark separation outline plus a bright rim on its
+*underside*. Anything that emits gets a radial glow — thrusters, power-ups,
+meteors, comets, panel lights, crystals, the horizon itself — and the car
+carries a pool of warm light with it up the shaft. It is the lamp of the
+scene, the way the campfire is in Drifter's crimson town.
 
 Sprites are flat and hard-edged with three value steps, anything that spins
 snaps to quarter turns, and skies are twenty-two flat bands with a dithered
 seam between each pair.
 
-Contrast is a fairness requirement, not a finish. Hazards carry the rim
-light and a dark outline so they never dissolve into a building or the
-black of space; the car is red in every zone, bright enough to find at a
-glance; power-ups pulse red with a bloom around them; and the HUD flips its
-ink and its backing together with the sky.
+Contrast is a fairness requirement, not a finish. Hazards carry the rim light
+and a dark outline so they never dissolve into architecture or the black of
+space; the car is red in every zone; power-ups pulse red with a bloom; and the
+HUD flips its ink and its backing together with the sky.
 
 ## Crashing
 
@@ -138,6 +148,6 @@ particles, simulation, rendering, main loop, boot.
 Tuning knobs worth knowing: `FEET_PER_PX` (how much altitude a pixel of
 travel is worth), `SPEED_MIN` / `SPEED_MAX`, `ZONE_TAIL` (how far the last
 zone keeps ramping), `SHIELD_AT` / `ROCKET_AT` / `BOOST_*`, `PIX` (the size
-of a pixel), `ZONE_HUE` (the hue and accent of every zone), the intro and
-crash beats (`I_*` and `X_*`), and the `ZONES` table, which maps an altitude to the hazards that spawn there and drives
+of a pixel), `ZONE_HUE` (the hue and accent of every zone), `LAYER_PAR`
+and the prop builders, the intro and crash beats (`I_*` and `X_*`), and the `ZONES` table, which maps an altitude to the hazards that spawn there and drives
 the difficulty curve through `difficultyAt()`.

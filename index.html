@@ -525,7 +525,9 @@ function updatePalette(){
   C.near   = rgb(mixRGB(h, BLACK, 0.70));
   C.nearHi = rgb(mixRGB(h, acc, 0.34));
   C.nearLo = rgb(mixRGB(h, BLACK, 0.84));
-  C.win    = rgb(mixRGB(acc, [255,255,255], 0.25));
+  C.win      = rgb(mixRGB(acc, [255,255,255], 0.25));
+  C.panelMid = rgb(mixRGB(mixRGB(acc, [255,255,255], 0.25), C.bot, 0.42));
+  C.panelFar = rgb(mixRGB(mixRGB(acc, [255,255,255], 0.25), C.bot, 0.74));
   C.cloudHi= rgb(mixRGB(C.bot, [255,235,220], 0.40));
   C.cloud  = rgb(mixRGB(C.bot, BLACK, 0.24));
   C.cloudLo= rgb(mixRGB(C.bot, BLACK, 0.48));
@@ -683,11 +685,8 @@ const obstacles = [];
 const clouds    = [];
 const bits      = [];
 const popups    = [];
-const wallL     = [];      // building columns, left and right
-const wallR     = [];
-const skyline   = [];      // distant silhouette, recycled
+
 const marks     = [];      // landmark towers and space bodies
-const scenery   = [];      // construction frames - background, never a hazard
 const stars     = Array.from({length:220}, () => ({
   x: Math.random()*W, y: Math.random()*H, r: rnd(0.6,1.9),
   tw: Math.random()*Math.PI*2, p: rnd(0.02,0.12)
@@ -818,8 +817,7 @@ function syncHUD(){
 
 function start(){
   obstacles.length = 0; clouds.length = 0; bits.length = 0; popups.length = 0;
-  wallL.length = 0; wallR.length = 0; skyline.length = 0; marks.length = 0;
-  scenery.length = 0; sceneryT = 0;
+  marks.length = 0;
   px = 0; feet = 0; speed = 40; topSpeed = 0; nearMiss = 0;
   diff = 0; seqT = 0; shake = 0; flash = 0; slide = 0; fade = 0; garage = 1;
   spawnT = 3.0; lastBlockerPx = -1e9; lastGapX = W/2;
@@ -893,45 +891,134 @@ document.getElementById('menuBtn').addEventListener('click', e => { e.stopPropag
    the landmark towers of zone 3, then the moon, Mars and whatever
    else is out there.
    ================================================================ */
-const BTYPE = {
-  town:   () => rnd(90, 150),
-  low:    () => rnd(170, 250),
-  apt:    () => rnd(250, 370),
-  high:   () => rnd(390, 560),
-  office: () => rnd(430, 620),
-  tower:  () => rnd(620, 900)
-};
-function buildingTypeFor(f){
-  if (f < 1300) return Math.random() < 0.6 ? 'town' : 'low';
-  if (f < 2600) return Math.random() < 0.5 ? 'low'  : 'apt';
-  if (f < 4000) return Math.random() < 0.5 ? 'apt'  : 'high';
-  if (f < 6500) return Math.random() < 0.5 ? 'high' : 'office';
-  return Math.random() < 0.5 ? 'office' : 'tower';
+/* ================================================================
+   Props: the world is four layers of built silhouette, back to front,
+   each a stack of chunky masses with glowing inset panels, ragged
+   tops, antennae and crystal growths. The nearest layer frames the
+   screen in near-black. What gets built changes with altitude: city,
+   then cloud banks, then rock and derelicts.
+   ================================================================ */
+const LAYER_PAR = [0.10, 0.30, 0.62, 0.96];
+const props = [];
+
+function styleFor(f){
+  if (f < 10500) return 'city';
+  if (f < 21000) return 'cloud';
+  return 'rock';
 }
-function fillWall(arr, side){
-  let top = arr.length ? arr[0].top : H + 120;
-  let guard = 0;
-  while (top > -520 && guard++ < 60){
-    const type = buildingTypeFor(feet);
-    const h = snap(BTYPE[type]());
-    const w = snap(rnd(62, 104));
-    top = snap(top - h - rnd(6, 30));
-    arr.unshift({ top, h, w, type, side, seed: Math.random(), lit: Math.random() });
+
+function buildCity(w, h, layer, side){
+  const m = [], panels = [], spikes = [], crys = [];
+  m.push([0, 0, w, h + 60]);
+  let sy = snap(rnd(40, 120));
+  for (let i = 0, n = rndi(1, 3); i < n && sy < h - 60; i++){
+    const sw = snap(w * rnd(0.45, 0.9));
+    m.push([side < 0 ? 0 : snap(w - sw), sy, sw, snap(h - sy)]);
+    sy += snap(rnd(70, 170));
   }
-  while (arr.length && arr[arr.length-1].top > H + 400) arr.pop();
+  if (Math.random() < 0.55){                 /* a mass jutting over the lane */
+    const jw = snap(rnd(26, 58)), jy = snap(rnd(60, Math.max(70, h - 120)));
+    m.push([side < 0 ? w : snap(-jw), jy, jw, snap(rnd(34, 80))]);
+  }
+  const cols = layer >= 2 ? rndi(1, 2) : 1;
+  let py = snap(rnd(40, 110));
+  while (py < h - 60){
+    const pw = snap(w * rnd(0.30, 0.52) / cols), ph = snap(rnd(14, 46));
+    for (let c = 0; c < cols; c++){
+      panels.push([snap(w * (0.16 + c * 0.42) + rnd(-6, 6)), py, pw, ph]);
+    }
+    py += snap(ph + rnd(40, 120));
+  }
+  for (let i = 0, n = rndi(1, 3); i < n; i++){
+    spikes.push([snap(rnd(6, Math.max(8, w - 10))), snap(-rnd(24, 90)), snap(rnd(3, 7))]);
+  }
+  if (Math.random() < 0.4) crys.push([snap(rnd(4, Math.max(6, w-20))), snap(rnd(20, h*0.5)), rnd(7, 14)]);
+  return { m, panels, spikes, crys };
 }
-function fillSkyline(){
-  let x = skyline.length ? skyline[skyline.length-1].x + skyline[skyline.length-1].w : -60;
-  let guard = 0;
-  while (x < W + 60 && guard++ < 40){
-    const w = snap(rnd(44, 96));
-    skyline.push({ x: snap(x), w, h: snap(rnd(150, 420)), lit: Math.random() });
-    x += w + snap(rnd(4, 22));
+
+function buildCloud(w, h, layer, side){
+  const m = [], panels = [], spikes = [], crys = [];
+  let cw = w, cy = 0;
+  while (cy < h){
+    const rh = snap(rnd(30, 80));
+    m.push([snap((w - cw) * (side < 0 ? 0 : 1)), cy, cw, rh + PIX*2]);
+    cy += rh;
+    cw = snap(clamp(cw + rnd(-40, 34), w * 0.35, w));
+  }
+  if (Math.random() < 0.5) panels.push([snap(w*0.3), snap(rnd(30, Math.max(40, h-40))), snap(w*0.3), PIX*3]);
+  return { m, panels, spikes, crys };
+}
+
+function buildRock(w, h, layer, side){
+  const m = [], panels = [], spikes = [], crys = [], notch = [];
+  let cy = 0, cw = snap(w * rnd(0.5, 0.8));
+  while (cy < h){
+    const rh = snap(rnd(12, 38));
+    const off = snap(side < 0 ? rnd(-6, 10) : w - cw + rnd(-10, 6));
+    m.push([off, cy, cw, rh + PIX*3]);
+    cy += rh;
+    cw = snap(clamp(cw * rnd(0.62, 1.5), w * 0.24, w * 1.1));
+  }
+  for (let i = 0, n = rndi(2, 5); i < n; i++){       /* pits and shadow */
+    notch.push([snap(rnd(4, Math.max(6, w - 22))), snap(rnd(14, Math.max(24, h - 24))),
+                snap(rnd(8, 22)), snap(rnd(6, 16))]);
+  }
+  for (let i = 0, n = rndi(2, 4); i < n; i++){
+    crys.push([snap(rnd(2, Math.max(4, w - 16))), snap(rnd(10, Math.max(20, h - 20))), rnd(8, 20)]);
+  }
+  if (layer >= 2 && Math.random() < 0.45){          /* a derelict bolted on */
+    const dy = snap(rnd(20, Math.max(30, h - 90)));
+    m.push([snap(side < 0 ? w - 10 : -30), dy, 40, 30]);
+    panels.push([snap(side < 0 ? w - 4 : -24), snap(dy + 8), 20, 10]);
+    spikes.push([snap(side < 0 ? w + 14 : -14), snap(dy - 40), 4]);
+  }
+  return { m, panels, spikes, crys, notch };
+}
+const BUILDERS = { city:buildCity, cloud:buildCloud, rock:buildRock };
+
+function makeProp(layer, side){
+  const monument = layer === 0 && Math.random() < 0.3;
+  const w = snap(monument ? rnd(150, 260)
+                : [rnd(90,170), rnd(90,160), rnd(74,138), rnd(26,54)][layer]);
+  const h = snap([rnd(420,900), rnd(300,700), rnd(240,560), rnd(140,360)][layer]);
+  const style = styleFor(feet);
+  const p = BUILDERS[style](w, h, layer, side);
+  p.style = style;
+  p.layer = layer; p.side = side; p.w = w; p.h = h;
+  p.x = monument ? snap(rnd(W*0.18, W*0.82) - w/2)
+     : side < 0 ? snap(-rnd(4, 26)) : snap(W - w + rnd(4, 26));
+  p.y = 0; p.lit = Math.random();
+  return p;
+}
+function topUpProps(){
+  for (let layer = 0; layer < 4; layer++){
+    for (const side of [-1, 1]){
+      let top = Infinity, count = 0;
+      for (const p of props){
+        if (p.layer === layer && p.side === side){ count++; if (p.y < top) top = p.y; }
+      }
+      const want = [2, 2, 2, 3][layer];
+      let guard = 0;
+      while ((count < want || top > -260) && guard++ < 8){
+        const p = makeProp(layer, side);
+        p.y = (top === Infinity ? H * rnd(0.05, 0.9) : top) - p.h + snap(rnd(-20, 90));
+        props.push(p);
+        top = p.y; count++;
+      }
+    }
   }
 }
 function seedCity(){
-  wallL.length = 0; wallR.length = 0; skyline.length = 0;
-  fillWall(wallL, -1); fillWall(wallR, 1); fillSkyline();
+  props.length = 0;
+  topUpProps();
+  for (const p of props) p.y += H * 0.55;
+}
+function updateProps(scroll){
+  for (let i = props.length - 1; i >= 0; i--){
+    props[i].y += scroll * LAYER_PAR[props[i].layer];
+    if (props[i].y > H + 120) props.splice(i, 1);
+  }
+  topUpProps();
 }
 
 const MARK_PLAN = [
@@ -963,42 +1050,6 @@ function updateMarks(dt, scroll){
   for (let i = marks.length - 1; i >= 0; i--){
     marks[i].y += scroll * marks[i].par;
     if (marks[i].y - 200 > H) marks.splice(i, 1);
-  }
-}
-
-/* Scaffolding towers running up the edges through the build zones. */
-let sceneryT = 0;
-function updateScenery(dt, scroll){
-  sceneryT -= dt;
-  if (feet > 3200 && feet < 9400 && sceneryT <= 0){
-    sceneryT = rnd(1.1, 2.8);
-    scenery.push({ side: Math.random() < 0.5 ? -1 : 1,
-                   y: -rnd(160, 420), h: rnd(380, 760), w: snap(rnd(60, 110)),
-                   par: rnd(0.42, 0.64), decks: rndi(2, 4), lit: Math.random() });
-  }
-  for (let i = scenery.length - 1; i >= 0; i--){
-    scenery[i].y += scroll * scenery[i].par;
-    if (scenery[i].y - scenery[i].h > H + 80) scenery.splice(i, 1);
-  }
-}
-function drawScenery(){
-  if (!scenery.length) return;
-  for (const f of scenery){
-    const x = f.side < 0 ? 0 : snap(W - f.w);
-    const top = snap(f.y - f.h), bot = snap(f.y);
-    ctx.fillStyle = C.mid1;
-    ctx.fillRect(x, top, PIX*4, bot - top);
-    ctx.fillRect(x + f.w - PIX*4, top, PIX*4, bot - top);
-    for (let y = top; y < bot; y += PIX*9) ctx.fillRect(x, y, f.w, PIX*2);
-    for (let d = 0; d < f.decks; d++){
-      const dy = top + PIX*14 + d * Math.round((f.h/PIX) / (f.decks + 1)) * PIX;
-      if (dy > bot) break;
-      ctx.fillRect(f.side < 0 ? x : x - PIX*14, dy, f.w + PIX*14, PIX*3);
-    }
-    if (f.lit > 0.45){                       /* a lamp on the top deck */
-      ctx.fillStyle = C.accent;
-      ctx.fillRect(f.side < 0 ? x + f.w - PIX*3 : x, top + PIX*4, PIX*3, PIX*3);
-    }
   }
 }
 
@@ -1488,14 +1539,10 @@ function update(dt){
   const scroll = frozen ? 0 : speed * dt;
   if (!frozen){
     updateObstacles(dt, scroll);
-    updateScenery(dt, scroll);
+    updateProps(scroll);
     updateClouds(dt, scroll);
     updateMarks(dt, scroll);
     updateBits(dt);
-    for (const s of wallL) s.top += scroll * 0.62;
-    for (const s of wallR) s.top += scroll * 0.62;
-    skyGroundY += scroll * 0.2;
-    if (feet < 9600){ fillWall(wallL, -1); fillWall(wallR, 1); }
   }
   shake = Math.max(0, shake - (state === S.CRASH ? 70 : 60) * dt);
   flash = Math.max(0, flash - 2.6 * dt);
@@ -1672,100 +1719,58 @@ function drawMark(m){
   ctx.restore();
 }
 
-function buildingBody(b, x, top, F){
-  const h = H - top + PIX*2;
-  pf(F.base, x/PIX, top/PIX, b.w/PIX, h/PIX);
-  pf(F.hi,   x/PIX, top/PIX, b.w/PIX, 1);
-  pf(F.lo,   (x + b.w - PIX*2)/PIX, top/PIX, 2, h/PIX);
-}
-function roofDetail(b, x, top, F){
-  const u = PIX;
-  switch(b.type){
-    case 'town':
-      pf(F.base, (x + b.w*0.18)/u, (top - u*7)/u, 4, 7);            /* chimney */
-      break;
-    case 'low':
-      pf(F.base, (x + b.w - u*10)/u, (top - u*5)/u, 7, 5);          /* stair head */
-      break;
-    case 'apt':
-      pf(F.base, (x + b.w*0.3)/u, (top - u*9)/u, 8, 6);             /* water tank */
-      pf(F.base, (x + b.w*0.3 + u*1)/u, (top - u*3)/u, 1, 3);
-      pf(F.base, (x + b.w*0.3 + u*6)/u, (top - u*3)/u, 1, 3);
-      break;
-    case 'high':
-      pf(F.base, (x + b.w*0.5)/u, (top - u*14)/u, 1, 14);           /* antenna */
-      pf(F.base, (x + u*4)/u, (top - u*4)/u, 5, 4);
-      break;
-    case 'office':
-      pf(F.base, (x + u*3)/u, (top - u*5)/u, (b.w - u*6)/u, 5);     /* crown */
-      pf(F.hi,   (x + u*3)/u, (top - u*5)/u, (b.w - u*6)/u, 1);
-      break;
-    case 'tower':
-      pf(F.base, (x + b.w*0.5)/u, (top - u*26)/u, 1, 26);           /* spire */
-      pf(F.base, (x + b.w*0.28)/u, (top - u*8)/u, (b.w*0.44)/u, 8);
-      break;
-  }
-}
-function windows(b, x, top, alpha){
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = C.win;
-  const step = b.type === 'town' ? PIX*7 : PIX*6;
-  const cols = Math.max(1, Math.floor((b.w - PIX*6) / (PIX*7)));
-  const rows = Math.min(40, Math.floor((H - top) / step));
-  for (let r = 0; r < rows; r++){
-    const wy = top + PIX*4 + r*step;
-    if (wy > H) break;
-    for (let c = 0; c < cols; c++){
-      const n = Math.sin((r*12.9898 + c*78.233 + b.lit*43.7) * 43758.5453);
-      if (n - Math.floor(n) > 0.34) continue;
-      ctx.fillRect(x + PIX*3 + c*PIX*7, wy, PIX*2, PIX*3);
+/* Draw one layer of props: flat masses, a lit top lip, glowing inset
+   panels, antennae with lit tips, and angular crystal growths. */
+function drawProps(layer){
+  const fill = [C.far, C.mid1, C.near, C.nearLo][layer];
+  const lip  = [C.farHi, C.nearHi, C.nearHi, C.accentDim][layer];
+  for (const p of props){
+    if (p.layer !== layer) continue;
+    const x = snap(p.x), y = snap(p.y);
+    if (y > H + 40 || y + p.h < -120) continue;
+    ctx.fillStyle = fill;
+    for (const sp of p.spikes) ctx.fillRect(x + sp[0], y + sp[1], sp[2], snap(-sp[1]) + PIX*2);
+    for (const b of p.m) ctx.fillRect(x + b[0], y + b[1], b[2], b[3]);
+    if (p.style === 'city'){                   /* lit floor lips */
+      ctx.fillStyle = lip;
+      for (const b of p.m) ctx.fillRect(x + b[0], y + b[1], b[2], PIX);
+    } else if (p.style === 'cloud' && p.m.length){
+      ctx.fillStyle = lip;
+      ctx.fillRect(x + p.m[0][0], y + p.m[0][1], p.m[0][2], PIX*2);
     }
-  }
-  ctx.restore();
-}
-
-function drawCity(){
-  const skyFade = clamp(1 - (feet - 4200) / 2600, 0, 1);
-  if (skyFade > 0.01){
-    ctx.save();
-    ctx.globalAlpha = skyFade;
-    const gy = snap(skyGroundY);
-    ctx.fillStyle = C.far;
-    if (gy < H) ctx.fillRect(0, gy, W, H - gy + PIX);
-    for (const b of skyline){
-      const top = snap(gy - b.h);
-      if (top > H) continue;
-      ctx.fillRect(b.x, top, b.w, H - top + PIX);
-      ctx.fillStyle = C.farHi;
-      ctx.fillRect(b.x, top, b.w, PIX);
-      if (b.lit > 0.6){                          /* a lamp on the skyline */
-        ctx.fillStyle = C.accent;
-        ctx.fillRect(snap(b.x + b.w/2), top - PIX*2, PIX, PIX*2);
+    if (p.notch){                              /* pitted rock */
+      ctx.fillStyle = layer === 3 ? '#000000' : C.nearLo;
+      for (const n of p.notch) ctx.fillRect(x + n[0], y + n[1], n[2], n[3]);
+    }
+    if (layer < 3){
+      const glowA = [0.10, 0.20, 0.34][layer];
+      const panel = [C.panelFar, C.panelMid, C.win][layer];
+      ctx.fillStyle = panel;
+      for (const sp of p.spikes) ctx.fillRect(x + sp[0], y + sp[1] - PIX*2, sp[2], PIX*2);
+      for (const pn of p.panels){
+        glow(x + pn[0] + pn[2]/2, y + pn[1] + pn[3]/2,
+             Math.max(pn[2], pn[3]) * 1.5, C.accent, glowA);
       }
-      ctx.fillStyle = C.far;
+      for (const pn of p.panels) ctx.fillRect(x + pn[0], y + pn[1], pn[2], pn[3]);
+      if (layer === 2){
+        ctx.fillStyle = C.accent;
+        for (const pn of p.panels) ctx.fillRect(x + pn[0], y + pn[1], pn[2], PIX);
+      }
     }
-    ctx.globalAlpha = skyFade * 0.5;
-    for (const b of skyline) windows(b, b.x, snap(gy - b.h), 0.5);
-    ctx.restore();
+    for (const c of p.crys) crystal(x + c[0], y + c[1], c[2], layer);
   }
-
-  const wallFade = clamp(1 - (feet - 8000) / 1500, 0, 1);
-  if (wallFade <= 0.01) return;
-  ctx.save();
-  ctx.globalAlpha = wallFade;
-  const F = { base: C.near, hi: C.nearHi, lo: C.nearLo };
-  for (const side of [wallL, wallR]){
-    for (const b of side){
-      const top = snap(b.top);
-      if (top > H) continue;
-      const x = b.side < 0 ? 0 : snap(W - b.w);
-      buildingBody(b, x, top, F);
-      roofDetail(b, x, top, F);
-      windows(b, x, top, wallFade * 0.85);
-    }
+}
+/* an angular growth - stacked wedges with a bright core */
+function crystal(cx, cy, s, layer){
+  glow(cx, cy, s * 3, C.accent, layer < 3 ? 0.3 : 0.16);
+  ctx.fillStyle = layer < 3 ? C.accentDim : C.nearLo;
+  for (let i = 0; i < 6; i++){
+    const t = i / 5, hw = snap(s * (1 - Math.abs(t - 0.35) * 1.3));
+    if (hw <= 0) continue;
+    ctx.fillRect(snap(cx - hw/2), snap(cy - s*1.6 + i * s*0.55), hw, snap(s*0.6));
   }
-  ctx.restore();
+  ctx.fillStyle = C.accent;
+  ctx.fillRect(snap(cx - PIX), snap(cy - s*0.5), PIX*2, snap(s*0.8));
 }
 
 function drawClouds(front){
@@ -2295,10 +2300,11 @@ function draw(){
 
   if (garage < 0.99){
     drawStars();
+    drawProps(0);
     for (const m of marks) drawMark(m);
-    drawCity();
-    drawScenery();
+    drawProps(1);
     drawClouds(false);
+    drawProps(2);
     drawMotes();
     drawSpeedLines();
   }
@@ -2314,6 +2320,7 @@ function draw(){
 
   drawBits();
   drawClouds(true);
+  if (garage < 0.99) drawProps(3);        /* the near-black frame, in front */
   drawPopups();
   ctx.restore();
 
