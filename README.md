@@ -120,11 +120,18 @@ twenty-one sprite ramps are generated from that pair in `updatePalette()`; no
 sprite owns a colour, only a small bias toward one. Change `ZONE_HUE` and the
 whole game changes mood.
 
+**The car.** A gilded lantern, not a box: ball finial over a rounded dome,
+a flared two-step cap with corner brackets, faceted blue glazing behind gold
+posts and mullions, a decorated skirt carrying a lozenge, and twin thruster
+cylinders throwing blue-white plasma. Its shell stays red in every zone; the
+trim reads gold, the glass reads sky, and the passenger keeps dark hair, a
+pale face and a navy coat whatever the zone hue is doing around them.
+
 **Backlighting and bloom.** The horizon is the brightest thing in frame, so
 every sprite takes a dark separation outline plus a bright rim on its
 *underside*. Anything that emits gets a radial glow — thrusters, power-ups,
 meteors, comets, panel lights, crystals, the horizon itself — and the car
-carries a pool of warm light with it up the shaft. It is the lamp of the
+carries a pool of cold plasma light with it up the shaft. It is the lamp of the
 scene, the way the campfire is in Drifter's crimson town.
 
 Sprites are flat and hard-edged with three value steps, anything that spins

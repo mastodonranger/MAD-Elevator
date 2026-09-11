@@ -486,7 +486,8 @@ const BIAS = {
   plane:  [190,225,255],  jet:    [160,210,255],  meteor:[255,190,110],
   junk:   [170,200,240],  solar:  [110,160,255],  gold:  [255,200,110],
   rock:   [255,170,140],  alien:  [ 90,255,170],  comet: [180,245,255],
-  flame:  [255,215,150],  person: [255,215,190],  brass: [255,190,110]
+  flame:  [255,215,150],  person: [255,215,190],  brass: [255,190,110],
+  trim:   [255,206, 96],  jet:    [150,216,255]
 };
 const MAT = {};
 for (const k in BIAS) MAT[k] = { edge:'#000', lo:'#000', base:'#000', hi:'#000', rim:'#000' };
@@ -534,19 +535,27 @@ function updatePalette(){
 
   /* every sprite ramp, regenerated from the zone hue */
   for (const k in BIAS){
-    const car = k === 'car', fl = k === 'flame';
-    const b = mixRGB(h, BIAS[k], car ? 0.74 : fl ? 0.88 : 0.42);
+    const car = k === 'car', fl = k === 'flame' || k === 'jet', tr = k === 'trim';
+    const b = mixRGB(h, BIAS[k], car ? 0.74 : fl ? 0.9 : tr ? 0.78 : 0.42);
     const m = MAT[k];
     m.edge = rgb(mixRGB(b, BLACK, 0.88));
-    m.lo   = rgb(mixRGB(b, BLACK, car ? 0.62 : 0.70));
-    m.base = rgb(mixRGB(b, BLACK, car ? 0.34 : 0.52));
-    m.hi   = rgb(mixRGB(b, BLACK, car ? 0.12 : 0.32));
+    m.lo   = rgb(mixRGB(b, BLACK, car || tr ? 0.62 : 0.70));
+    m.base = rgb(mixRGB(b, BLACK, car ? 0.34 : tr ? 0.30 : 0.52));
+    m.hi   = rgb(mixRGB(b, BLACK, car ? 0.12 : tr ? 0.06 : 0.32));
     m.rim  = rgb(mixRGB(b, [255,248,240], fl ? 0.7 : 0.46));
   }
   MAT.flame.base = rgb(mixRGB(h, [255,190,100], 0.9));
   MAT.flame.hi   = '#FFF3D6';
-  MAT.glass.base = rgb(mixRGB(acc, BLACK, 0.34));
-  MAT.glass.hi   = rgb(mixRGB(acc, [255,255,255], 0.45));
+  MAT.glass.base = rgb(mixRGB(mixRGB(h, [130,205,255], 0.78), BLACK, 0.20));
+  MAT.glass.hi   = rgb(mixRGB(mixRGB(h, [170,235,255], 0.86), [255,255,255], 0.55));
+  MAT.glass.lo   = rgb(mixRGB(mixRGB(h, [ 96,168,240], 0.76), BLACK, 0.42));
+  C.hair = rgb(mixRGB(h, [18, 20, 40], 0.86));
+  C.skin = rgb(mixRGB(h, [255,222,190], 0.86));
+  C.coat = rgb(mixRGB(h, [ 38, 62,138], 0.82));
+  C.coatHi = rgb(mixRGB(h, [ 66, 98,186], 0.82));
+  MAT.jet.hi     = '#EAF6FF';
+  MAT.jet.base   = rgb(mixRGB([140,210,255], h, 0.10));
+  MAT.jet.lo     = rgb(mixRGB([ 70,140,230], h, 0.20));
 
   const dark = lumAt(H * 0.08) <= 0.30;
   const hud = dark ? '#FFF0E8' : '#120610';
@@ -1351,7 +1360,7 @@ function updatePlayer(dt, locked){
   player.tilt = Math.round(want * 3) / 3 * 0.09;
 }
 function playerRect(){
-  return { x: player.x - 26, y: playerY - 32, w: 52, h: 68 };
+  return { x: player.x - 28, y: playerY - 30, w: 56, h: 62 };
 }
 
 function updateObstacles(dt, scroll){
@@ -2101,38 +2110,58 @@ function drawPowerUp(o, glyph, F){
 
 /* ---- the car ----------------------------------------------------- */
 function carShape(){
-  const B = MAT.car, G = MAT.glass, S = MAT.steel, P = MAT.person;
-  pf(G.base,-13,-17,26,31);                              /* glazing */
-  pf(G.lo,-13,4,26,10);
-  pf(G.hi,-12,-16,3,26); pf(G.hi,-7,-14,2,12);           /* glints */
-  pf(P.base,4,-5,4,4); pf(P.hi,4,-5,4,2);                /* passenger */
-  pf(P.lo,3,-1,6,9); pf(P.base,4,8,2,6); pf(P.base,7,8,2,6);
-  pf(S.lo,-11,-4,3,8); pf(S.hi,-11,-4,3,1);              /* call panel */
-  pf(B.base,-15,-19,3,38); pf(B.hi,-15,-19,1,38);        /* posts */
-  pf(B.base,12,-19,3,38); pf(B.lo,14,-19,1,38);
-  pf(B.base,-15,-19,30,3); pf(B.hi,-15,-19,30,1);        /* head rail */
-  pf(B.base,-15,-7,30,2); pf(B.hi,-15,-7,30,1);          /* waist rail */
-  pf(B.base,-1,-19,2,33);                                /* mullion */
-  pf(B.base,-15,14,30,5); pf(B.lo,-15,17,30,2);          /* floor */
-  pf(B.base,-17,-24,34,5); pf(B.hi,-17,-24,34,2);        /* roof */
-  pf(B.base,-11,-28,22,4); pf(B.hi,-11,-28,22,1);
-  pf(S.base,0,-34,1,6);                                  /* antenna */
-  pf(B.base,-17,19,34,3); pf(B.lo,-17,21,34,1);          /* base plate */
-  pf(S.base,-11,22,5,3); pf(S.base,-2,22,4,3); pf(S.base,7,22,5,3);
-  pf(S.lo,-11,24,5,1); pf(S.lo,-2,24,4,1); pf(S.lo,7,24,5,1);
+  const S = MAT.car, G = MAT.glass, T = MAT.trim, P = MAT.person, J = MAT.jet;
+  /* finial, then a rounded dome - not a pagoda */
+  pf(T.hi,-1,-33,2,2);   pf(T.base,-1,-31,2,2);
+  pf(T.base,-4,-29,8,2); pf(T.hi,-4,-29,8,1);
+  pf(T.base,-6,-27,12,2);pf(T.hi,-6,-27,12,1);
+  pf(S.base,-4,-25,8,2);                              /* neck */
+  /* flared lantern cap: two wide flat steps */
+  pf(S.base,-13,-23,26,3); pf(S.hi,-13,-23,26,1);
+  pf(S.base,-18,-20,36,3); pf(S.hi,-18,-20,36,1);
+  pf(T.base,-18,-17,36,1);
+  pf(S.lo,-15,-16,30,1);
+  pf(T.base,-19,-19,2,3);  pf(T.base,17,-19,2,3);     /* corner brackets */
+  pf(T.base,-15,-15,30,2); pf(T.hi,-15,-15,30,1);     /* upper ring */
+  /* faceted glazing */
+  pf(G.lo,-14,-13,28,21);
+  pf(G.base,-7,-13,14,21);
+  pf(G.hi,-12,-12,2,15); pf(G.hi,-5,-11,1,10);
+  /* the passenger: dark hair, pale face, navy coat */
+  pf(C.hair,-3,-9,6,3);
+  pf(C.skin,-3,-6,6,3); pf(C.hair,-3,-6,2,3);
+  pf(C.coat,-4,-3,8,9); pf(C.coatHi,-4,-3,8,1); pf(C.skin,-4,0,1,3);
+  pf(C.hair,-3,6,3,2); pf(C.hair,1,6,3,2);
+  /* posts, mullions, rail */
+  pf(T.base,-15,-13,2,21); pf(T.hi,-15,-13,1,21);
+  pf(T.base,13,-13,2,21);  pf(T.lo,14,-13,1,21);
+  pf(T.base,-8,-13,1,21);  pf(T.base,7,-13,1,21);
+  pf(T.base,-14,-2,28,1);
+  /* decorated skirt */
+  pf(S.base,-16,8,32,7); pf(S.hi,-16,8,32,1); pf(S.lo,-16,14,32,1);
+  pf(T.base,-4,9,8,5); pf(T.hi,-3,10,6,3); pf(S.lo,-1,11,2,1);
+  pf(T.base,-10,10,2,3); pf(T.base,8,10,2,3);
+  /* base plate and machinery */
+  pf(T.base,-17,15,34,2); pf(T.lo,-17,16,34,1);
+  pf(T.lo,-13,17,26,4); pf(T.base,-13,17,26,1);
+  pf(T.hi,-12,18,2,2); pf(T.hi,10,18,2,2);
+  /* twin thruster cylinders */
+  pf(T.base,-11,21,7,5); pf(T.hi,-11,21,7,1); pf(T.lo,-11,25,7,1);
+  pf(T.base,4,21,7,5);   pf(T.hi,4,21,7,1);   pf(T.lo,4,25,7,1);
+  pf(J.hi,-10,26,5,1);   pf(J.hi,5,26,5,1);
 }
 
 function flameShape(strength){
-  const wide = strength > 2.4, base = wide ? 5 : 3;
-  const len = Math.min(16, Math.max(2, Math.round(strength * 5)));
-  for (const dx of [-9, -1, 7]){
+  const base = strength > 2.4 ? 6 : 4;
+  const len = Math.min(20, Math.max(3, Math.round(strength * 6)));
+  for (const dx of [-7.5, 7.5]){
     const n = len + rndi(-1, 1);
     for (let i = 0; i < n; i++){
       const t = i / Math.max(1, n);
-      const w = Math.max(1, Math.round(base * (1 - t * 0.8)));
-      const x = (dx + Math.round((base - w)/2) - (wide?1:0)) * PIX;
-      ctx.fillStyle = forceColor || (t < 0.25 ? MAT.flame.hi : t < 0.6 ? MAT.flame.base : MAT.flame.lo);
-      ctx.fillRect(x, (25 + i) * PIX, w*PIX, PIX);
+      const w = Math.max(1, Math.round(base * (1 - t * 0.72)));
+      ctx.fillStyle = forceColor || (t < 0.2 ? '#FFFFFF' : t < 0.5 ? MAT.jet.hi
+                                   : t < 0.78 ? MAT.jet.base : MAT.jet.lo);
+      ctx.fillRect(snap((dx - w/2) * PIX), (26 + i) * PIX, w*PIX, PIX);
     }
   }
 }
@@ -2145,44 +2174,43 @@ function drawElevator(x, y, rot, broken){
 
   /* the pool of light it carries up the shaft */
   const lamp = 0.30 + boostEnv() * 0.4 + (burning ? 0.07 * Math.sin(runTime*6) : 0);
-  glow(snap(x), snap(y) + 10, 175, rgb(mixRGB(C.hue, [255,150,120], 0.6)), lamp);
-  glow(snap(x), snap(y) + 30, 74, '#FFD8A8', lamp * 0.65);
+  glow(snap(x), snap(y) + 18, 180, rgb(mixRGB(C.hue, [120,190,255], 0.66)), lamp);
+  glow(snap(x), snap(y) + 54, 82, '#CFEBFF', lamp * (burning ? 0.8 : 0.2));
+  glow(snap(x), snap(y) - 12, 52, MAT.glass.hi, 0.26);
 
   ctx.save();
   ctx.translate(snap(x), snap(y));
   if (rot) ctx.rotate(broken ? Math.round(rot / (Math.PI/4)) * (Math.PI/4) : rot);
 
   if (bubbled){
-    const r = (64 + Math.sin(runTime * 3) * 3) * (1 - player.bubble * 0.35);
+    const r = (72 + Math.sin(runTime * 3) * 3) * (1 - player.bubble * 0.35);
     disc(0, 0, r + PIX*2, '#2A0A08');
     disc(0, 0, r, player.shield ? redPulse() : RED_LO);
     forceColor = '#FFFFFF';
     carShape();
     forceColor = null;
-    const hole = player.shield ? redPulse() : RED_LO;   /* windows punched out */
+    const hole = player.shield ? redPulse() : RED_LO;   /* glazing punched out */
     ctx.fillStyle = hole;
-    ctx.fillRect(-13*PIX, -17*PIX, 12*PIX, 10*PIX);
-    ctx.fillRect(  1*PIX, -17*PIX, 12*PIX, 10*PIX);
-    ctx.fillRect(-13*PIX,  -5*PIX, 12*PIX, 19*PIX);
-    ctx.fillRect(  1*PIX,  -5*PIX, 12*PIX, 19*PIX);
+    ctx.fillRect(-14*PIX, -13*PIX, 28*PIX, 21*PIX);
     forceColor = '#FFFFFF';
-    pf(0,4,-5,4,4); pf(0,3,-1,6,9); pf(0,4,8,2,6); pf(0,7,8,2,6);
+    pf(0,-8,-13,1,21); pf(0,7,-13,1,21); pf(0,-14,-2,28,1);
+    pf(0,-3,-8,6,3); pf(0,-4,-2,8,8); pf(0,-3,6,3,2); pf(0,1,6,3,2);
     forceColor = null;
   } else {
     edged(carShape, MAT.car);
     if (broken){
-      pf(MAT.glass.hi,-9,-15,3,3); pf(MAT.glass.hi,5,-12,3,3); pf(MAT.glass.hi,-6,3,3,3);
+      pf(MAT.glass.hi,-11,-10,3,3); pf(MAT.glass.hi,5,-7,3,3); pf(MAT.glass.hi,-5,3,3,3);
     }
     if (Math.sin(runTime * 7) > -0.2){                     /* beacon */
-      pf(MAT.steel.lo,-2,-37,3,3);
-      pf('#FFF3C4',-1,-36,1,1);
+      pf(MAT.trim.lo,-2,-36,3,3);
+      pf('#FFF3C4',-1,-35,1,1);
     }
   }
 
   if (burning){
     const strength = 1 + clamp((speed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN), 0, 1) * 1.1
                        + boostEnv() * 2.6;
-    glow(0, 34 + strength*10, 46 + strength*16, '#FFC46B', 0.55);
+    glow(0, 40 + strength*10, 48 + strength*16, '#9FD8FF', 0.6);
     forceColor = MAT.flame.edge;
     for (const d of OUT8){ ctx.save(); ctx.translate(d[0], d[1]); flameShape(strength); ctx.restore(); }
     forceColor = null;
@@ -2194,7 +2222,7 @@ function drawElevator(x, y, rot, broken){
   if (env > 0.02){                                        /* F1 wake */
     ctx.save();
     ctx.globalAlpha = env;
-    ctx.fillStyle = MAT.flame.hi;
+    ctx.fillStyle = MAT.jet.hi;
     for (let i = 0; i < 10; i++){
       ctx.fillRect(snap(x + rnd(-60,60)), snap(y + 50 + ((runTime*1400 + i*97) % 320)),
                    PIX, snap(24 + env*60));
