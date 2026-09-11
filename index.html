@@ -364,13 +364,31 @@ function pf(tone, x, y, w, h){
 }
 const OUT8 = [[-PIX,0],[PIX,0],[0,-PIX],[0,PIX],
               [-PIX,-PIX],[PIX,-PIX],[-PIX,PIX],[PIX,PIX]];
+/* Dark separation outline all round, then a bright rim offset up and
+   to the left, then the body - so every object is backlit. */
 function edged(shape, F){
   forceColor = F.edge;
   for (let i = 0; i < OUT8.length; i++){
     ctx.save(); ctx.translate(OUT8[i][0], OUT8[i][1]); shape(F); ctx.restore();
   }
+  if (F.rim){                       /* backlit from the burning horizon */
+    forceColor = F.rim;
+    ctx.save(); ctx.translate(0, PIX); shape(F); ctx.restore();
+    ctx.save(); ctx.translate(-PIX, PIX); shape(F); ctx.restore();
+  }
   forceColor = null;
   shape(F);
+}
+/* a soft bloom behind anything that is meant to be a light source */
+function glow(x, y, r, color, alpha){
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, color);
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(x - r, y - r, r*2, r*2);
+  ctx.restore();
 }
 
 function resize(){
@@ -430,58 +448,52 @@ function difficultyAt(f){
 
 /* ================================================================
    5. Palette
-   A SNES-era palette: every material owns a four-step ramp - dark
-   outline, shadow, base, highlight - and sprites keep their own
-   colours over any background. Skies are three-stop gradients with
-   a dithered seam, the way the hardware faked more colours than it
-   had.
+   Hyper Light Drifter's trick: a scene is ONE hue, kept very dark,
+   with a single bright source blooming into it and a few saturated
+   accent points. So every zone owns a hue; the sky, the silhouette
+   layers and every sprite ramp are generated from it, and the car
+   is the lamp you carry up the shaft.
    ================================================================ */
-const SKY = [
-  [0,     [ 79,163,217], [143,208,238], [242,217,168]],
-  [4000,  [ 62,144,206], [119,191,230], [207,228,239]],
-  [9000,  [ 42,111,184], [ 79,154,214], [169,207,232]],
-  [14000, [ 27, 79,156], [ 47,114,190], [111,167,216]],
-  [22000, [ 11, 20, 54], [ 36, 48,107], [ 94,111,168]],   // dark lid, lit floor
-  [28000, [  6,  7, 18], [ 11, 13, 34], [ 22, 25, 52]],   // blackout
-  [46000, [  4,  4, 13], [  7,  7, 26], [ 11, 11, 34]],
-  [80000, [  2,  2,  9], [  5,  5, 18], [  8,  8, 26]]
+const BLACK = [0,0,0];
+/* [altitude, dominant hue, complementary accent, how bright it all sits]
+   Every zone is one hue family lit by its opposite - red lamps on jade,
+   cyan lamps on crimson - which is the whole trick. */
+const ZONE_HUE = [
+  [0,     [206, 62, 88], [ 86,226,222], 0.92],   // crimson dusk, cyan lights
+  [4000,  [150, 58,150], [255,168, 72], 0.88],   // plum, amber lights
+  [9000,  [ 44,158,150], [255, 74, 78], 0.96],   // jade skyline, red lights
+  [14000, [ 48,102,196], [255,180, 84], 0.82],   // indigo air, warm lights
+  [22000, [178, 50,140], [104,240,232], 0.70],   // magenta, cyan lights
+  [28000, [ 96, 52,176], [255, 92,160], 0.42],   // blackout, pink lights
+  [46000, [ 62, 76,190], [122,244,222], 0.36],   // orbit, ice lights
+  [72000, [112, 58,192], [255,110,180], 0.32],   // deep space, magenta
+  [96000, [ 72, 86,200], [130,250,214], 0.30]
 ];
-function skyAt(f){
+function hueAt(f){
   let i = 0;
-  while (i < SKY.length-2 && f > SKY[i+1][0]) i++;
-  const a = SKY[i], b = SKY[i+1];
+  while (i < ZONE_HUE.length-2 && f > ZONE_HUE[i+1][0]) i++;
+  const a = ZONE_HUE[i], b = ZONE_HUE[i+1];
   const t = clamp((f - a[0]) / (b[0] - a[0]), 0, 1);
-  return [mixRGB(a[1],b[1],t), mixRGB(a[2],b[2],t), mixRGB(a[3],b[3],t)];
+  return [mixRGB(a[1],b[1],t), mixRGB(a[2],b[2],t), lerp(a[3], b[3], t)];
 }
 
-/* Material ramps. edge is the outline, and every sprite gets one. */
-const MAT = {
-  brass:  { edge:'#2A1C06', lo:'#8A5E12', base:'#D79B27', hi:'#F5D478' },
-  glass:  { edge:'#18384A', lo:'#2E6E86', base:'#57A8C4', hi:'#A6E2F2' },
-  steel:  { edge:'#141A24', lo:'#39414F', base:'#6C7A8C', hi:'#AEBCCB' },
-  crane:  { edge:'#241A06', lo:'#A8600B', base:'#E89A1C', hi:'#FFCB56' },
-  rust:   { edge:'#26160D', lo:'#6B3E22', base:'#A9663B', hi:'#D49463' },
-  cargo:  { edge:'#26120E', lo:'#7A2F22', base:'#B84A36', hi:'#E08468' },
-  pigeon: { edge:'#151A26', lo:'#39415A', base:'#5B6680', hi:'#9BA8C0' },
-  gull:   { edge:'#1A2130', lo:'#93A4B8', base:'#DCE6F0', hi:'#FFFFFF' },
-  heli:   { edge:'#13200E', lo:'#37502E', base:'#5E7D4A', hi:'#93B276' },
-  plane:  { edge:'#1A202A', lo:'#93A2B4', base:'#DCE4EC', hi:'#FFFFFF' },
-  jet:    { edge:'#141B26', lo:'#566475', base:'#96A3B4', hi:'#D0DAE6' },
-  meteor: { edge:'#2A1608', lo:'#8A4A1E', base:'#E0863A', hi:'#FFEBB4' },
-  junk:   { edge:'#121824', lo:'#465266', base:'#8A94A6', hi:'#C9D3E0' },
-  solar:  { edge:'#0C1530', lo:'#1E3A78', base:'#2E56A8', hi:'#6790DE' },
-  gold:   { edge:'#2A1E06', lo:'#96701A', base:'#D8A63A', hi:'#F2D384' },
-  rock:   { edge:'#221C16', lo:'#433A32', base:'#6E6257', hi:'#A3937F' },
-  alien:  { edge:'#0C2818', lo:'#2E7A46', base:'#4FBF6E', hi:'#A2EDB2' },
-  comet:  { edge:'#103044', lo:'#3E9AC8', base:'#7FD8F2', hi:'#EEFBFF' },
-  flame:  { edge:'#4A1A06', lo:'#E8721C', base:'#FFC247', hi:'#FFF6D2' },
-  person: { edge:'#0E1220', lo:'#242B3E', base:'#3C4560', hi:'#E8DCC4' }
+/* Type bias: a sprite is the zone hue nudged a little toward its own
+   colour, never its own colour outright. */
+const BIAS = {
+  car:    [255, 56, 52],  glass:  [120,240,255], steel: [150,180,220],
+  crane:  [255,150, 40],  rust:   [255,120, 60],  cargo: [255, 80, 60],
+  pigeon: [190,170,220],  gull:   [230,230,255],  heli:  [120,255,170],
+  plane:  [190,225,255],  jet:    [160,210,255],  meteor:[255,190,110],
+  junk:   [170,200,240],  solar:  [110,160,255],  gold:  [255,200,110],
+  rock:   [255,170,140],  alien:  [ 90,255,170],  comet: [180,245,255],
+  flame:  [255,215,150],  person: [255,215,190],  brass: [255,190,110]
 };
+const MAT = {};
+for (const k in BIAS) MAT[k] = { edge:'#000', lo:'#000', base:'#000', hi:'#000', rim:'#000' };
 const MAGENTA = '#FF5CC8';
 const RED_HI = '#FF4438', RED_LO = '#9B1B12';
 
-/* Background colours, derived from the sky so distance reads as haze. */
-const C = { top:[0,0,0], mid:[0,0,0], bot:[0,0,0] };
+const C = { top:[0,0,0], mid:[0,0,0], bot:[0,0,0], hue:[206,62,88], acc:[86,226,222], burn:1 };
 let hudInkNow = '';
 
 function lumAt(y){
@@ -490,38 +502,60 @@ function lumAt(y){
   return (c[0]*0.3 + c[1]*0.59 + c[2]*0.11) / 255;
 }
 function redPulse(){ return (Math.floor(runTime * 5) % 2) ? RED_LO : RED_HI; }
-/* HUD and floating text sit on whatever the sky is doing up there. */
 function uiSet(){ return lumAt(H*0.2) > 0.34 ? UI_DARK : UI_LIGHT; }
-const UI_DARK  = { base:'#0B1020', edge:'#F2F7FA' };
-const UI_LIGHT = { base:'#F2F7FA', edge:'#0B1020' };
+const UI_DARK  = { base:'#0B0610', edge:'#FFE8E0' };
+const UI_LIGHT = { base:'#FFE8E0', edge:'#0B0610' };
 
 function updatePalette(){
-  const s = skyAt(feet);
-  C.top = s[0]; C.mid = s[1]; C.bot = s[2];
-  const b = C.bot, haze = C.mid;
-  /* aerial perspective: the further back, the more it dissolves into sky */
-  C.far   = rgb(mixRGB(haze, [ 92,106,150], 0.42));
-  C.farHi = rgb(mixRGB(haze, [120,134,176], 0.52));
-  C.mid1  = rgb(mixRGB(b, [ 66, 76,110], 0.70));
-  C.mid1Hi= rgb(mixRGB(b, [ 92,104,142], 0.76));
-  C.near  = rgb(mixRGB(b, [ 48, 56, 84], 0.88));
-  C.nearHi= rgb(mixRGB(b, [ 74, 84,118], 0.92));
-  C.nearLo= rgb(mixRGB(b, [ 28, 33, 52], 0.94));
-  C.win   = rgb(mixRGB(b, [255,214,122], 0.86));
-  C.winDim= rgb(mixRGB(b, [ 32, 38, 62], 0.8));
-  C.cloudHi = rgb(mixRGB(b, [255,255,255], 0.80));
-  C.cloud   = rgb(mixRGB(b, [226,238,248], 0.62));
-  C.cloudLo = rgb(mixRGB(b, [150,172,200], 0.52));
-  const dark = lumAt(H * 0.08) <= 0.34;
-  const hud = dark ? '#EEF4F7' : '#0A1020';
+  const hb = hueAt(feet);
+  const h = hb[0], acc = hb[1], burn = hb[2];
+  C.hue = h; C.acc = acc; C.burn = burn;
+  /* Sky: a deep lid, the hue through the middle, the horizon lit.
+     Nowhere near black - the hue has to stay readable as a colour. */
+  C.top = mixRGB(h, BLACK, 0.80 - burn*0.08);
+  C.mid = mixRGB(h, BLACK, 0.56 - burn*0.14);
+  C.bot = mixRGB(mixRGB(h, BLACK, 0.34 - burn*0.20), acc, 0.10 + burn*0.08);
+  C.accent = rgb(acc);
+  C.accentDim = rgb(mixRGB(acc, BLACK, 0.45));
+
+  /* silhouette layers - the same hue, stepped down in value */
+  C.far    = rgb(mixRGB(C.bot, BLACK, 0.34));
+  C.farHi  = rgb(mixRGB(C.bot, acc, 0.30));
+  C.mid1   = rgb(mixRGB(C.bot, BLACK, 0.54));
+  C.near   = rgb(mixRGB(h, BLACK, 0.70));
+  C.nearHi = rgb(mixRGB(h, acc, 0.34));
+  C.nearLo = rgb(mixRGB(h, BLACK, 0.84));
+  C.win    = rgb(mixRGB(acc, [255,255,255], 0.25));
+  C.cloudHi= rgb(mixRGB(C.bot, [255,235,220], 0.40));
+  C.cloud  = rgb(mixRGB(C.bot, BLACK, 0.24));
+  C.cloudLo= rgb(mixRGB(C.bot, BLACK, 0.48));
+
+  /* every sprite ramp, regenerated from the zone hue */
+  for (const k in BIAS){
+    const car = k === 'car', fl = k === 'flame';
+    const b = mixRGB(h, BIAS[k], car ? 0.74 : fl ? 0.88 : 0.42);
+    const m = MAT[k];
+    m.edge = rgb(mixRGB(b, BLACK, 0.88));
+    m.lo   = rgb(mixRGB(b, BLACK, car ? 0.62 : 0.70));
+    m.base = rgb(mixRGB(b, BLACK, car ? 0.34 : 0.52));
+    m.hi   = rgb(mixRGB(b, BLACK, car ? 0.12 : 0.32));
+    m.rim  = rgb(mixRGB(b, [255,248,240], fl ? 0.7 : 0.46));
+  }
+  MAT.flame.base = rgb(mixRGB(h, [255,190,100], 0.9));
+  MAT.flame.hi   = '#FFF3D6';
+  MAT.glass.base = rgb(mixRGB(acc, BLACK, 0.34));
+  MAT.glass.hi   = rgb(mixRGB(acc, [255,255,255], 0.45));
+
+  const dark = lumAt(H * 0.08) <= 0.30;
+  const hud = dark ? '#FFF0E8' : '#120610';
   if (hud !== hudInkNow){
     hudInkNow = hud;
     stage.style.setProperty('--hudInk', hud);
-    stage.style.setProperty('--hudVeil', dark ? 'rgba(6,8,20,.62)' : 'rgba(244,248,251,.60)');
+    stage.style.setProperty('--hudVeil', dark ? 'rgba(10,4,14,.58)' : 'rgba(255,232,224,.58)');
   }
 }
 
-/* checkerboard dither between two colours - the era's gradient trick */
+/* checkerboard dither between two colours */
 function dither(x, y, w, h, cB, ratio){
   ctx.fillStyle = cB;
   const step = PIX * 2;
@@ -643,6 +677,7 @@ let shake = 0, flash = 0, slide = 0, fade = 0, garage = 1;
 let spawnT = 0, lastBlockerPx = -1e9, lastGapX = W/2;
 let nearMiss = 0, nextMilestone = 2500, recordBeaten = false;
 let nextShieldFeet = SHIELD_AT, nextRocketFeet = ROCKET_AT, zoneSeen = 1;
+let killedBy = '';
 
 const obstacles = [];
 const clouds    = [];
@@ -652,6 +687,7 @@ const wallL     = [];      // building columns, left and right
 const wallR     = [];
 const skyline   = [];      // distant silhouette, recycled
 const marks     = [];      // landmark towers and space bodies
+const scenery   = [];      // construction frames - background, never a hazard
 const stars     = Array.from({length:220}, () => ({
   x: Math.random()*W, y: Math.random()*H, r: rnd(0.6,1.9),
   tw: Math.random()*Math.PI*2, p: rnd(0.02,0.12)
@@ -734,6 +770,22 @@ const el = {
 };
 let shownZone = '';
 
+/* What the game over card names. Written out in full so the article
+   is always right. */
+const KILL_NAME = {
+  pigeon:'A PIGEON', bird:'A SEAGULL',
+  craneStatic:'A CRANE', craneMove:'A MOVING CRANE', craneSwing:'A WRECKING BALL',
+  heli:'A HELICOPTER', prop:'A LIGHT PLANE', jet:'A JET',
+  meteor:'A METEOR', sdebris:'SPACE JUNK', sat:'A SATELLITE',
+  rock:'AN ASTEROID', alien:'A UFO', comet:'A COMET'
+};
+const RIG_NAME = { girder:'A GIRDER', pallet:'A LOADED PALLET', bucket:'A CEMENT BUCKET' };
+function killerName(o){
+  if (!o) return 'THE GROUND';
+  if (o.t === 'rig') return RIG_NAME[o.kind] || 'A GIRDER';
+  return KILL_NAME[o.t] || 'SOMETHING';
+}
+
 const QUIPS = [
   'The inspection certificate expired in 1997.',
   'Please do not attempt to exit the car.',
@@ -767,11 +819,12 @@ function syncHUD(){
 function start(){
   obstacles.length = 0; clouds.length = 0; bits.length = 0; popups.length = 0;
   wallL.length = 0; wallR.length = 0; skyline.length = 0; marks.length = 0;
+  scenery.length = 0; sceneryT = 0;
   px = 0; feet = 0; speed = 40; topSpeed = 0; nearMiss = 0;
   diff = 0; seqT = 0; shake = 0; flash = 0; slide = 0; fade = 0; garage = 1;
   spawnT = 3.0; lastBlockerPx = -1e9; lastGapX = W/2;
   nextMilestone = 2500; recordBeaten = false; zoneSeen = 1;
-  nextShieldFeet = SHIELD_AT; nextRocketFeet = ROCKET_AT;
+  nextShieldFeet = SHIELD_AT; nextRocketFeet = ROCKET_AT; killedBy = '';
   player.x = W/2; player.vx = 0; playerY = PLAYER_Y;
   player.shield = false; player.invT = 0; player.bubble = 0; player.boost = 0;
   player.crashRot = 0; player.crashSpin = 0; player.crashVy = 0;
@@ -910,6 +963,42 @@ function updateMarks(dt, scroll){
   for (let i = marks.length - 1; i >= 0; i--){
     marks[i].y += scroll * marks[i].par;
     if (marks[i].y - 200 > H) marks.splice(i, 1);
+  }
+}
+
+/* Scaffolding towers running up the edges through the build zones. */
+let sceneryT = 0;
+function updateScenery(dt, scroll){
+  sceneryT -= dt;
+  if (feet > 3200 && feet < 9400 && sceneryT <= 0){
+    sceneryT = rnd(1.1, 2.8);
+    scenery.push({ side: Math.random() < 0.5 ? -1 : 1,
+                   y: -rnd(160, 420), h: rnd(380, 760), w: snap(rnd(60, 110)),
+                   par: rnd(0.42, 0.64), decks: rndi(2, 4), lit: Math.random() });
+  }
+  for (let i = scenery.length - 1; i >= 0; i--){
+    scenery[i].y += scroll * scenery[i].par;
+    if (scenery[i].y - scenery[i].h > H + 80) scenery.splice(i, 1);
+  }
+}
+function drawScenery(){
+  if (!scenery.length) return;
+  for (const f of scenery){
+    const x = f.side < 0 ? 0 : snap(W - f.w);
+    const top = snap(f.y - f.h), bot = snap(f.y);
+    ctx.fillStyle = C.mid1;
+    ctx.fillRect(x, top, PIX*4, bot - top);
+    ctx.fillRect(x + f.w - PIX*4, top, PIX*4, bot - top);
+    for (let y = top; y < bot; y += PIX*9) ctx.fillRect(x, y, f.w, PIX*2);
+    for (let d = 0; d < f.decks; d++){
+      const dy = top + PIX*14 + d * Math.round((f.h/PIX) / (f.decks + 1)) * PIX;
+      if (dy > bot) break;
+      ctx.fillRect(f.side < 0 ? x : x - PIX*14, dy, f.w + PIX*14, PIX*3);
+    }
+    if (f.lit > 0.45){                       /* a lamp on the top deck */
+      ctx.fillStyle = C.accent;
+      ctx.fillRect(f.side < 0 ? x + f.w - PIX*3 : x, top + PIX*4, PIX*3, PIX*3);
+    }
   }
 }
 
@@ -1172,10 +1261,11 @@ function boostEnv(){
   return 1 - easeOut((t - 0.62) / 0.38);
 }
 
-function crash(x, y){
+function crash(x, y, by){
   if (state !== S.PLAY) return;
   if (player.invT > 0 || player.boost > 0) return;
   if (player.shield){ popShield(); return; }
+  killedBy = killerName(by);
   state = S.CRASH; seqT = 0;
   player.crashX = player.x; player.crashY = playerY;
   player.crashVy = -180;
@@ -1269,7 +1359,7 @@ function updateObstacles(dt, scroll){
           obstacles.splice(i, 1);
           continue;
         }
-        crash(clamp(player.x, hit.x, hit.x + hit.w), clamp(playerY, hit.y, hit.y + hit.h));
+        crash(clamp(player.x, hit.x, hit.x + hit.w), clamp(playerY, hit.y, hit.y + hit.h), o);
       }
     }
 
@@ -1398,6 +1488,7 @@ function update(dt){
   const scroll = frozen ? 0 : speed * dt;
   if (!frozen){
     updateObstacles(dt, scroll);
+    updateScenery(dt, scroll);
     updateClouds(dt, scroll);
     updateMarks(dt, scroll);
     updateBits(dt);
@@ -1425,16 +1516,26 @@ function drawSky(){
     const y = snap(H * i / bands);
     dither(0, y - PIX*4, W, PIX*4, rgb(at(i / bands)), 1);
   }
-  const sun = clamp(1 - feet / 15000, 0, 1);
-  if (sun > 0.02){                                  /* low sun haze */
-    ctx.save();
-    ctx.globalAlpha = sun * 0.5;
-    const g = ctx.createRadialGradient(W*0.76, H*0.82, 10, W*0.76, H*0.82, 420);
-    g.addColorStop(0, 'rgba(255,240,198,.9)');
-    g.addColorStop(1, 'rgba(255,214,150,0)');
-    ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
-    ctx.restore();
+  if (C.burn > 0.04){                               /* the horizon glows */
+    glow(W*0.5, H*1.04, 660, rgb(mixRGB(C.hue, C.acc, 0.35)), C.burn * 0.42);
   }
+}
+
+/* ambient motes drifting in the light */
+const motes = Array.from({length:46}, () => ({
+  x: Math.random()*W, y: Math.random()*H, p: rnd(0.05,0.3),
+  d: rnd(-14,14), a: rnd(0.2,0.6), r: Math.random() < 0.25 ? PIX*2 : PIX
+}));
+function drawMotes(){
+  ctx.save();
+  ctx.fillStyle = C.accent;
+  for (const m of motes){
+    const y = ((m.y + px * m.p) % (H+40) + H+40) % (H+40) - 20;
+    const x = ((m.x + Math.sin(runTime*0.4 + m.y) * m.d) % W + W) % W;
+    ctx.globalAlpha = m.a * (0.5 + 0.5*Math.sin(runTime*1.4 + m.x));
+    ctx.fillRect(snap(x), snap(y), m.r, m.r);
+  }
+  ctx.restore();
 }
 
 function drawStars(){
@@ -1445,14 +1546,13 @@ function drawStars(){
     const y = ((s.y + px * s.p) % H + H) % H;
     const tw = 0.55 + 0.45 * Math.sin(runTime * 1.7 + s.tw);
     ctx.globalAlpha = a * tw;
-    ctx.fillStyle = s.r > 1.55 ? '#FFFFFF' : (s.tw % 2 > 1 ? '#BFD8FF' : '#FFF2CF');
+    ctx.fillStyle = s.r > 1.55 ? '#FFFFFF' : (s.tw % 2 > 1 ? C.accent : '#FFE8D8');
     ctx.fillRect(snap(s.x), snap(y), PIX, PIX);
-    if (s.r > 1.55){                       /* the bright ones get a cross */
-      ctx.globalAlpha = a * tw * 0.5;
-      ctx.fillRect(snap(s.x)-PIX, snap(y), PIX, PIX);
+    if (s.r > 1.55){                       /* bright ones are a fat dot */
       ctx.fillRect(snap(s.x)+PIX, snap(y), PIX, PIX);
-      ctx.fillRect(snap(s.x), snap(y)-PIX, PIX, PIX);
       ctx.fillRect(snap(s.x), snap(y)+PIX, PIX, PIX);
+      ctx.globalAlpha = a * tw * 0.45;
+      ctx.fillRect(snap(s.x)+PIX, snap(y)+PIX, PIX, PIX);
     }
   }
   ctx.restore();
@@ -1476,12 +1576,17 @@ function discArc(cx, cy, r, color, from, to){
   }
 }
 
+/* Anything this far away is lit by the scene, so tint it into the hue. */
+function tint(hex, amount){
+  const n = parseInt(hex.slice(1), 16);
+  return rgb(mixRGB([(n>>16)&255, (n>>8)&255, n&255], C.hue, amount === undefined ? 0.46 : amount));
+}
 function drawMark(m){
   const x = snap(m.x), y = snap(m.y);
   ctx.save();
   ctx.translate(x, y);
   if (m.kind === 'cn' || m.kind === 'wtc' || m.kind === 'burj'){
-    ctx.fillStyle = C.far;
+    ctx.fillStyle = C.mid1;
     if (m.kind === 'cn'){
       ctx.fillRect(-PIX*2, PIX*26, PIX*4, PIX*300);        /* shaft */
       ctx.fillRect(-PIX, 0, PIX*2, PIX*26);                /* spire */
@@ -1510,33 +1615,33 @@ function drawMark(m){
   /* space bodies */
   const s = m.s;
   if (m.kind === 'moon'){
-    disc(0, 0, 108*s, '#E4E0C8');
-    discArc(0, 0, 108*s, '#BFB9A0', 0.5, 1);
-    discArc(0, 0, 108*s, '#98917C', 0.78, 1);
+    disc(0, 0, 108*s, tint('#E4E0C8'));
+    discArc(0, 0, 108*s, tint('#BFB9A0', 0.56), 0.5, 1);
+    discArc(0, 0, 108*s, tint('#98917C', 0.66), 0.78, 1);
     for (let i = 0; i < 9; i++){
       const a = m.spin + i*1.4, rr = (18 + (i%4)*13) * s;
-      disc(Math.cos(a)*58*s, Math.sin(a)*54*s, rr*0.36, '#B3AC93');
+      disc(Math.cos(a)*58*s, Math.sin(a)*54*s, rr*0.36, tint('#B3AC93', 0.6));
     }
   } else if (m.kind === 'mars'){
-    disc(0, 0, 92*s, '#D07A44');
-    discArc(0, 0, 92*s, '#A8532A', 0.52, 1);
-    discArc(0, 0, 92*s, '#7E3A1E', 0.8, 1);
-    ctx.fillStyle = '#8E4423';
+    disc(0, 0, 92*s, tint('#D07A44', 0.36));
+    discArc(0, 0, 92*s, tint('#A8532A', 0.5), 0.52, 1);
+    discArc(0, 0, 92*s, tint('#7E3A1E', 0.62), 0.8, 1);
+    ctx.fillStyle = tint('#8E4423', 0.5);
     for (let i = 0; i < 4; i++) ctx.fillRect(snap(-70*s), snap((-40 + i*26)*s), snap(140*s), PIX*3);
-    disc(0, -80*s, 22*s, '#F0F4F8');                        /* polar cap */
+    disc(0, -80*s, 22*s, tint('#F0F4F8', 0.3));                        /* polar cap */
   } else if (m.kind === 'planet'){
-    disc(0, 0, 76*s, '#6FA8D8');
-    discArc(0, 0, 76*s, '#3F79B4', 0.55, 1);
-    ctx.fillStyle = '#A6D2EE';
+    disc(0, 0, 76*s, tint('#6FA8D8'));
+    discArc(0, 0, 76*s, tint('#3F79B4', 0.58), 0.55, 1);
+    ctx.fillStyle = tint('#A6D2EE', 0.4);
     for (let i = 0; i < 5; i++) ctx.fillRect(snap(-62*s), snap((-46 + i*22)*s), snap(124*s), PIX*4);
-    disc(-26*s, -24*s, 18*s, '#BFE2F6');
+    disc(-26*s, -24*s, 18*s, tint('#BFE2F6', 0.4));
   } else if (m.kind === 'ringed'){
-    disc(0, 0, 66*s, '#E2C583');
-    discArc(0, 0, 66*s, '#B99755', 0.54, 1);
-    ctx.fillStyle = '#F4E7BE';
+    disc(0, 0, 66*s, tint('#E2C583', 0.4));
+    discArc(0, 0, 66*s, tint('#B99755', 0.55), 0.54, 1);
+    ctx.fillStyle = tint('#F4E7BE', 0.35);
     for (let i = 0; i < 3; i++){
       const rr = (96 + i*13) * s;
-      ctx.fillStyle = i === 1 ? '#C9A96A' : '#F4E7BE';
+      ctx.fillStyle = i === 1 ? tint('#C9A96A', 0.5) : tint('#F4E7BE', 0.3);
       for (let a = 0; a < Math.PI*2; a += 0.06){
         ctx.fillRect(snap(Math.cos(a)*rr), snap(Math.sin(a)*rr*0.3), PIX, PIX);
       }
@@ -1546,7 +1651,7 @@ function drawMark(m){
     for (let i = 0; i < 170; i++){
       const a = m.spin + i*0.7, rr = (i/170) * 160 * s;
       ctx.globalAlpha = 0.2 * (1 - i/190);
-      ctx.fillStyle = i % 3 === 0 ? '#8A4FD8' : i % 3 === 1 ? '#2E9BD8' : '#E064B8';
+      ctx.fillStyle = i % 3 === 0 ? C.accent : i % 3 === 1 ? tint('#2E9BD8', 0.4) : rgb(C.hue);
       ctx.fillRect(snap(Math.cos(a)*rr*rnd(0.6,1.3)), snap(Math.sin(a)*rr*rnd(0.5,1.1)),
                    PIX*rndi(2,5), PIX*rndi(2,5));
     }
@@ -1634,6 +1739,10 @@ function drawCity(){
       ctx.fillRect(b.x, top, b.w, H - top + PIX);
       ctx.fillStyle = C.farHi;
       ctx.fillRect(b.x, top, b.w, PIX);
+      if (b.lit > 0.6){                          /* a lamp on the skyline */
+        ctx.fillStyle = C.accent;
+        ctx.fillRect(snap(b.x + b.w/2), top - PIX*2, PIX, PIX*2);
+      }
       ctx.fillStyle = C.far;
     }
     ctx.globalAlpha = skyFade * 0.5;
@@ -1812,22 +1921,24 @@ function jetShape(o, F){
 }
 function satShape(o, F){
   pf(F.base,-8,-13,16,26); pf(F.hi,-8,-13,16,2);
-  pf(F.base,-12,-2,4,3); pf(F.base,8,-2,4,3);
+  pf(F.base,-12,-3,4,3); pf(F.base,8,-1,4,3);
   for (const d of [-1,1]){
-    for (let i = 0; i < 3; i++){
+    const n = d > 0 ? 3 : 2;                       /* one wing is shorter */
+    for (let i = 0; i < n; i++){
       const x = d > 0 ? 12 + i*10 : -12 - (i+1)*10 + 1;
-      pf(MAT.solar.base, x, -8, 9, 16);
-      pf(MAT.solar.hi, x, -8, 9, 2);
-      pf(MAT.solar.lo, x, -1, 9, 1);
+      pf(MAT.solar.base, x, d > 0 ? -9 : -6, 9, 16);
+      pf(MAT.solar.hi, x, d > 0 ? -9 : -6, 9, 2);
+      pf(MAT.solar.lo, x, d > 0 ? -2 : 1, 9, 1);
     }
   }
-  pf(F.base,-6,-19,12,4); pf(F.base,-1,-16,2,3);
+  pf(F.base,-9,-19,11,4); pf(F.base,-5,-16,2,3);   /* dish, off to one side */
+  pf(F.hi,-9,-19,11,1);
 }
 function rockShape(o, F){
   const R = Math.round(o.w / PIX / 2);
   for (let i = -R; i <= R; i++){
     const t = i / R;
-    const hw = Math.round(R * Math.sqrt(Math.max(0, 1 - t*t)) * (0.78 + 0.22*Math.sin(o.seed*17 + i*1.3)));
+    const hw = Math.round(R * Math.sqrt(Math.max(0, 1 - t*t)) * (0.86 + 0.14*Math.sin(o.seed*17 + i*0.42)));
     if (hw <= 0) continue;
     pf(i < -R*0.3 ? F.hi : F.base, -hw, i, hw*2, 1);
   }
@@ -1836,17 +1947,28 @@ function rockShape(o, F){
   pf(F.lo, Math.round(R*0.25), Math.round(R*0.35), Math.max(1, Math.round(c*0.7)), Math.max(1, Math.round(c*0.5)));
 }
 function sdebrisShape(o, F){
-  const w = Math.round(o.w/PIX/2);
-  if (o.seed < 0.4){
-    pf(F.lo,-w,-Math.round(w*0.6),w*2,Math.round(w*1.2));      /* solar panel */
-    pf(F.hi,-w,-Math.round(w*0.6),w*2,1);
-    for (let i = 1; i < 4; i++) pf(F.base, -w + i*Math.round(w/2), -Math.round(w*0.6), 1, Math.round(w*1.2));
-  } else if (o.seed < 0.75){
-    pf(F.base,-w,-2,w*2,5); pf(F.base,-3,-w,6,w*2);            /* bent strut */
-    pf(F.hi,-w,-2,w*2,1);
-  } else {
-    pf(F.base,-w,-w,w*2,w*2); pf(F.hi,-w,-w,w*2,2);            /* hull panel */
-    pf(F.lo,-Math.round(w*0.4),-Math.round(w*0.4),Math.round(w*0.8),Math.round(w*0.8));
+  const w = Math.max(3, Math.round(o.w/PIX/2)), h = Math.max(2, Math.round(w*0.7));
+  if (o.seed < 0.38){                      /* a torn-off solar wing, buckled */
+    pf(MAT.solar.base,-w,-h,Math.round(w*1.6),h*2);
+    pf(MAT.solar.hi,-w,-h,Math.round(w*1.6),1);
+    pf(MAT.solar.lo,-w,h-1,Math.round(w*1.6),1);
+    for (let i = 1; i < 3; i++) pf(MAT.solar.lo, -w + i*Math.round(w*0.6), -h, 1, h*2);
+    pf(F.base, Math.round(w*0.6), -1, Math.round(w*0.7), 3);   /* snapped boom */
+    pf(F.lo, Math.round(w*1.1), -3, 2, 4);
+  } else if (o.seed < 0.72){               /* a crumpled fuel cylinder */
+    pf(F.base,-w,-h+1,w*2,h*2-2);
+    pf(F.hi,-w,-h+1,w*2,2);
+    pf(F.lo,-w,h-3,w*2,2);
+    pf(F.lo,-Math.round(w*0.2),-h+1,2,h*2-2);
+    pf(F.base,-w-2,-h+3,2,h);                                  /* dented end */
+    pf(F.base,w,-1,3,3);
+  } else {                                  /* a jagged hull fragment */
+    pf(F.base,-w,-h,w*2-1,h);
+    pf(F.base,-w+1,0,w*2-3,h-1);
+    pf(F.base,-w+3,h-1,w,2);
+    pf(F.hi,-w,-h,w*2-1,1);
+    pf(F.lo,-w+2,-2,Math.round(w*0.8),2);
+    pf(F.lo,-w+1,h-2,3,2);
   }
 }
 function alienShape(o, F){
@@ -1908,8 +2030,8 @@ function drawObstacle(o){
     case 'heli':   ctx.scale(o.dir, 1); edged(f => heliShape(o, f), F); break;
     case 'prop':   ctx.scale(o.dir, 1); edged(f => propShape(o, f), F); break;
     case 'jet':    ctx.scale(o.dir, 1); edged(f => jetShape(o, f), F);  break;
-    case 'comet':  edged(f => cometShape(o, f), F); break;
-    case 'meteor': edged(f => meteorShape(o, f), F); break;
+    case 'comet':  glow(0, 0, 62, '#BFF2FF', 0.55); edged(f => cometShape(o, f), F); break;
+    case 'meteor': glow(0, 0, 48, '#FFC46B', 0.5); edged(f => meteorShape(o, f), F); break;
     case 'alien':  edged(f => alienShape(o, f), F); break;
     case 'sat':
       ctx.rotate(Math.round(o.rot / (Math.PI/2)) * (Math.PI/2));
@@ -1954,6 +2076,7 @@ function rocketGlyph(){
 }
 function drawPowerUp(o, glyph, F){
   const r = 26 + Math.sin(runTime * 4 + o.phase) * 3;
+  glow(0, 0, r * 2.8, RED_HI, 0.55);
   const shape = () => { ring(r); glyph(); };
   ctx.fillStyle = '#1C0E14';
   for (const d of OUT8){ ctx.save(); ctx.translate(d[0], d[1]); shape(); ctx.restore(); }
@@ -1967,7 +2090,7 @@ function drawPowerUp(o, glyph, F){
 
 /* ---- the car ----------------------------------------------------- */
 function carShape(){
-  const B = MAT.brass, G = MAT.glass, S = MAT.steel, P = MAT.person;
+  const B = MAT.car, G = MAT.glass, S = MAT.steel, P = MAT.person;
   pf(G.base,-13,-17,26,31);                              /* glazing */
   pf(G.lo,-13,4,26,10);
   pf(G.hi,-12,-16,3,26); pf(G.hi,-7,-14,2,12);           /* glints */
@@ -2005,43 +2128,57 @@ function flameShape(strength){
 function drawElevator(x, y, rot, broken){
   const burning = (state === S.PLAY || state === S.MENU || state === S.PAUSE ||
                   (state === S.INTRO && ignited));
+  /* VMS3 shows as a solid red bubble with the car cut out of it in white */
+  const mercyBlink = player.invT > 0 && (Math.floor(player.invT * 14) % 2 === 0);
+  const bubbled = (player.shield || player.invT > 0) && !mercyBlink && !broken;
+
+  /* the pool of light it carries up the shaft */
+  const lamp = 0.30 + boostEnv() * 0.4 + (burning ? 0.07 * Math.sin(runTime*6) : 0);
+  glow(snap(x), snap(y) + 10, 175, rgb(mixRGB(C.hue, [255,150,120], 0.6)), lamp);
+  glow(snap(x), snap(y) + 30, 74, '#FFD8A8', lamp * 0.65);
+
   ctx.save();
   ctx.translate(snap(x), snap(y));
   if (rot) ctx.rotate(Math.round(rot / (Math.PI/4)) * (Math.PI/4));
 
+  if (bubbled){
+    const r = (64 + Math.sin(runTime * 3) * 3) * (1 - player.bubble * 0.35);
+    disc(0, 0, r + PIX*2, '#2A0A08');
+    disc(0, 0, r, player.shield ? redPulse() : RED_LO);
+    forceColor = '#FFFFFF';
+    carShape();
+    forceColor = null;
+    const hole = player.shield ? redPulse() : RED_LO;   /* windows punched out */
+    ctx.fillStyle = hole;
+    ctx.fillRect(-13*PIX, -17*PIX, 12*PIX, 10*PIX);
+    ctx.fillRect(  1*PIX, -17*PIX, 12*PIX, 10*PIX);
+    ctx.fillRect(-13*PIX,  -5*PIX, 12*PIX, 19*PIX);
+    ctx.fillRect(  1*PIX,  -5*PIX, 12*PIX, 19*PIX);
+    forceColor = '#FFFFFF';
+    pf(0,4,-5,4,4); pf(0,3,-1,6,9); pf(0,4,8,2,6); pf(0,7,8,2,6);
+    forceColor = null;
+  } else {
+    edged(carShape, MAT.car);
+    if (broken){
+      pf(MAT.glass.hi,-9,-15,3,3); pf(MAT.glass.hi,5,-12,3,3); pf(MAT.glass.hi,-6,3,3,3);
+    }
+    if (Math.sin(runTime * 7) > -0.2){                     /* beacon */
+      pf(MAT.steel.lo,-2,-37,3,3);
+      pf('#FFF3C4',-1,-36,1,1);
+    }
+  }
+
   if (burning){
     const strength = 1 + clamp((speed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN), 0, 1) * 1.1
                        + boostEnv() * 2.6;
+    glow(0, 34 + strength*10, 46 + strength*16, '#FFC46B', 0.55);
     forceColor = MAT.flame.edge;
     for (const d of OUT8){ ctx.save(); ctx.translate(d[0], d[1]); flameShape(strength); ctx.restore(); }
     forceColor = null;
     flameShape(strength);
   }
-  edged(carShape, MAT.brass);
-  if (broken){
-    ctx.fillStyle = MAT.glass.hi;
-    pf(MAT.glass.hi,-9,-15,3,3); pf(MAT.glass.hi,5,-12,3,3); pf(MAT.glass.hi,-6,3,3,3);
-  }
-  if (Math.sin(runTime * 7) > -0.2){                     /* beacon */
-    pf(MAT.steel.lo,-2,-37,3,3);
-    pf('#FFF3C4',-1,-36,1,1);
-  }
   ctx.restore();
 
-  if (player.shield || player.invT > 0){                 /* VMS3 */
-    const r = (62 + Math.sin(runTime*3)*3) * (1 - player.bubble * 0.35);
-    const blink = player.invT > 0 && (Math.floor(player.invT * 14) % 2 === 0);
-    if (!blink){
-      ctx.save();
-      ctx.translate(snap(x), snap(y) - PIX*2);
-      if (!player.shield) ctx.globalAlpha = 0.5;
-      ctx.fillStyle = '#20121A';
-      for (const d of OUT8){ ctx.save(); ctx.translate(d[0], d[1]); ring(r); ctx.restore(); }
-      ctx.fillStyle = redPulse();
-      ring(r);
-      ctx.restore();
-    }
-  }
   const env = boostEnv();
   if (env > 0.02){                                        /* F1 wake */
     ctx.save();
@@ -2126,8 +2263,8 @@ function drawBits(){
     const a = clamp(b.life / b.max, 0, 1);
     if (a < 0.3 && (Math.floor(b.life * 20) % 2)) continue;
     ctx.fillStyle = b.red ? redPulse()
-                  : b.dark ? (a > 0.6 ? MAT.steel.lo : MAT.rust.lo)
-                  : (a > 0.7 ? MAT.flame.hi : a > 0.4 ? MAT.flame.base : MAT.flame.lo);
+                  : b.dark ? (a > 0.6 ? MAT.rust.base : MAT.rust.lo)
+                  : (a > 0.7 ? '#FFF3D6' : a > 0.4 ? MAT.flame.base : MAT.flame.lo);
     const s = a > 0.55 ? PIX*2 : PIX;
     ctx.fillRect(snap(b.x), snap(b.y), s, s);
   }
@@ -2160,7 +2297,9 @@ function draw(){
     drawStars();
     for (const m of marks) drawMark(m);
     drawCity();
+    drawScenery();
     drawClouds(false);
+    drawMotes();
     drawSpeedLines();
   }
   drawGarage();
@@ -2203,21 +2342,21 @@ function drawGameOver(){
   ctx.fillStyle = '#FF6A5A';
   ctx.fillRect(0, bottom - PIX*2, W, PIX*2);
 
-  const ty = Math.min(H * 0.44, bottom - 150);
+  const ty = Math.min(H * 0.47, bottom - 170);
   if (ty > -40){
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '44px "Press Start 2P", ui-monospace, monospace';
-    ctx.fillStyle = '#5A0A06';
-    for (const d of OUT8) ctx.fillText('GAME', W/2 + d[0], snap(ty) + d[1]);
-    ctx.fillText('GAME', W/2 + PIX*3, snap(ty) + PIX*3);
-    ctx.fillStyle = '#FFF0E4';
-    ctx.fillText('GAME', W/2, snap(ty));
-    ctx.fillStyle = '#5A0A06';
-    for (const d of OUT8) ctx.fillText('OVER', W/2 + d[0], snap(ty + 62) + d[1]);
-    ctx.fillText('OVER', W/2 + PIX*3, snap(ty + 62) + PIX*3);
-    ctx.fillStyle = '#FFF0E4';
-    ctx.fillText('OVER', W/2, snap(ty + 62));
+    const line = (text, size, y, fill) => {
+      ctx.font = size + 'px "Press Start 2P", ui-monospace, monospace';
+      ctx.fillStyle = '#5A0A06';
+      for (const d of OUT8) ctx.fillText(text, W/2 + d[0], snap(y) + d[1]);
+      ctx.fillText(text, W/2 + PIX*3, snap(y) + PIX*3);
+      ctx.fillStyle = fill;
+      ctx.fillText(text, W/2, snap(y));
+    };
+    line('YOU HIT ' + killedBy, 16, ty - 62, '#FFC9B4');
+    line('GAME', 44, ty, '#FFF0E4');
+    line('OVER', 44, ty + 62, '#FFF0E4');
   }
   ctx.restore();
 }
