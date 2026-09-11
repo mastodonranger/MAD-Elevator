@@ -32,7 +32,7 @@ whatever window it gets, so it plays the same on a phone and on a desktop.
 | Input | Action |
 | --- | --- |
 | `←` `→` or `A` / `D` | steer the car |
-| touch and drag | the car tracks your finger |
+| hold left / right half | steers that way, like holding an arrow key |
 | `Space` / `Enter` / tap | launch, and ride again after a crash |
 | `Esc` / `P` | hold (on the results screen, back to menu) |
 | `R` | restart mid-run |
@@ -61,6 +61,12 @@ flying up a street canyon.
 with it, from roughly one hazard every 2.4s at street level to one every
 0.45s out past Mars. Squeaking past something scores a near miss and a
 small altitude bonus. Your best climb is kept in `localStorage`.
+
+Touch is **directional, not positional**: the car goes the way of whichever
+half of the screen you are holding and keeps going while you hold it, rather
+than flying to your finger. Steering also tips the car into the turn, by up
+to about five degrees in six quantised steps — holding a step keeps the
+rotation constant, so the sprite leans without shimmering at this resolution.
 
 ## Power-ups
 

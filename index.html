@@ -259,7 +259,7 @@
     <div class="cta" id="titleCta">Press Space to Launch</div>
     <div class="keys">
       <b>&#9664; &#9654;</b> arrow keys or <b>A / D</b> to steer<br>
-      or <b>touch and drag</b> anywhere on screen
+      or <b>hold the left / right</b> side of the screen
     </div>
   </div>
 
@@ -668,7 +668,7 @@ const X_JIG = 0.5, X_FREEZE = 1.05, X_SLIDE = 1.6, X_HOLD = 2.3, X_END = 2.95;
 
 let playerY = PLAYER_Y;
 const player = {
-  x: W/2, vx: 0,
+  x: W/2, vx: 0, tilt: 0,
   shield:false, invT:0, bubble:0, boost:0,
   crashRot:0, crashSpin:0, crashVy:0, crashX:0, crashY:0
 };
@@ -823,7 +823,7 @@ function start(){
   spawnT = 3.0; lastBlockerPx = -1e9; lastGapX = W/2;
   nextMilestone = 2500; recordBeaten = false; zoneSeen = 1;
   nextShieldFeet = SHIELD_AT; nextRocketFeet = ROCKET_AT; killedBy = '';
-  player.x = W/2; player.vx = 0; playerY = PLAYER_Y;
+  player.x = W/2; player.vx = 0; player.tilt = 0; playerY = PLAYER_Y;
   player.shield = false; player.invT = 0; player.bubble = 0; player.boost = 0;
   player.crashRot = 0; player.crashSpin = 0; player.crashVy = 0;
   pointerOn = false;
@@ -842,7 +842,7 @@ function toMenu(){
   state = S.MENU;
   obstacles.length = 0; bits.length = 0; popups.length = 0;
   px = 0; feet = 0; speed = 80; fade = 0; slide = 0; garage = 0;
-  player.x = W/2; player.vx = 0; playerY = PLAYER_Y;
+  player.x = W/2; player.vx = 0; player.tilt = 0; playerY = PLAYER_Y;
   player.shield = false; player.boost = 0; player.invT = 0;
   nextMark = 0; nextDeepFeet = 76000; groundPx = 0;
   ignited = false; skyGroundY = H * 0.86;
@@ -1330,11 +1330,13 @@ function crash(x, y, by){
 }
 
 function updatePlayer(dt, locked){
-  if (locked){ player.vx *= 0.9; }
-  else if (pointerOn){
-    player.vx = clamp((pointerX - player.x) * 11, -PLAYER_MAXV, PLAYER_MAXV);
+  if (locked){
+    player.vx *= 0.9;
   } else {
-    const dir = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+    /* Touch is directional, not positional: whichever half of the screen
+       you are holding is the way the car goes, same as an arrow key. */
+    let dir = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+    if (pointerOn) dir = pointerX < W/2 ? -1 : 1;
     if (dir !== 0) player.vx += dir * PLAYER_ACCEL * dt;
     else player.vx -= player.vx * Math.min(1, 9*dt);
     player.vx = clamp(player.vx, -PLAYER_MAXV, PLAYER_MAXV);
@@ -1343,6 +1345,10 @@ function updatePlayer(dt, locked){
   const minX = PLAYER_W/2 + WALL_PAD, maxX = W - PLAYER_W/2 - WALL_PAD;
   if (player.x < minX){ player.x = minX; player.vx *= -0.25; }
   if (player.x > maxX){ player.x = maxX; player.vx *= -0.25; }
+  /* Lean, quantised to six steps of about 1.7 degrees. Holding a step
+     keeps the rotation constant, so the sprite never shimmers. */
+  const want = clamp(player.vx / PLAYER_MAXV, -1, 1);
+  player.tilt = Math.round(want * 3) / 3 * 0.09;
 }
 function playerRect(){
   return { x: player.x - 26, y: playerY - 32, w: 52, h: 68 };
@@ -2144,7 +2150,7 @@ function drawElevator(x, y, rot, broken){
 
   ctx.save();
   ctx.translate(snap(x), snap(y));
-  if (rot) ctx.rotate(Math.round(rot / (Math.PI/4)) * (Math.PI/4));
+  if (rot) ctx.rotate(broken ? Math.round(rot / (Math.PI/4)) * (Math.PI/4) : rot);
 
   if (bubbled){
     const r = (64 + Math.sin(runTime * 3) * 3) * (1 - player.bubble * 0.35);
@@ -2315,7 +2321,7 @@ function draw(){
     drawElevator(player.crashX, player.crashY, player.crashRot, true);
   } else if (state !== S.OVER){
     const bob = state === S.MENU ? Math.sin(runTime * 2.2) * 5 : 0;
-    drawElevator(player.x, playerY + bob, 0, false);
+    drawElevator(player.x, playerY + bob, player.tilt, false);
   }
 
   drawBits();
