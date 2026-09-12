@@ -47,19 +47,20 @@ flying up a street canyon.
 | From | Zone | What is up there | Reached at |
 | --- | --- | --- | --- |
 | 0 ft | 1 · City | pigeons, while the buildings grow from townhouses to low rises, apartments, then high rises | — |
-| 4,000 ft | 2 · Construction | moving crane booms, swinging jibs with a wrecking ball, falling girders and pallets — past corporate offices and skyscrapers | 0:27 |
-| 9,000 ft | 3 · Skyline | a reprieve: sparse birds, and the CN Tower, One World Trade and the Burj Khalifa going by in the distance. Both power-ups are handed to you here | 0:50 |
-| 14,000 ft | 4 · Low Airspace | helicopters and light aircraft, then jets from 18,000 ft | 1:07 |
-| 22,000 ft | 5 · Upper Atmosphere | a meteor shower against a darkening sky; from 28,000 ft the lights go out entirely and space debris joins in | 1:29 |
-| 34,000 ft | 6 · Orbit | debris and satellites, and the moon slides past | 1:57 |
-| 46,000 ft | 7 · Asteroid Belt | asteroids, and a starfield that twinkles | 2:21 |
-| 58,000 ft | 8 · Interplanetary | asteroids and alien saucers that follow you. Mars goes by | 2:42 |
-| 72,000 ft | 9 · Deep Space | asteroids, saucers, the occasional comet — with ringed planets, nebulae and Voyager 1 in the black | 3:04 |
+| 1,600 ft | 2 · Construction | moving crane booms, swinging jibs with a wrecking ball, falling girders and pallets | 0:29 |
+| 3,600 ft | 3 · Skyline | a reprieve: sparse birds, landmark towers in the distance, and both power-ups | 0:51 |
+| 5,600 ft | 4 · Low Airspace | helicopters and light aircraft, then jets from 7,200 ft | 1:06 |
+| 8,800 ft | 5 · Upper Atmosphere | a meteor shower; from 11,200 ft the lights go out and space debris joins in | 1:27 |
+| 13,600 ft | 6 · Orbit | debris and satellites, and the moon slides past | 1:55 |
+| 18,400 ft | 7 · Asteroid Belt | asteroids, and a starfield that twinkles | 2:18 |
+| 23,200 ft | 8 · Interplanetary | asteroids and alien saucers. Mars goes by | 2:39 |
+| 28,800 ft | 9 · Deep Space | asteroids, saucers, the occasional comet | 2:57 |
 
-("Reached at" assumes a clean run.) Climb speed steps up zone by zone from
-150 to 900 px/s — about 107 to 460 mph — and the spawn interval tightens
-with it, from roughly one hazard every 2.4s at street level to one every
-0.45s out past Mars. Squeaking past something scores a near miss and a
+("Reached at" assumes a clean run.) Climb speed steps up zone by zone from 150 to 900 px/s — about 43 to 184
+mph — and the spawn interval tightens with it, from roughly one hazard every
+2.4s at street level to one every 0.45s out past Mars. A pixel of travel is
+worth 0.30 ft, which is what keeps the altimeter readable rather than a
+blur; the run itself takes exactly as long as it always did. Squeaking past something scores a near miss and a
 small altitude bonus. Your best climb is kept in `localStorage`.
 
 Touch is **directional, not positional**: the car goes the way of whichever
@@ -75,13 +76,13 @@ helps you" — and both carry a hard outline in the normal asset tone, so
 they never rely on colour alone to be seen. While one is running a label
 sits at the top of the screen; the labels stack, and you can hold both.
 
-**VMS3** — a bubble, handed to you at 10,200 ft in the Skyline zone and
-appearing at random every 11,000–19,000 ft after that. It absorbs one
+**VMS3** — a bubble, handed to you at 4,100 ft in the Skyline zone and
+appearing at random every 4,400–7,600 ft after that. It absorbs one
 crash: the hit pops the bubble instead of ending the run, and you get 1.3
 seconds of mercy to fly clear. Labelled `VMS3 ACTIVATED`.
 
-**F1 System Speed** — a rocket, first at 12,300 ft, then every
-12,000–21,000 ft. It lifts the car a literal 200 ft up the screen and runs
+**F1 System Speed** — a rocket, first at 4,900 ft, then every
+4,800–8,400 ft. It lifts the car 267px up the screen and runs
 the world 2.6× faster for three seconds, untouchable, then eases it back
 down to station — the wind-down is the part that tells you it is ending.
 Labelled `F1 SYSTEM SPEED`.
@@ -111,6 +112,19 @@ so the canyon is continuous.
 towering cloud banks through the airspace zones, then pitted rock and bolted-on
 derelicts out in the belt — with angular **crystal growths** on the near layers
 throughout, glowing in the zone's accent.
+
+**Materials, not tints.** Every sprite owns a five-stop ramp — outline,
+shadow, base, light, specular — authored as a sprite palette would be, with
+the zone hue mixed in at only 14%. A crane is orange, a gull is white, the
+car is red lacquer with gold trim and blue glass, and the scene still reads
+as one place. Light comes from the upper left: the outline pass lays a dark
+edge all round, then a light edge up and to the left.
+
+**Built masses, not rectangles.** Every background mass is drawn as an
+object — a lit left face, a shaded right face, a cornice with a specular
+lip, floor seams every nine pixels and a grid of windows, lit or dark by a
+stable hash. That surface detail is the difference between pixel art and a
+flat shape, and it is what the eye reads as sixteen-bit.
 
 **One hue family per zone, lit by its complement.** Each zone owns a dominant
 hue and an accent roughly opposite it — crimson dusk with cyan lights, plum

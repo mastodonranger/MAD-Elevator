@@ -309,10 +309,10 @@ const W = 540, H = 960;
 const PIX = 2;                       // world units per rendered pixel
 const BW = W / PIX, BH = H / PIX;    // 270 x 480
 
-const FEET_PER_PX  = 0.75;
+const FEET_PER_PX  = 0.30;
 const SPEED_MIN    = 150;
 const SPEED_MAX    = 900;
-const ZONE_TAIL    = 26000;          // how far the last zone keeps ramping
+const ZONE_TAIL    = 10400;          // how far the last zone keeps ramping
 
 const PLAYER_W     = 60, PLAYER_H = 80;
 const PLAYER_Y     = H * 0.70;
@@ -320,11 +320,11 @@ const PLAYER_ACCEL = 2200;
 const PLAYER_MAXV  = 560;
 const WALL_PAD     = 10;
 
-const SHIELD_AT    = 10200;          // guaranteed, in the Skyline zone
-const ROCKET_AT    = 12300;          // guaranteed, shortly after
+const SHIELD_AT    = 4100;          // guaranteed, in the Skyline zone
+const ROCKET_AT    = 4900;          // guaranteed, shortly after
 const SHIELD_INV   = 1.3;
 const BOOST_TIME   = 3.0;
-const BOOST_RISE   = 200 / FEET_PER_PX;
+const BOOST_RISE   = 267;            // px up the screen, about 80 ft
 const BOOST_MULT   = 2.6;
 
 /* ================================================================
@@ -371,10 +371,10 @@ function edged(shape, F){
   for (let i = 0; i < OUT8.length; i++){
     ctx.save(); ctx.translate(OUT8[i][0], OUT8[i][1]); shape(F); ctx.restore();
   }
-  if (F.rim){                       /* backlit from the burning horizon */
-    forceColor = F.rim;
-    ctx.save(); ctx.translate(0, PIX); shape(F); ctx.restore();
-    ctx.save(); ctx.translate(-PIX, PIX); shape(F); ctx.restore();
+  if (F.hi){                        /* light catches the upper-left edge */
+    forceColor = F.hi;
+    ctx.save(); ctx.translate(-PIX, -PIX); shape(F); ctx.restore();
+    ctx.save(); ctx.translate(0, -PIX); shape(F); ctx.restore();
   }
   forceColor = null;
   shape(F);
@@ -407,17 +407,17 @@ window.addEventListener('orientationchange', () => setTimeout(resize, 120), {pas
    ================================================================ */
 const ZONES = [
   { from:0,     n:1, name:'City',            mix:[['pigeon',1]] },
-  { from:4000,  n:2, name:'Construction',    mix:[['craneMove',1],['craneSwing',0.85],['craneStatic',0.7],['rig',0.6]] },
-  { from:9000,  n:3, name:'Skyline',         mix:[['bird',1]], calm:0.55 },
-  { from:14000, n:4, name:'Low Airspace',    mix:[['heli',1],['prop',0.9]] },
-  { from:22000, n:5, name:'Upper Atmosphere',mix:[['meteor',1]] },
-  { from:34000, n:6, name:'Orbit',           mix:[['sdebris',1],['sat',0.85]] },
-  { from:46000, n:7, name:'Asteroid Belt',   mix:[['rock',1],['sdebris',0.3]] },
-  { from:58000, n:8, name:'Interplanetary',  mix:[['rock',1],['alien',0.8]] },
-  { from:72000, n:9, name:'Deep Space',      mix:[['rock',1],['alien',0.7],['comet',0.16]] }
+  { from:1600,  n:2, name:'Construction',    mix:[['craneMove',1],['craneSwing',0.85],['craneStatic',0.7],['rig',0.6]] },
+  { from:3600,  n:3, name:'Skyline',         mix:[['bird',1]], calm:0.55 },
+  { from:5600,  n:4, name:'Low Airspace',    mix:[['heli',1],['prop',0.9]] },
+  { from:8800,  n:5, name:'Upper Atmosphere',mix:[['meteor',1]] },
+  { from:13600, n:6, name:'Orbit',           mix:[['sdebris',1],['sat',0.85]] },
+  { from:18400, n:7, name:'Asteroid Belt',   mix:[['rock',1],['sdebris',0.3]] },
+  { from:23200, n:8, name:'Interplanetary',  mix:[['rock',1],['alien',0.8]] },
+  { from:28800, n:9, name:'Deep Space',      mix:[['rock',1],['alien',0.7],['comet',0.16]] }
 ];
-const JET_AT   = 18000;   // zone 4 second phase
-const DARK_AT  = 28000;   // zone 5 second phase - the lights go out
+const JET_AT   = 7200;    // zone 4 second phase
+const DARK_AT  = 11200;   // zone 5 second phase - the lights go out
 
 function zoneFor(f){
   let z = ZONES[0];
@@ -459,15 +459,15 @@ const BLACK = [0,0,0];
    Every zone is one hue family lit by its opposite - red lamps on jade,
    cyan lamps on crimson - which is the whole trick. */
 const ZONE_HUE = [
-  [0,     [206, 62, 88], [ 86,226,222], 0.92],   // crimson dusk, cyan lights
-  [4000,  [150, 58,150], [255,168, 72], 0.88],   // plum, amber lights
-  [9000,  [ 44,158,150], [255, 74, 78], 0.96],   // jade skyline, red lights
-  [14000, [ 48,102,196], [255,180, 84], 0.82],   // indigo air, warm lights
-  [22000, [178, 50,140], [104,240,232], 0.70],   // magenta, cyan lights
-  [28000, [ 96, 52,176], [255, 92,160], 0.42],   // blackout, pink lights
-  [46000, [ 62, 76,190], [122,244,222], 0.36],   // orbit, ice lights
-  [72000, [112, 58,192], [255,110,180], 0.32],   // deep space, magenta
-  [96000, [ 72, 86,200], [130,250,214], 0.30]
+  [0,     [232, 84, 96], [ 96,232,226], 0.94],   // crimson dusk, cyan lights
+  [1600,  [176, 70,168], [255,176, 78], 0.90],   // plum, amber lights
+  [3600,  [ 48,178,168], [255, 84, 88], 0.96],   // jade skyline, red lights
+  [5600,  [ 56,120,220], [255,190, 96], 0.86],   // indigo air, warm lights
+  [8800,  [198, 58,152], [110,244,236], 0.66],   // magenta, cyan lights
+  [11200, [ 96, 52,176], [255, 92,160], 0.26],   // blackout, pink lights
+  [18400, [ 62, 76,190], [122,244,222], 0.17],   // orbit, ice lights
+  [28800, [112, 58,192], [255,110,180], 0.13],   // deep space, magenta
+  [38400, [ 72, 86,200], [130,250,214], 0.11]
 ];
 function hueAt(f){
   let i = 0;
@@ -477,20 +477,41 @@ function hueAt(f){
   return [mixRGB(a[1],b[1],t), mixRGB(a[2],b[2],t), lerp(a[3], b[3], t)];
 }
 
-/* Type bias: a sprite is the zone hue nudged a little toward its own
-   colour, never its own colour outright. */
-const BIAS = {
-  car:    [255, 56, 52],  glass:  [120,240,255], steel: [150,180,220],
-  crane:  [255,150, 40],  rust:   [255,120, 60],  cargo: [255, 80, 60],
-  pigeon: [190,170,220],  gull:   [230,230,255],  heli:  [120,255,170],
-  plane:  [190,225,255],  jet:    [160,210,255],  meteor:[255,190,110],
-  junk:   [170,200,240],  solar:  [110,160,255],  gold:  [255,200,110],
-  rock:   [255,170,140],  alien:  [ 90,255,170],  comet: [180,245,255],
-  flame:  [255,215,150],  person: [255,215,190],  brass: [255,190,110],
-  trim:   [255,206, 96],  jet:    [150,216,255]
+/* Material ramps, authored like sprite palettes rather than generated:
+   five stops each - outline, shadow, base, light, specular - lit from
+   the upper left. The zone hue is mixed in at only 14%, so a crane is
+   orange and a gull is white while the scene still feels unified. */
+const MATDEF = {
+  car:    ['#2A0A10','#7A1420','#C42A32','#F0564E','#FF9A86'],
+  trim:   ['#3A2406','#8A5E12','#D9A22A','#F5D06A','#FFF0B8'],
+  glass:  ['#12303E','#2E6E8E','#5AA8C8','#96DCF0','#E2FBFF'],
+  steel:  ['#10151E','#2E3644','#59657A','#8A98AC','#C6D4E4'],
+  crane:  ['#2A1606','#8A4E0C','#E0900F','#FFBE45','#FFE8A8'],
+  rust:   ['#241209','#6B3A1E','#A25E36','#C98A5C','#EFC49A'],
+  cargo:  ['#260A0C','#7A1E22','#B03A34','#D96A58','#F5A48C'],
+  pigeon: ['#10121C','#2E3448','#4E5872','#808CA6','#C2CCE0'],
+  gull:   ['#18202C','#7E8CA0','#C2CEDC','#EEF4FA','#FFFFFF'],
+  heli:   ['#0C1610','#24421E','#46703A','#6E9C56','#A8CC84'],
+  plane:  ['#141A26','#6E7C90','#B4C0D0','#E4ECF4','#FFFFFF'],
+  jet:    ['#101622','#45516A','#77879E','#AEBED2','#E4EEF8'],
+  meteor: ['#2A1206','#8A3A12','#D4712A','#FFAE5C','#FFEEC0'],
+  junk:   ['#101620','#38445C','#64728C','#94A4BC','#CEDCEC'],
+  solar:  ['#0A1028','#1E3070','#3050A8','#5A7ED8','#96B4F4'],
+  gold:   ['#2A1E06','#8A6212','#C69428','#EEC45E','#FFEAA6'],
+  rock:   ['#1A1616','#3E3634','#6A5E56','#948478','#C4B2A0'],
+  alien:  ['#06180E','#1E5A32','#36A05A','#62D486','#A8F4BC'],
+  comet:  ['#0C2436','#2E7AA0','#5AB4D8','#9EE4F4','#FFFFFF'],
+  flame:  ['#3A1204','#C4541A','#FF9A2A','#FFD86A','#FFFBE0'],
+  jetfl:  ['#0C2A4A','#2E78C8','#6AB4F0','#B4E4FF','#FFFFFF'],
+  person: ['#0A0C16','#1E2A46','#34507E','#6E86B8','#FFDCC0'],
+  brass:  ['#3A2406','#8A5E12','#D9A22A','#F5D06A','#FFF0B8']
 };
+const hex2 = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+const MATRGB = {};
+for (const k in MATDEF) MATRGB[k] = MATDEF[k].map(hex2);
+
 const MAT = {};
-for (const k in BIAS) MAT[k] = { edge:'#000', lo:'#000', base:'#000', hi:'#000', rim:'#000' };
+for (const k in MATDEF) MAT[k] = { edge:'#000', lo:'#000', base:'#000', hi:'#000', sp:'#000', rim:'#000' };
 const MAGENTA = '#FF5CC8';
 const RED_HI = '#FF4438', RED_LO = '#9B1B12';
 
@@ -513,11 +534,26 @@ function updatePalette(){
   C.hue = h; C.acc = acc; C.burn = burn;
   /* Sky: a deep lid, the hue through the middle, the horizon lit.
      Nowhere near black - the hue has to stay readable as a colour. */
-  C.top = mixRGB(h, BLACK, 0.80 - burn*0.08);
-  C.mid = mixRGB(h, BLACK, 0.56 - burn*0.14);
-  C.bot = mixRGB(mixRGB(h, BLACK, 0.34 - burn*0.20), acc, 0.10 + burn*0.08);
+  C.top = mixRGB(h, BLACK, 1 - burn*0.44);
+  C.mid = mixRGB(h, BLACK, 1 - burn*0.74);
+  C.bot = mixRGB(mixRGB(h, BLACK, 1 - burn*0.97), acc, 0.10 + burn*0.10);
   C.accent = rgb(acc);
   C.accentDim = rgb(mixRGB(acc, BLACK, 0.45));
+
+  const VOID = [16,10,26];
+  C.L = [];
+  for (let i = 0; i < 4; i++){
+    const base = i === 0 ? mixRGB(mixRGB(C.mid, C.bot, 0.5), VOID, 0.10)
+                         : mixRGB(C.bot, VOID, [0, 0.50, 0.72, 0.90][i]);
+    C.L.push({
+      base: rgb(base),
+      hi:   rgb(mixRGB(base, acc, i === 0 ? 0.07 : 0.22 - i*0.04)),
+      sp:   rgb(mixRGB(base, [255,238,220], i === 0 ? 0.08 : 0.30 - i*0.06)),
+      lo:   rgb(mixRGB(base, BLACK, i === 0 ? 0.10 : 0.34)),
+      seam: rgb(mixRGB(base, BLACK, i === 0 ? 0.14 : 0.52)),
+      win:  rgb(mixRGB(mixRGB(acc, [255,255,255], 0.3), C.bot, [0.86, 0.46, 0.10, 1][i]))
+    });
+  }
 
   /* silhouette layers - the same hue, stepped down in value */
   C.far    = rgb(mixRGB(C.bot, BLACK, 0.34));
@@ -528,34 +564,25 @@ function updatePalette(){
   C.nearLo = rgb(mixRGB(h, BLACK, 0.84));
   C.win      = rgb(mixRGB(acc, [255,255,255], 0.25));
   C.panelMid = rgb(mixRGB(mixRGB(acc, [255,255,255], 0.25), C.bot, 0.42));
-  C.panelFar = rgb(mixRGB(mixRGB(acc, [255,255,255], 0.25), C.bot, 0.74));
+  C.panelFar = rgb(mixRGB(mixRGB(acc, [255,255,255], 0.25), C.bot, 0.90));
   C.cloudHi= rgb(mixRGB(C.bot, [255,235,220], 0.40));
   C.cloud  = rgb(mixRGB(C.bot, BLACK, 0.24));
   C.cloudLo= rgb(mixRGB(C.bot, BLACK, 0.48));
 
-  /* every sprite ramp, regenerated from the zone hue */
-  for (const k in BIAS){
-    const car = k === 'car', fl = k === 'flame' || k === 'jet', tr = k === 'trim';
-    const b = mixRGB(h, BIAS[k], car ? 0.74 : fl ? 0.9 : tr ? 0.78 : 0.42);
-    const m = MAT[k];
-    m.edge = rgb(mixRGB(b, BLACK, 0.88));
-    m.lo   = rgb(mixRGB(b, BLACK, car || tr ? 0.62 : 0.70));
-    m.base = rgb(mixRGB(b, BLACK, car ? 0.34 : tr ? 0.30 : 0.52));
-    m.hi   = rgb(mixRGB(b, BLACK, car ? 0.12 : tr ? 0.06 : 0.32));
-    m.rim  = rgb(mixRGB(b, [255,248,240], fl ? 0.7 : 0.46));
+  /* Sprite ramps keep their own colour, lightly tinted by the zone. */
+  const TINT = 0.14;
+  for (const k in MATRGB){
+    const r = MATRGB[k], m = MAT[k];
+    m.edge = rgb(mixRGB(r[0], h, TINT * 0.5));
+    m.lo   = rgb(mixRGB(r[1], h, TINT));
+    m.base = rgb(mixRGB(r[2], h, TINT));
+    m.hi   = rgb(mixRGB(r[3], h, TINT * 0.8));
+    m.sp   = rgb(mixRGB(r[4], h, TINT * 0.5));
+    m.rim  = m.hi;
   }
-  MAT.flame.base = rgb(mixRGB(h, [255,190,100], 0.9));
-  MAT.flame.hi   = '#FFF3D6';
-  MAT.glass.base = rgb(mixRGB(mixRGB(h, [130,205,255], 0.78), BLACK, 0.20));
-  MAT.glass.hi   = rgb(mixRGB(mixRGB(h, [170,235,255], 0.86), [255,255,255], 0.55));
-  MAT.glass.lo   = rgb(mixRGB(mixRGB(h, [ 96,168,240], 0.76), BLACK, 0.42));
-  C.hair = rgb(mixRGB(h, [18, 20, 40], 0.86));
-  C.skin = rgb(mixRGB(h, [255,222,190], 0.86));
-  C.coat = rgb(mixRGB(h, [ 38, 62,138], 0.82));
-  C.coatHi = rgb(mixRGB(h, [ 66, 98,186], 0.82));
-  MAT.jet.hi     = '#EAF6FF';
-  MAT.jet.base   = rgb(mixRGB([140,210,255], h, 0.10));
-  MAT.jet.lo     = rgb(mixRGB([ 70,140,230], h, 0.20));
+  MAT.jet = MAT.jetfl;
+  C.hair = '#1A1C30'; C.skin = '#F2D2B0';
+  C.coat = '#2E4A86'; C.coatHi = '#4E74BE';
 
   const dark = lumAt(H * 0.08) <= 0.30;
   const hud = dark ? '#FFF0E8' : '#120610';
@@ -686,7 +713,7 @@ let px = 0, feet = 0, speed = SPEED_MIN, topSpeed = 0;
 let diff = 0, runTime = 0, seqT = 0;
 let shake = 0, flash = 0, slide = 0, fade = 0, garage = 1;
 let spawnT = 0, lastBlockerPx = -1e9, lastGapX = W/2;
-let nearMiss = 0, nextMilestone = 2500, recordBeaten = false;
+let nearMiss = 0, nextMilestone = 1000, recordBeaten = false;
 let nextShieldFeet = SHIELD_AT, nextRocketFeet = ROCKET_AT, zoneSeen = 1;
 let killedBy = '';
 
@@ -830,13 +857,13 @@ function start(){
   px = 0; feet = 0; speed = 40; topSpeed = 0; nearMiss = 0;
   diff = 0; seqT = 0; shake = 0; flash = 0; slide = 0; fade = 0; garage = 1;
   spawnT = 3.0; lastBlockerPx = -1e9; lastGapX = W/2;
-  nextMilestone = 2500; recordBeaten = false; zoneSeen = 1;
+  nextMilestone = 1000; recordBeaten = false; zoneSeen = 1;
   nextShieldFeet = SHIELD_AT; nextRocketFeet = ROCKET_AT; killedBy = '';
   player.x = W/2; player.vx = 0; player.tilt = 0; playerY = PLAYER_Y;
   player.shield = false; player.invT = 0; player.bubble = 0; player.boost = 0;
   player.crashRot = 0; player.crashSpin = 0; player.crashVy = 0;
   pointerOn = false;
-  shownZone = ''; nextMark = 0; nextDeepFeet = 76000;
+  shownZone = ''; nextMark = 0; nextDeepFeet = 30400;
   groundPx = 0; ignited = false; skyGroundY = H * 0.86;
   seedCity();
   state = S.INTRO;
@@ -853,7 +880,7 @@ function toMenu(){
   px = 0; feet = 0; speed = 80; fade = 0; slide = 0; garage = 0;
   player.x = W/2; player.vx = 0; player.tilt = 0; playerY = PLAYER_Y;
   player.shield = false; player.boost = 0; player.invT = 0;
-  nextMark = 0; nextDeepFeet = 76000; groundPx = 0;
+  nextMark = 0; nextDeepFeet = 30400; groundPx = 0;
   ignited = false; skyGroundY = H * 0.86;
   marks.length = 0; clouds.length = 0;
   seedCity();
@@ -911,8 +938,8 @@ const LAYER_PAR = [0.10, 0.30, 0.62, 0.96];
 const props = [];
 
 function styleFor(f){
-  if (f < 10500) return 'city';
-  if (f < 21000) return 'cloud';
+  if (f < 4200) return 'city';
+  if (f < 8400) return 'cloud';
   return 'rock';
 }
 
@@ -986,8 +1013,8 @@ function buildRock(w, h, layer, side){
 const BUILDERS = { city:buildCity, cloud:buildCloud, rock:buildRock };
 
 function makeProp(layer, side){
-  const monument = layer === 0 && Math.random() < 0.3;
-  const w = snap(monument ? rnd(150, 260)
+  const monument = layer === 0 && Math.random() < 0.18;
+  const w = snap(monument ? rnd(120, 190)
                 : [rnd(90,170), rnd(90,160), rnd(74,138), rnd(26,54)][layer]);
   const h = snap([rnd(420,900), rnd(300,700), rnd(240,560), rnd(140,360)][layer]);
   const style = styleFor(feet);
@@ -1031,11 +1058,11 @@ function updateProps(scroll){
 }
 
 const MARK_PLAN = [
-  [ 9600, 'cn'], [11100, 'wtc'], [12500, 'burj'],
-  [36000, 'moon'], [60000, 'mars']
+  [3840, 'cn'], [4440, 'wtc'], [5000, 'burj'],
+  [14400, 'moon'], [24000, 'mars']
 ];
 const DEEP_MARKS = ['ringed','planet','nebula','voyager','planet','nebula'];
-let nextMark = 0, nextDeepFeet = 76000;
+let nextMark = 0, nextDeepFeet = 30400;
 
 function pushMark(kind){
   const deep = kind !== 'cn' && kind !== 'wtc' && kind !== 'burj';
@@ -1054,7 +1081,7 @@ function updateMarks(dt, scroll){
   }
   if (feet >= nextDeepFeet){
     pushMark(pick(DEEP_MARKS));
-    nextDeepFeet = feet + rnd(7000, 13000);
+    nextDeepFeet = feet + rnd(2800, 5200);
   }
   for (let i = marks.length - 1; i >= 0; i--){
     marks[i].y += scroll * marks[i].par;
@@ -1064,10 +1091,10 @@ function updateMarks(dt, scroll){
 
 let cloudT = 0;
 function cloudDensity(f){
-  if (f < 300) return 0;
-  if (f < 1400) return (f - 300) / 1100 * 0.6;
-  if (f < 17000) return 1;
-  if (f < 21000) return 1 - (f - 17000) / 4000;
+  if (f < 120) return 0;
+  if (f < 560) return (f - 120) / 440 * 0.6;
+  if (f < 6800) return 1;
+  if (f < 8400) return 1 - (f - 6800) / 1600;
   return 0;
 }
 function updateClouds(dt, scroll){
@@ -1494,10 +1521,10 @@ function update(dt){
     px += speed * dt;
     feet = (px - groundPx) * FEET_PER_PX;
 
-    if (nextMilestone < feet - 6000) nextMilestone = Math.ceil(feet/2500)*2500;
+    if (nextMilestone < feet - 2400) nextMilestone = Math.ceil(feet/1000)*1000;
     while (feet >= nextMilestone){
       popup(commas(nextMilestone) + ' FT'); Sound.ding();
-      nextMilestone += 2500;
+      nextMilestone += 1000;
     }
     if (!recordBeaten && best > 0 && feet > best){
       recordBeaten = true; popup('NEW RECORD'); Sound.ding();
@@ -1518,11 +1545,11 @@ function update(dt){
        After that they turn up rarely, and they drift further. */
     if (feet >= nextShieldFeet){
       if (!player.shield) spawnShield();
-      nextShieldFeet = feet + rnd(11000, 19000);
+      nextShieldFeet = feet + rnd(4400, 7600);
     }
     if (feet >= nextRocketFeet){
       if (player.boost <= 0) spawnRocket();
-      nextRocketFeet = feet + rnd(12000, 21000);
+      nextRocketFeet = feet + rnd(4800, 8400);
     }
     syncHUD();
 
@@ -1601,7 +1628,7 @@ function drawMotes(){
 }
 
 function drawStars(){
-  const a = clamp((feet - 20000) / 8000, 0, 1);
+  const a = clamp((feet - 8000) / 3200, 0, 1);
   if (a <= 0.02) return;
   ctx.save();
   for (const s of stars){
@@ -1734,47 +1761,88 @@ function drawMark(m){
   ctx.restore();
 }
 
-/* Draw one layer of props: flat masses, a lit top lip, glowing inset
-   panels, antennae with lit tips, and angular crystal growths. */
+/* Draw one layer of props. Every mass is a built object, not a
+   rectangle: a lit left face, a shaded right face, a cornice with a
+   specular lip, floor seams and a grid of windows - which is what the
+   eye reads as sixteen-bit rather than as programmer art. */
 function drawProps(layer){
-  const fill = [C.far, C.mid1, C.near, C.nearLo][layer];
-  const lip  = [C.farHi, C.nearHi, C.nearHi, C.accentDim][layer];
+  const L = C.L[layer];
   for (const p of props){
     if (p.layer !== layer) continue;
     const x = snap(p.x), y = snap(p.y);
     if (y > H + 40 || y + p.h < -120) continue;
-    ctx.fillStyle = fill;
+    const city = p.style === 'city', rock = p.style === 'rock';
+
+    /* masts behind the masses */
+    ctx.fillStyle = L.lo;
     for (const sp of p.spikes) ctx.fillRect(x + sp[0], y + sp[1], sp[2], snap(-sp[1]) + PIX*2);
-    for (const b of p.m) ctx.fillRect(x + b[0], y + b[1], b[2], b[3]);
-    if (p.style === 'city'){                   /* lit floor lips */
-      ctx.fillStyle = lip;
-      for (const b of p.m) ctx.fillRect(x + b[0], y + b[1], b[2], PIX);
-    } else if (p.style === 'cloud' && p.m.length){
-      ctx.fillStyle = lip;
-      ctx.fillRect(x + p.m[0][0], y + p.m[0][1], p.m[0][2], PIX*2);
+    ctx.fillStyle = L.base;
+    for (const sp of p.spikes) ctx.fillRect(x + sp[0], y + sp[1], Math.max(PIX, sp[2] - PIX), snap(-sp[1]));
+
+    for (const b of p.m){
+      const bx = x + b[0], by = y + b[1], bw = b[2], bh = b[3];
+      if (by > H || by + bh < -40 || bw <= 0) continue;
+      ctx.fillStyle = L.base; ctx.fillRect(bx, by, bw, bh);
+      if (!rock){
+        ctx.fillStyle = L.lo;  ctx.fillRect(bx + bw - PIX*3, by, PIX*3, bh);   /* shaded face */
+        ctx.fillStyle = L.hi;  ctx.fillRect(bx, by, PIX*2, bh);                /* lit face */
+      }
+      ctx.fillStyle = L.hi;  ctx.fillRect(bx, by, bw, PIX*2);                  /* cornice */
+      ctx.fillStyle = L.sp;  ctx.fillRect(bx, by, bw, PIX);
+      if (!rock){ ctx.fillStyle = L.lo; ctx.fillRect(bx, by + PIX*2, bw, PIX); }
+      if (city && layer > 0){                                                 /* floor seams */
+        ctx.fillStyle = L.seam;
+        for (let sy = by + PIX*9; sy < by + bh; sy += PIX*9) ctx.fillRect(bx + PIX*2, sy, bw - PIX*5, PIX);
+      }
+      if (city && layer > 0 && layer < 3 && bw > PIX*14){                     /* windows */
+        const cols = Math.floor((bw - PIX*8) / (PIX*7));
+        const rows = Math.floor((bh - PIX*12) / (PIX*9));
+        for (let r = 0; r < rows && r < 48; r++){
+          const wy = by + PIX*11 + r*PIX*9;
+          if (wy > H) break;
+          if (wy < -PIX*6) continue;
+          for (let c = 0; c < cols; c++){
+            const n = Math.sin((r*12.9898 + c*78.233 + p.lit*137.7) * 43758.5453);
+            const f = n - Math.floor(n);
+            if (f > 0.46) continue;
+            ctx.fillStyle = f > 0.2 ? L.win : L.seam;
+            ctx.fillRect(bx + PIX*5 + c*PIX*7, wy, PIX*3, PIX*4);
+          }
+        }
+      }
     }
-    if (p.notch){                              /* pitted rock */
-      ctx.fillStyle = layer === 3 ? '#000000' : C.nearLo;
-      for (const n of p.notch) ctx.fillRect(x + n[0], y + n[1], n[2], n[3]);
+    if (p.notch){                                   /* pitted rock */
+      ctx.fillStyle = L.seam;
+      for (const n of p.notch){
+        ctx.fillRect(x + n[0], y + n[1], n[2], n[3]);
+        ctx.fillStyle = L.lo;
+        ctx.fillRect(x + n[0], y + n[1], n[2], PIX);
+        ctx.fillStyle = L.seam;
+      }
     }
     if (layer < 3){
       const glowA = [0.10, 0.20, 0.34][layer];
-      const panel = [C.panelFar, C.panelMid, C.win][layer];
-      ctx.fillStyle = panel;
+      ctx.fillStyle = L.sp;
       for (const sp of p.spikes) ctx.fillRect(x + sp[0], y + sp[1] - PIX*2, sp[2], PIX*2);
       for (const pn of p.panels){
         glow(x + pn[0] + pn[2]/2, y + pn[1] + pn[3]/2,
              Math.max(pn[2], pn[3]) * 1.5, C.accent, glowA);
       }
-      for (const pn of p.panels) ctx.fillRect(x + pn[0], y + pn[1], pn[2], pn[3]);
-      if (layer === 2){
-        ctx.fillStyle = C.accent;
-        for (const pn of p.panels) ctx.fillRect(x + pn[0], y + pn[1], pn[2], PIX);
+      for (const pn of p.panels){                    /* framed light panels */
+        ctx.fillStyle = L.seam;
+        ctx.fillRect(x + pn[0] - PIX, y + pn[1] - PIX, pn[2] + PIX*2, pn[3] + PIX*2);
+        ctx.fillStyle = [C.panelFar, C.panelMid, C.win][layer];
+        ctx.fillRect(x + pn[0], y + pn[1], pn[2], pn[3]);
+        if (layer === 2){
+          ctx.fillStyle = C.accent;
+          ctx.fillRect(x + pn[0], y + pn[1], pn[2], PIX);
+        }
       }
     }
     for (const c of p.crys) crystal(x + c[0], y + c[1], c[2], layer);
   }
 }
+
 /* an angular growth - stacked wedges with a bright core */
 function crystal(cx, cy, s, layer){
   glow(cx, cy, s * 3, C.accent, layer < 3 ? 0.3 : 0.16);
