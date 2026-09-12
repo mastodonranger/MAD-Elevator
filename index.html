@@ -455,26 +455,53 @@ function difficultyAt(f){
    is the lamp you carry up the shaft.
    ================================================================ */
 const BLACK = [0,0,0];
-/* [altitude, dominant hue, complementary accent, how bright it all sits]
-   Every zone is one hue family lit by its opposite - red lamps on jade,
-   cyan lamps on crimson - which is the whole trick. */
-const ZONE_HUE = [
-  [0,     [232, 84, 96], [ 96,232,226], 0.94],   // crimson dusk, cyan lights
-  [1600,  [176, 70,168], [255,176, 78], 0.90],   // plum, amber lights
-  [3600,  [ 48,178,168], [255, 84, 88], 0.96],   // jade skyline, red lights
-  [5600,  [ 56,120,220], [255,190, 96], 0.86],   // indigo air, warm lights
-  [8800,  [198, 58,152], [110,244,236], 0.66],   // magenta, cyan lights
-  [11200, [ 96, 52,176], [255, 92,160], 0.26],   // blackout, pink lights
-  [18400, [ 62, 76,190], [122,244,222], 0.17],   // orbit, ice lights
-  [28800, [112, 58,192], [255,110,180], 0.13],   // deep space, magenta
-  [38400, [ 72, 86,200], [130,250,214], 0.11]
+const hx = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+
+/* Authored palettes, keyed to altitude. Each is a four-stop sky, six
+   flat depth tones for the built layers, a window colour, a roof-lamp
+   red, an accent, and how strongly the sun and stars show. Depth is
+   carried by flat value steps between layers - no face shading - which
+   is what gives these skylines their stacked, papery look. */
+const PAL = [
+  { at:0,     sky:['#6A5A9C','#B083AE','#EFA98E','#F8CFA6'],
+    lay:['#E8BCC2','#D5A5B6','#BB8DAB','#8F7093','#5B5776','#2B434F'],
+    win:'#F7DCA6', lamp:'#FF6152', acc:'#FFD2A0', sun:1.0, star:0.35 },
+  { at:1600,  sky:['#58519C','#9A7BB2','#E09A96','#F3C0A8'],
+    lay:['#D9B3C0','#C69DB4','#A886A8','#7E6A90','#4E5274','#24404E'],
+    win:'#F7DCA6', lamp:'#FF6152', acc:'#FFC0A8', sun:0.8, star:0.45 },
+  { at:3600,  sky:['#2E7FC4','#63AEDE','#A6D6EE','#DCEFF6'],
+    lay:['#C6DEEC','#A4C4DC','#82A6C6','#6285AC','#46658C','#2B466A'],
+    win:'#FFF0C0', lamp:'#FF6152', acc:'#FFF4C8', sun:0.3, star:0 },
+  { at:5600,  sky:['#17509E','#3E7FC6','#7FB4DE','#BCDCEE'],
+    lay:['#B4D2E8','#90B4D6','#6E93C0','#4E72A4','#375684','#223E64'],
+    win:'#FFF0C0', lamp:'#FF6152', acc:'#CFE8FF', sun:0.15, star:0 },
+  { at:8800,  sky:['#241A46','#5B3A72','#A85A80','#D98E82'],
+    lay:['#C7899A','#A5748C','#83627E','#5E4F6C','#3D3A55','#221F36'],
+    win:'#FFD9A0', lamp:'#FF6152', acc:'#FFC9E0', sun:0.25, star:0.5 },
+  { at:11200, sky:['#080716','#140F2A','#241A42','#33234F'],
+    lay:['#4A3C62','#3E3356','#322A48','#251F38','#191428','#0E0B1A'],
+    win:'#C9B6FF', lamp:'#FF6152', acc:'#B9A6FF', sun:0, star:1 },
+  { at:18400, sky:['#04040E','#08061A','#0C0A22','#12102C'],
+    lay:['#2E2A48','#26223C','#1E1B32','#171426','#100E1C','#090812'],
+    win:'#A8C6FF', lamp:'#FF6152', acc:'#9FC4FF', sun:0, star:1 },
+  { at:28800, sky:['#050416','#0A0722','#100A2E','#17103A'],
+    lay:['#392F58','#302849','#27213C','#1D1830','#151224','#0B0916'],
+    win:'#D6B6FF', lamp:'#FF6152', acc:'#C9A6FF', sun:0, star:1 }
 ];
-function hueAt(f){
+const PALRGB = PAL.map(q => ({
+  at:q.at, sky:q.sky.map(hx), lay:q.lay.map(hx),
+  win:hx(q.win), lamp:hx(q.lamp), acc:hx(q.acc), sun:q.sun, star:q.star
+}));
+function palAt(f){
   let i = 0;
-  while (i < ZONE_HUE.length-2 && f > ZONE_HUE[i+1][0]) i++;
-  const a = ZONE_HUE[i], b = ZONE_HUE[i+1];
-  const t = clamp((f - a[0]) / (b[0] - a[0]), 0, 1);
-  return [mixRGB(a[1],b[1],t), mixRGB(a[2],b[2],t), lerp(a[3], b[3], t)];
+  while (i < PALRGB.length-2 && f > PALRGB[i+1].at) i++;
+  const a = PALRGB[i], b = PALRGB[i+1];
+  const t = clamp((f - a.at) / (b.at - a.at), 0, 1);
+  const mixList = (p, q) => p.map((c, k) => mixRGB(c, q[k], t));
+  return { sky: mixList(a.sky, b.sky), lay: mixList(a.lay, b.lay),
+           win: mixRGB(a.win, b.win, t), lamp: mixRGB(a.lamp, b.lamp, t),
+           acc: mixRGB(a.acc, b.acc, t),
+           sun: lerp(a.sun, b.sun, t), star: lerp(a.star, b.star, t) };
 }
 
 /* Material ramps, authored like sprite palettes rather than generated:
@@ -513,64 +540,46 @@ for (const k in MATDEF) MATRGB[k] = MATDEF[k].map(hex2);
 const MAT = {};
 for (const k in MATDEF) MAT[k] = { edge:'#000', lo:'#000', base:'#000', hi:'#000', sp:'#000', rim:'#000' };
 const MAGENTA = '#FF5CC8';
-const RED_HI = '#FF4438', RED_LO = '#9B1B12';
 
-const C = { top:[0,0,0], mid:[0,0,0], bot:[0,0,0], hue:[206,62,88], acc:[86,226,222], burn:1 };
+const C = { sky:[[0,0,0],[0,0,0],[0,0,0],[0,0,0]], lay:[], hue:[200,120,150], acc:[255,220,180] };
 let hudInkNow = '';
 
+function skyColAt(t){
+  const u = clamp(t, 0, 1) * 3, i = Math.min(2, u | 0);
+  return mixRGB(C.sky[i], C.sky[i+1], u - i);
+}
 function lumAt(y){
-  const t = clamp(y / H, 0, 1);
-  const c = t < 0.5 ? mixRGB(C.top, C.mid, t*2) : mixRGB(C.mid, C.bot, (t-0.5)*2);
+  const c = skyColAt(y / H);
   return (c[0]*0.3 + c[1]*0.59 + c[2]*0.11) / 255;
 }
+const RED_HI = '#FF4438', RED_LO = '#9B1B12';
 function redPulse(){ return (Math.floor(runTime * 5) % 2) ? RED_LO : RED_HI; }
-function uiSet(){ return lumAt(H*0.2) > 0.34 ? UI_DARK : UI_LIGHT; }
-const UI_DARK  = { base:'#0B0610', edge:'#FFE8E0' };
-const UI_LIGHT = { base:'#FFE8E0', edge:'#0B0610' };
+function uiSet(){ return lumAt(H*0.2) > 0.42 ? UI_DARK : UI_LIGHT; }
+const UI_DARK  = { base:'#22182E', edge:'#FFF4E8' };
+const UI_LIGHT = { base:'#FFF4E8', edge:'#22182E' };
 
 function updatePalette(){
-  const hb = hueAt(feet);
-  const h = hb[0], acc = hb[1], burn = hb[2];
-  C.hue = h; C.acc = acc; C.burn = burn;
-  /* Sky: a deep lid, the hue through the middle, the horizon lit.
-     Nowhere near black - the hue has to stay readable as a colour. */
-  C.top = mixRGB(h, BLACK, 1 - burn*0.44);
-  C.mid = mixRGB(h, BLACK, 1 - burn*0.74);
-  C.bot = mixRGB(mixRGB(h, BLACK, 1 - burn*0.97), acc, 0.10 + burn*0.10);
-  C.accent = rgb(acc);
-  C.accentDim = rgb(mixRGB(acc, BLACK, 0.45));
+  const q = palAt(feet);
+  C.sky = q.sky;
+  C.hue = q.sky[1];
+  C.acc = q.acc;
+  C.accent = rgb(q.acc);
+  C.accentDim = rgb(mixRGB(q.acc, BLACK, 0.45));
+  C.sun = q.sun; C.starA = q.star;
+  C.lay = q.lay.map(rgb);
+  C.layRGB = q.lay;
+  C.win = rgb(q.win);
+  C.lamp = rgb(q.lamp);
+  C.day = (q.sky[3][0]*0.3 + q.sky[3][1]*0.59 + q.sky[3][2]*0.11) / 255 > 0.55;
+  C.winDay = q.lay.map(c => rgb(mixRGB(c, [26,26,48], 0.34)));
+  C.cloudHi = rgb(mixRGB(q.sky[3], [255,255,255], 0.72));
+  C.cloud   = rgb(mixRGB(q.sky[2], [255,246,238], 0.52));
+  C.cloudLo = rgb(mixRGB(q.sky[1], q.lay[1], 0.42));
+  C.panelFar = rgb(mixRGB(q.acc, q.sky[2], 0.76));
+  C.panelMid = rgb(mixRGB(q.acc, q.sky[2], 0.36));
 
-  const VOID = [16,10,26];
-  C.L = [];
-  for (let i = 0; i < 4; i++){
-    const base = i === 0 ? mixRGB(mixRGB(C.mid, C.bot, 0.5), VOID, 0.10)
-                         : mixRGB(C.bot, VOID, [0, 0.50, 0.72, 0.90][i]);
-    C.L.push({
-      base: rgb(base),
-      hi:   rgb(mixRGB(base, acc, i === 0 ? 0.07 : 0.22 - i*0.04)),
-      sp:   rgb(mixRGB(base, [255,238,220], i === 0 ? 0.08 : 0.30 - i*0.06)),
-      lo:   rgb(mixRGB(base, BLACK, i === 0 ? 0.10 : 0.34)),
-      seam: rgb(mixRGB(base, BLACK, i === 0 ? 0.14 : 0.52)),
-      win:  rgb(mixRGB(mixRGB(acc, [255,255,255], 0.3), C.bot, [0.86, 0.46, 0.10, 1][i]))
-    });
-  }
-
-  /* silhouette layers - the same hue, stepped down in value */
-  C.far    = rgb(mixRGB(C.bot, BLACK, 0.34));
-  C.farHi  = rgb(mixRGB(C.bot, acc, 0.30));
-  C.mid1   = rgb(mixRGB(C.bot, BLACK, 0.54));
-  C.near   = rgb(mixRGB(h, BLACK, 0.70));
-  C.nearHi = rgb(mixRGB(h, acc, 0.34));
-  C.nearLo = rgb(mixRGB(h, BLACK, 0.84));
-  C.win      = rgb(mixRGB(acc, [255,255,255], 0.25));
-  C.panelMid = rgb(mixRGB(mixRGB(acc, [255,255,255], 0.25), C.bot, 0.42));
-  C.panelFar = rgb(mixRGB(mixRGB(acc, [255,255,255], 0.25), C.bot, 0.90));
-  C.cloudHi= rgb(mixRGB(C.bot, [255,235,220], 0.40));
-  C.cloud  = rgb(mixRGB(C.bot, BLACK, 0.24));
-  C.cloudLo= rgb(mixRGB(C.bot, BLACK, 0.48));
-
-  /* Sprite ramps keep their own colour, lightly tinted by the zone. */
-  const TINT = 0.14;
+  /* sprite ramps keep their own colour, tinted a little by the sky */
+  const TINT = 0.12, h = q.sky[1];
   for (const k in MATRGB){
     const r = MATRGB[k], m = MAT[k];
     m.edge = rgb(mixRGB(r[0], h, TINT * 0.5));
@@ -584,12 +593,12 @@ function updatePalette(){
   C.hair = '#1A1C30'; C.skin = '#F2D2B0';
   C.coat = '#2E4A86'; C.coatHi = '#4E74BE';
 
-  const dark = lumAt(H * 0.08) <= 0.30;
-  const hud = dark ? '#FFF0E8' : '#120610';
+  const dark = lumAt(H * 0.08) <= 0.42;
+  const hud = dark ? '#FFF4E8' : '#22182E';
   if (hud !== hudInkNow){
     hudInkNow = hud;
     stage.style.setProperty('--hudInk', hud);
-    stage.style.setProperty('--hudVeil', dark ? 'rgba(10,4,14,.58)' : 'rgba(255,232,224,.58)');
+    stage.style.setProperty('--hudVeil', dark ? 'rgba(18,10,28,.52)' : 'rgba(255,246,238,.58)');
   }
 }
 
@@ -934,7 +943,7 @@ document.getElementById('menuBtn').addEventListener('click', e => { e.stopPropag
    screen in near-black. What gets built changes with altitude: city,
    then cloud banks, then rock and derelicts.
    ================================================================ */
-const LAYER_PAR = [0.10, 0.30, 0.62, 0.96];
+const LAYER_PAR = [0.05, 0.12, 0.24, 0.42, 0.66, 0.96];
 const props = [];
 
 function styleFor(f){
@@ -956,7 +965,7 @@ function buildCity(w, h, layer, side){
     const jw = snap(rnd(26, 58)), jy = snap(rnd(60, Math.max(70, h - 120)));
     m.push([side < 0 ? w : snap(-jw), jy, jw, snap(rnd(34, 80))]);
   }
-  const cols = layer >= 2 ? rndi(1, 2) : 1;
+  const cols = layer >= 3 ? rndi(1, 2) : 1;
   let py = snap(rnd(40, 110));
   while (py < h - 60){
     const pw = snap(w * rnd(0.30, 0.52) / cols), ph = snap(rnd(14, 46));
@@ -968,8 +977,13 @@ function buildCity(w, h, layer, side){
   for (let i = 0, n = rndi(1, 3); i < n; i++){
     spikes.push([snap(rnd(6, Math.max(8, w - 10))), snap(-rnd(24, 90)), snap(rnd(3, 7))]);
   }
+  /* rooftop furniture - the texture that makes a skyline read */
+  const furn = [];
+  if (Math.random() < 0.45) furn.push(['tank',  snap(rnd(6, Math.max(8, w - 26)))]);
+  if (Math.random() < 0.55) furn.push(['box',   snap(rnd(4, Math.max(6, w - 24)))]);
+  if (Math.random() < 0.30) furn.push(['crane', snap(rnd(0, Math.max(2, w - 36)))]);
   if (Math.random() < 0.4) crys.push([snap(rnd(4, Math.max(6, w-20))), snap(rnd(20, h*0.5)), rnd(7, 14)]);
-  return { m, panels, spikes, crys };
+  return { m, panels, spikes, crys, furn };
 }
 
 function buildCloud(w, h, layer, side){
@@ -1002,7 +1016,7 @@ function buildRock(w, h, layer, side){
   for (let i = 0, n = rndi(2, 4); i < n; i++){
     crys.push([snap(rnd(2, Math.max(4, w - 16))), snap(rnd(10, Math.max(20, h - 20))), rnd(8, 20)]);
   }
-  if (layer >= 2 && Math.random() < 0.45){          /* a derelict bolted on */
+  if (layer >= 3 && Math.random() < 0.45){          /* a derelict bolted on */
     const dy = snap(rnd(20, Math.max(30, h - 90)));
     m.push([snap(side < 0 ? w - 10 : -30), dy, 40, 30]);
     panels.push([snap(side < 0 ? w - 4 : -24), snap(dy + 8), 20, 10]);
@@ -1015,8 +1029,9 @@ const BUILDERS = { city:buildCity, cloud:buildCloud, rock:buildRock };
 function makeProp(layer, side){
   const monument = layer === 0 && Math.random() < 0.18;
   const w = snap(monument ? rnd(120, 190)
-                : [rnd(90,170), rnd(90,160), rnd(74,138), rnd(26,54)][layer]);
-  const h = snap([rnd(420,900), rnd(300,700), rnd(240,560), rnd(140,360)][layer]);
+                : [rnd(80,150), rnd(84,156), rnd(80,150), rnd(76,140), rnd(70,130), rnd(26,54)][layer]);
+  const h = snap([rnd(420,900), rnd(340,760), rnd(300,680), rnd(260,600), rnd(230,540),
+                  rnd(140,360)][layer]);
   const style = styleFor(feet);
   const p = BUILDERS[style](w, h, layer, side);
   p.style = style;
@@ -1027,13 +1042,13 @@ function makeProp(layer, side){
   return p;
 }
 function topUpProps(){
-  for (let layer = 0; layer < 4; layer++){
+  for (let layer = 0; layer < 6; layer++){
     for (const side of [-1, 1]){
       let top = Infinity, count = 0;
       for (const p of props){
         if (p.layer === layer && p.side === side){ count++; if (p.y < top) top = p.y; }
       }
-      const want = [2, 2, 2, 3][layer];
+      const want = [1, 2, 2, 2, 2, 3][layer];
       let guard = 0;
       while ((count < want || top > -260) && guard++ < 8){
         const p = makeProp(layer, side);
@@ -1594,19 +1609,25 @@ function update(dt){
    15. Rendering
    ================================================================ */
 function drawSky(){
-  const bands = 22;
-  const at = t => t < 0.5 ? mixRGB(C.top, C.mid, t*2) : mixRGB(C.mid, C.bot, (t-0.5)*2);
+  const bands = 40;
   for (let i = 0; i < bands; i++){
     const y0 = snap(H * i / bands), y1 = snap(H * (i+1) / bands);
-    ctx.fillStyle = rgb(at(i / bands));
+    ctx.fillStyle = rgb(skyColAt(i / bands));
     ctx.fillRect(0, y0, W, y1 - y0 + PIX);
   }
-  for (let i = 1; i < bands; i++){                 /* dithered seams */
+  for (let i = 1; i < bands; i++){                  /* dithered seams */
     const y = snap(H * i / bands);
-    dither(0, y - PIX*4, W, PIX*4, rgb(at(i / bands)), 1);
+    dither(0, y - PIX*3, W, PIX*3, rgb(skyColAt(i / bands)), 1);
   }
-  if (C.burn > 0.04){                               /* the horizon glows */
-    glow(W*0.5, H*1.04, 660, rgb(mixRGB(C.hue, C.acc, 0.35)), C.burn * 0.42);
+  if (C.sun > 0.02){                                /* the low sun */
+    const sy = H * 0.62 + px * 0.05, sx = W * 0.82;
+    if (sy < H + 160){
+      ctx.save();
+      ctx.globalAlpha = C.sun * 0.9;
+      glow(sx, sy, 210, rgb(mixRGB(C.sky[2], [255,246,226], 0.7)), 0.45);
+      disc(sx, sy, 46, rgb(mixRGB([255,250,238], C.sky[2], 0.16)));
+      ctx.restore();
+    }
   }
 }
 
@@ -1628,7 +1649,7 @@ function drawMotes(){
 }
 
 function drawStars(){
-  const a = clamp((feet - 8000) / 3200, 0, 1);
+  const a = C.starA;
   if (a <= 0.02) return;
   ctx.save();
   for (const s of stars){
@@ -1675,7 +1696,7 @@ function drawMark(m){
   ctx.save();
   ctx.translate(x, y);
   if (m.kind === 'cn' || m.kind === 'wtc' || m.kind === 'burj'){
-    ctx.fillStyle = C.mid1;
+    ctx.fillStyle = C.lay[1];
     if (m.kind === 'cn'){
       ctx.fillRect(-PIX*2, PIX*26, PIX*4, PIX*300);        /* shaft */
       ctx.fillRect(-PIX, 0, PIX*2, PIX*26);                /* spire */
@@ -1761,83 +1782,99 @@ function drawMark(m){
   ctx.restore();
 }
 
-/* Draw one layer of props. Every mass is a built object, not a
-   rectangle: a lit left face, a shaded right face, a cornice with a
-   specular lip, floor seams and a grid of windows - which is what the
-   eye reads as sixteen-bit rather than as programmer art. */
+/* Draw one layer of props. Each depth layer is ONE flat colour - the
+   stacked, papery look of a pixel skyline comes from value steps
+   between layers, not from shading inside them. The only marks inside
+   a mass are window dots and the red roof lamps. */
 function drawProps(layer){
-  const L = C.L[layer];
+  const fill = C.lay[layer];
+  const winA = [0.10, 0.16, 0.26, 0.44, 0.72, 1][layer];
+  const lampA = [0.15, 0.3, 0.5, 0.75, 1, 1][layer];
   for (const p of props){
     if (p.layer !== layer) continue;
     const x = snap(p.x), y = snap(p.y);
-    if (y > H + 40 || y + p.h < -120) continue;
-    const city = p.style === 'city', rock = p.style === 'rock';
+    if (y > H + 40 || y + p.h < -160) continue;
+    const city = p.style === 'city';
 
-    /* masts behind the masses */
-    ctx.fillStyle = L.lo;
+    ctx.fillStyle = fill;
     for (const sp of p.spikes) ctx.fillRect(x + sp[0], y + sp[1], sp[2], snap(-sp[1]) + PIX*2);
-    ctx.fillStyle = L.base;
-    for (const sp of p.spikes) ctx.fillRect(x + sp[0], y + sp[1], Math.max(PIX, sp[2] - PIX), snap(-sp[1]));
+    for (const b of p.m) ctx.fillRect(x + b[0], y + b[1], b[2], b[3]);
+    if (p.notch){                                  /* pitted rock */
+      ctx.fillStyle = C.lay[Math.min(5, layer + 1)];
+      for (const n of p.notch) ctx.fillRect(x + n[0], y + n[1], n[2], n[3]);
+      ctx.fillStyle = fill;
+    }
+    if (p.style === 'cloud' && p.m.length){        /* lit cloud crown */
+      ctx.fillStyle = C.lay[Math.max(0, layer - 1)];
+      for (const b of p.m) ctx.fillRect(x + b[0], y + b[1], b[2], PIX*2);
+      ctx.fillStyle = fill;
+    }
 
-    for (const b of p.m){
-      const bx = x + b[0], by = y + b[1], bw = b[2], bh = b[3];
-      if (by > H || by + bh < -40 || bw <= 0) continue;
-      ctx.fillStyle = L.base; ctx.fillRect(bx, by, bw, bh);
-      if (!rock){
-        ctx.fillStyle = L.lo;  ctx.fillRect(bx + bw - PIX*3, by, PIX*3, bh);   /* shaded face */
-        ctx.fillStyle = L.hi;  ctx.fillRect(bx, by, PIX*2, bh);                /* lit face */
+    /* rooftop furniture, in the same flat tone */
+    if (p.furn){
+      const top = y + p.m[0][1];
+      for (const f of p.furn){
+        const fx = x + f[1];
+        if (f[0] === 'tank'){
+          ctx.fillRect(fx, top - PIX*9, PIX*8, PIX*6);
+          ctx.fillRect(fx + PIX, top - PIX*3, PIX*2, PIX*3);
+          ctx.fillRect(fx + PIX*5, top - PIX*3, PIX*2, PIX*3);
+        } else if (f[0] === 'box'){
+          ctx.fillRect(fx, top - PIX*5, PIX*10, PIX*5);
+        } else {
+          ctx.fillRect(fx + PIX*6, top - PIX*30, PIX*2, PIX*30);   /* mast */
+          ctx.fillRect(fx, top - PIX*30, PIX*18, PIX*2);           /* jib  */
+          ctx.fillRect(fx + PIX*14, top - PIX*28, PIX, PIX*7);     /* line */
+        }
       }
-      ctx.fillStyle = L.hi;  ctx.fillRect(bx, by, bw, PIX*2);                  /* cornice */
-      ctx.fillStyle = L.sp;  ctx.fillRect(bx, by, bw, PIX);
-      if (!rock){ ctx.fillStyle = L.lo; ctx.fillRect(bx, by + PIX*2, bw, PIX); }
-      if (city && layer > 0){                                                 /* floor seams */
-        ctx.fillStyle = L.seam;
-        for (let sy = by + PIX*9; sy < by + bh; sy += PIX*9) ctx.fillRect(bx + PIX*2, sy, bw - PIX*5, PIX);
-      }
-      if (city && layer > 0 && layer < 3 && bw > PIX*14){                     /* windows */
+    }
+
+    if (city && winA > 0.05){                      /* window dots */
+      ctx.save();
+      ctx.globalAlpha = C.day ? Math.min(1, winA + 0.25) : winA;
+      ctx.fillStyle = C.day ? C.winDay[layer] : C.win;
+      for (const b of p.m){
+        const bx = x + b[0], by = y + b[1], bw = b[2], bh = b[3];
+        if (bw < PIX*14) continue;
         const cols = Math.floor((bw - PIX*8) / (PIX*7));
-        const rows = Math.floor((bh - PIX*12) / (PIX*9));
-        for (let r = 0; r < rows && r < 48; r++){
+        const rows = Math.min(46, Math.floor((bh - PIX*12) / (PIX*9)));
+        for (let r = 0; r < rows; r++){
           const wy = by + PIX*11 + r*PIX*9;
           if (wy > H) break;
           if (wy < -PIX*6) continue;
           for (let c = 0; c < cols; c++){
             const n = Math.sin((r*12.9898 + c*78.233 + p.lit*137.7) * 43758.5453);
-            const f = n - Math.floor(n);
-            if (f > 0.46) continue;
-            ctx.fillStyle = f > 0.2 ? L.win : L.seam;
-            ctx.fillRect(bx + PIX*5 + c*PIX*7, wy, PIX*3, PIX*4);
+            if (n - Math.floor(n) > 0.4) continue;
+            ctx.fillRect(bx + PIX*5 + c*PIX*7, wy, PIX*2, PIX*3);
           }
         }
       }
+      ctx.restore();
     }
-    if (p.notch){                                   /* pitted rock */
-      ctx.fillStyle = L.seam;
-      for (const n of p.notch){
-        ctx.fillRect(x + n[0], y + n[1], n[2], n[3]);
-        ctx.fillStyle = L.lo;
-        ctx.fillRect(x + n[0], y + n[1], n[2], PIX);
-        ctx.fillStyle = L.seam;
+
+    if (p.lit > 0.62 && lampA > 0.25){             /* red roof lamps */
+      ctx.save();
+      ctx.globalAlpha = lampA;
+      ctx.fillStyle = C.lamp;
+      for (const b of p.m){
+        if (b[2] < PIX*18) continue;
+        const ly = y + b[1] - PIX*2;
+        if (ly < -PIX*4 || ly > H) continue;
+        ctx.fillRect(x + b[0] + b[2] - PIX*4, ly, PIX, PIX*2);
       }
+      ctx.restore();
     }
-    if (layer < 3){
-      const glowA = [0.10, 0.20, 0.34][layer];
-      ctx.fillStyle = L.sp;
-      for (const sp of p.spikes) ctx.fillRect(x + sp[0], y + sp[1] - PIX*2, sp[2], PIX*2);
+
+    if (layer >= 2 && layer <= 4){                 /* lit panels */
+      const gi = layer - 2;
       for (const pn of p.panels){
         glow(x + pn[0] + pn[2]/2, y + pn[1] + pn[3]/2,
-             Math.max(pn[2], pn[3]) * 1.5, C.accent, glowA);
-      }
-      for (const pn of p.panels){                    /* framed light panels */
-        ctx.fillStyle = L.seam;
-        ctx.fillRect(x + pn[0] - PIX, y + pn[1] - PIX, pn[2] + PIX*2, pn[3] + PIX*2);
-        ctx.fillStyle = [C.panelFar, C.panelMid, C.win][layer];
+             Math.max(pn[2], pn[3]) * 1.5, C.accent, [0.12, 0.22, 0.32][gi]);
+        ctx.fillStyle = [C.panelFar, C.panelMid, C.win][gi];
         ctx.fillRect(x + pn[0], y + pn[1], pn[2], pn[3]);
-        if (layer === 2){
-          ctx.fillStyle = C.accent;
-          ctx.fillRect(x + pn[0], y + pn[1], pn[2], PIX);
-        }
       }
+      ctx.fillStyle = C.accent;
+      for (const sp of p.spikes) ctx.fillRect(x + sp[0], y + sp[1] - PIX*2, sp[2], PIX*2);
     }
     for (const c of p.crys) crystal(x + c[0], y + c[1], c[2], layer);
   }
@@ -1846,7 +1883,7 @@ function drawProps(layer){
 /* an angular growth - stacked wedges with a bright core */
 function crystal(cx, cy, s, layer){
   glow(cx, cy, s * 3, C.accent, layer < 3 ? 0.3 : 0.16);
-  ctx.fillStyle = layer < 3 ? C.accentDim : C.nearLo;
+  ctx.fillStyle = layer < 4 ? C.accentDim : C.lay[5];
   for (let i = 0; i < 6; i++){
     const t = i / 5, hw = snap(s * (1 - Math.abs(t - 0.35) * 1.3));
     if (hw <= 0) continue;
@@ -2407,7 +2444,9 @@ function draw(){
     drawProps(1);
     drawClouds(false);
     drawProps(2);
+    drawProps(3);
     drawMotes();
+    drawProps(4);
     drawSpeedLines();
   }
   drawGarage();
@@ -2422,7 +2461,7 @@ function draw(){
 
   drawBits();
   drawClouds(true);
-  if (garage < 0.99) drawProps(3);        /* the near-black frame, in front */
+  if (garage < 0.99) drawProps(5);        /* the dark frame, in front */
   drawPopups();
   ctx.restore();
 

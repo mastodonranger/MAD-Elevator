@@ -113,33 +113,27 @@ towering cloud banks through the airspace zones, then pitted rock and bolted-on
 derelicts out in the belt — with angular **crystal growths** on the near layers
 throughout, glowing in the zone's accent.
 
-**Materials, not tints.** Every sprite owns a five-stop ramp — outline,
-shadow, base, light, specular — authored as a sprite palette would be, with
-the zone hue mixed in at only 14%. A crane is orange, a gull is white, the
-car is red lacquer with gold trim and blue glass, and the scene still reads
-as one place. Light comes from the upper left: the outline pass lays a dark
-edge all round, then a light edge up and to the left.
+**Authored palettes, not generated hues.** Each altitude owns a hand-set
+palette in `PAL`: a four-stop sky, six flat depth tones, a window colour, a
+roof-lamp red and an accent — sunset violet-to-peach over the city, bright
+day blue at the skyline, dusk magenta in the upper atmosphere, then night.
+The game interpolates between them as you climb.
 
-**Built masses, not rectangles.** Every background mass is drawn as an
-object — a lit left face, a shaded right face, a cornice with a specular
-lip, floor seams every nine pixels and a grid of windows, lit or dark by a
-stable hash. That surface detail is the difference between pixel art and a
-flat shape, and it is what the eye reads as sixteen-bit.
+**Flat depth layers.** Six of them, from `0.05` to `0.96` parallax. Each
+layer is ONE flat colour — the stacked, papery look of a pixel skyline comes
+from value steps *between* layers, never from shading inside them. The only
+marks inside a mass are window dots (lit and warm at night, darker panes by
+day) and the occasional red roof lamp.
 
-**One hue family per zone, lit by its complement.** Each zone owns a dominant
-hue and an accent roughly opposite it — crimson dusk with cyan lights, plum
-construction with amber, a jade skyline with red, magenta upper atmosphere with
-cyan. The sky, all four layer tones, the panel lights, the motes and all
-twenty-one sprite ramps are generated from that pair in `updatePalette()`; no
-sprite owns a colour, only a small bias toward one. Change `ZONE_HUE` and the
-whole game changes mood.
+**Skyline furniture.** Water towers on legs, roof boxes, antenna masts and
+construction cranes sit on the building tops in the same flat tone. That
+silhouette texture is most of what makes a pixel city read as a city.
 
-**The car.** A gilded lantern, not a box: ball finial over a rounded dome,
-a flared two-step cap with corner brackets, faceted blue glazing behind gold
-posts and mullions, a decorated skirt carrying a lozenge, and twin thruster
-cylinders throwing blue-white plasma. Its shell stays red in every zone; the
-trim reads gold, the glass reads sky, and the passenger keeps dark hair, a
-pale face and a navy coat whatever the zone hue is doing around them.
+**Materials for sprites.** Everything that moves carries an authored
+five-stop ramp — outline, shadow, base, light, specular — with the sky
+mixed in at only 12%, so a crane is orange and a gull is white. Light comes
+from the upper left: a dark outline all round, then a light edge up and to
+the left, matching the lantern.
 
 **Backlighting and bloom.** The horizon is the brightest thing in frame, so
 every sprite takes a dark separation outline plus a bright rim on its
