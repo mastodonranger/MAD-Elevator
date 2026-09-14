@@ -90,6 +90,25 @@
     font-size:calc(var(--u)*26);font-weight:700;line-height:1.15;
     text-shadow:0 calc(var(--u)*1) calc(var(--u)*10) rgba(0,0,0,.7);
   }
+  /* held power-ups sit with the Best readout, out of the flight path */
+  #held{
+    display:flex;justify-content:flex-end;gap:calc(var(--u)*8);
+    margin-top:calc(var(--u)*10);
+  }
+  .chip{
+    width:calc(var(--u)*40);height:calc(var(--u)*40);
+    display:grid;place-items:center;border-radius:50%;
+    border:calc(var(--u)*2.5) solid currentColor;
+    box-shadow:0 0 calc(var(--u)*14) currentColor,
+               inset 0 0 calc(var(--u)*12) rgba(0,0,0,.45);
+    animation:chipPulse 1.6s ease-in-out infinite;
+  }
+  .chip svg{width:calc(var(--u)*21);height:calc(var(--u)*21);display:block}
+  .chip.shield{color:#FF6A55;background:rgba(112,16,10,.86)}
+  .chip.vms{color:#4FD98A;background:rgba(10,72,44,.86)}
+  .chip[hidden]{display:none}
+  @keyframes chipPulse{0%,100%{opacity:1}50%{opacity:.62}}
+  @media (prefers-reduced-motion:reduce){ .chip{animation:none} }
   #powerups{
     position:absolute;left:0;right:0;top:calc(var(--u)*196);
     display:flex;flex-direction:column;align-items:center;
@@ -200,10 +219,10 @@
   .logo .mad{
     font-size:calc(var(--u)*112);line-height:.82;font-weight:900;
     letter-spacing:calc(var(--u)*-3);
-    color:var(--brass);
+    color:var(--alarm);
     text-shadow:
-      0 calc(var(--u)*3) 0 var(--brass-deep),
-      0 calc(var(--u)*6) calc(var(--u)*30) rgba(244,195,74,.35);
+      0 calc(var(--u)*3) 0 #8E1409,
+      0 calc(var(--u)*6) calc(var(--u)*30) rgba(255,59,48,.42);
   }
   .logo .elevator{
     font-size:calc(var(--u)*40);line-height:1;font-weight:800;
@@ -306,11 +325,23 @@
       <div id="bestWrap">
         <div class="label">Best</div>
         <div id="best" class="mono">0 FT</div>
+        <div id="held">
+          <div class="chip shield" id="shieldLabel" hidden title="Shield" aria-label="Shield held">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 2.8l7 2.7v6c0 4.6-3 8.1-7 9.7-4-1.6-7-5.1-7-9.7v-6z"></path>
+            </svg>
+          </div>
+          <div class="chip vms" id="vmsLabel" hidden title="VMS3" aria-label="VMS3 extra life held">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M6.6 2.9l2.4 3.4-2 1.7a12 12 0 0 0 5.5 5.5l1.7-2 3.4 2.4-.7 3a1.6 1.6 0 0 1-1.8 1.2A16.6 16.6 0 0 1 3.3 5.4 1.6 1.6 0 0 1 4.5 3.6z"></path>
+            </svg>
+          </div>
+        </div>
       </div>
     </div>
     <div id="powerups">
-      <div class="pwr" id="shieldLabel" hidden>Shield Active</div>
-      <div class="pwr vms" id="vmsLabel" hidden>VMS3 On Call</div>
       <div class="pwr" id="f1Label" hidden>F1 System Speed</div>
     </div>
   </div>

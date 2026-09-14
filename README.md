@@ -112,6 +112,11 @@ Three of them, and they resolve in a fixed order when you hit something:
 the shield absorbs it first, then VMS3 rescues you, and only then does the
 run end.
 
+The two you *hold* show as small icons under the Best readout in the top
+right, so nothing sits in the middle of the shaft where you are flying.
+F1 keeps its centre label, since it lasts three seconds and announces a
+state rather than a thing you are carrying.
+
 **Shield** — a bubble, guaranteed at 1,100ft and then every 1,400–2,400ft.
 It absorbs one crash: the hit pops the bubble instead of ending the run and
 you get 1.3 seconds of mercy to fly clear. The shell is translucent so the
