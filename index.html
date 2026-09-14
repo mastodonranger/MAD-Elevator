@@ -281,12 +281,21 @@
    canvas (9:16); the transform in resize() maps it to the stage.
    ================================================================ */
 const W = 540, H = 960;
-const FEET_PER_PX   = 0.75;   // one logical pixel of travel = 9 inches
-const RAMP_FEET     = 36000;  // altitude at which difficulty maxes out
-const SPEED_MIN     = 360;    // px/s of climb at launch
-const SPEED_MAX     = 1150;   // px/s of climb once fully ramped
+/* Altitude is on a real scale: the car is 118px tall and reads as an 8ft
+   elevator, the world's tallest towers top out around 2,500ft, and the
+   game is paced so a 500ft zone is a stretch of flying rather than a
+   couple of seconds. */
+const FEET_PER_PX   = 0.07;   // one logical pixel of travel, in feet
+const RAMP_FEET     = 9000;   // altitude at which difficulty maxes out
+const SPEED_MIN     = 240;    // px/s of climb at launch
+const SPEED_MAX     = 620;    // px/s of climb once fully ramped
 const PLAYER_Y      = H * 0.70;
 const PLAYER_W      = 84, PLAYER_H = 118;
+/* Hazard spacing is a DISTANCE, not a delay: the vertical gap between
+   one hazard and the next has to hold whatever the climb speed is, or
+   slowing the game down just packs them closer together. */
+const SPAWN_GAP_EASY = 470;   // px of climb between hazards at launch
+const SPAWN_GAP_HARD = 200;   // ...and once fully ramped
 const PLAYER_ACCEL  = 2600;   // keyboard steering acceleration, px/s^2
 const PLAYER_MAXV   = 640;
 const WALL_PAD      = 10;
@@ -346,15 +355,36 @@ window.addEventListener('orientationchange', () => setTimeout(resize, 120), {pas
    Each band owns the hazards that live there and the label the HUD
    shows. spawnable weights are relative to each other.
    ================================================================ */
+const ZONE_H = 500;            /* every zone is the same 500ft of climb */
+const CONSTRUCTION_TOP = 2800; /* nothing built reaches above this */
 const ZONES = [
-  { from:0,     name:'Low Airspace',   mix:[['bird',1]] },
-  { from:1800,  name:'Construction',   mix:[['bird',0.55],['crane',1]] },
-  { from:4500,  name:'Debris Field',   mix:[['bird',0.25],['crane',0.55],['debris',1]] },
-  { from:9000,  name:'Flight Level',   mix:[['debris',0.5],['crane',0.4],['plane',1]] },
-  { from:16000, name:'Stratosphere',   mix:[['plane',1],['debris',0.55],['sat',0.35]] },
-  { from:24000, name:'Low Orbit',      mix:[['plane',0.35],['sat',0.7],['ufo',1]] },
-  { from:36000, name:'Deep Space',     mix:[['ufo',1],['sat',0.7],['debris',0.6],['crane',0.25]] }
+  /* the built world - towers, cranes, and what falls off them */
+  { from:0,     name:'Street Level',      mix:[['bird',1]] },
+  { from:500,   name:'Midtown',           mix:[['bird',1],['crane',0.4]] },
+  { from:1000,  name:'High Rise',         mix:[['bird',0.7],['crane',1]] },
+  { from:1500,  name:'Skyline',           mix:[['bird',0.4],['crane',1],['debris',0.6]] },
+  { from:2000,  name:'Spire',             mix:[['crane',1],['debris',0.9],['bird',0.3]] },
+  { from:2500,  name:'Rooftop Winds',     mix:[['crane',0.6],['debris',0.5],['bird',0.7],['heli',0.6]] },
+  /* above everything built: only things that fly */
+  { from:3000,  name:'Low Airspace',      mix:[['heli',1],['bird',0.8]] },
+  { from:3500,  name:'Helicopter Lanes',  mix:[['heli',1],['bird',0.45]] },
+  { from:4000,  name:'Approach',          mix:[['heli',0.8],['plane',1],['bird',0.25]] },
+  { from:4500,  name:'Flight Level',      mix:[['plane',1],['heli',0.45]] },
+  { from:5000,  name:'Cruising Altitude', mix:[['plane',1],['heli',0.22]] },
+  /* the atmosphere, and everything burning up in it */
+  { from:5500,  name:'Stratosphere',      mix:[['plane',0.45],['meteor',1]] },
+  { from:6000,  name:'Mesosphere',        mix:[['meteor',1]] },
+  { from:6500,  name:'Meteor Shower',     mix:[['meteor',1.5]] },
+  { from:7000,  name:'Thermosphere',      mix:[['meteor',1],['satfrag',0.6]] },
+  /* space */
+  { from:7500,  name:'Karman Line',       mix:[['satfrag',1],['asteroid',0.7],['meteor',0.3]] },
+  { from:8000,  name:'Low Orbit',         mix:[['sat',1],['satfrag',0.8],['asteroid',0.5]] },
+  { from:8500,  name:'Debris Belt',       mix:[['satfrag',1],['sat',0.6],['asteroid',0.9]] },
+  { from:9000,  name:'Asteroid Field',    mix:[['asteroid',1],['satfrag',0.4]] },
+  { from:9500,  name:'Deep Space',        mix:[['asteroid',1],['ufo',0.8],['sat',0.4]] },
+  { from:10000, name:'The Long Dark',     mix:[['ufo',1],['asteroid',0.9],['sat',0.5],['satfrag',0.5]] }
 ];
+const BUILT = { crane:1, debris:1 };   /* only exists below CONSTRUCTION_TOP */
 function zoneFor(feet){
   let z = ZONES[0];
   for (let i=0;i<ZONES.length;i++) if (feet >= ZONES[i].from) z = ZONES[i];
@@ -364,12 +394,13 @@ function zoneFor(feet){
 /* Sky keyframes: [altitude ft, topColor, bottomColor] */
 const SKY = [
   [0,     [143,211,244], [232,246,255]],
-  [4500,  [ 92,176,226], [186,230,255]],
-  [11000, [ 44,110,180], [110,180,224]],
-  [19000, [ 22, 58,124], [ 56,110,186]],
-  [30000, [  9, 20, 58], [ 26, 50,116]],
-  [46000, [  4,  7, 22], [ 10, 18, 52]],
-  [70000, [  1,  2,  8], [  3,  5, 16]]
+  [1200,  [116,196,236], [212,241,255]],
+  [2800,  [ 92,176,226], [186,230,255]],
+  [4200,  [ 44,110,180], [110,180,224]],
+  [5600,  [ 22, 58,124], [ 56,110,186]],
+  [7000,  [  9, 20, 58], [ 26, 50,116]],
+  [8600,  [  4,  7, 22], [ 10, 18, 52]],
+  [11000, [  1,  2,  8], [  3,  5, 16]]
 ];
 function skyAt(feet){
   let i = 0;
@@ -472,10 +503,10 @@ let diff      = 0;
 let runTime   = 0;
 let shake     = 0;
 let flash     = 0;
-let spawnT    = 0;
+let nextSpawnPx = 0;
 let lastBlockerPx = -1e9;  // px-travel stamp of the last full-width hazard
 let lastGapX  = W/2;
-let nextMilestone = 2500;
+let nextMilestone = 1000;
 let recordBeaten = false;
 
 const obstacles = [];
@@ -612,8 +643,8 @@ function start(){
   obstacles.length = 0; clouds.length = 0; bits.length = 0; popups.length = 0;
   px = 0; feet = 0; speed = SPEED_MIN; topSpeed = 0; nearMiss = 0;
   diff = 0; runTime = 0; shake = 0; flash = 0;
-  spawnT = 1.15; lastBlockerPx = -1e9; lastGapX = W/2;
-  nextMilestone = 2500; recordBeaten = false;
+  nextSpawnPx = 420; lastBlockerPx = -1e9; lastGapX = W/2;
+  nextMilestone = 1000; recordBeaten = false;
   player.x = W/2; player.vx = 0; player.tilt = 0;
   player.crashT = 0; player.crashRot = 0; player.crashSpin = 0; player.crashVy = 0;
   pointerOn = false;
@@ -680,6 +711,21 @@ function rectsOf(o){
       { x: o.x - 30,    y: o.y - 34, w: 60,  h: 34 }
     ];
   }
+  if (o.t === 'heli'){
+    return [
+      { x: o.x - 38, y: o.y - 20, w: 76,  h: 42 },   /* cabin */
+      { x: o.x - 76, y: o.y - 34, w: 152, h: 10 }    /* rotor disc */
+    ];
+  }
+  if (o.t === 'meteor'){
+    return [{ x: o.x - o.r*0.85, y: o.y - o.r*0.85, w: o.r*1.7, h: o.r*1.7 }];
+  }
+  if (o.t === 'asteroid'){
+    return [{ x: o.x - o.r*0.82, y: o.y - o.r*0.82, w: o.r*1.64, h: o.r*1.64 }];
+  }
+  if (o.t === 'satfrag'){
+    return [{ x: o.x - o.w*0.38, y: o.y - o.h*0.42, w: o.w*0.76, h: o.h*0.84 }];
+  }
   const sx = o.t === 'bird' ? 0.62 : 0.82;      // birds are forgiving
   const sy = o.t === 'bird' ? 0.66 : 0.82;
   return [{ x: o.x - o.w*sx/2, y: o.y - o.h*sy/2, w: o.w*sx, h: o.h*sy }];
@@ -688,8 +734,8 @@ function rectsOf(o){
 function spawnBird(){
   const y = -60;
   const o = { t:'bird', x: rnd(60, W-60), y, w:64, h:38,
-              vx: rnd(-90, 90), vy: rnd(20, 70), phase: rnd(0, 6.28),
-              amp: rnd(20, 70), flap: rnd(7, 11), base: 0, passed:false,
+              vx: rnd(-52, 52), vy: rnd(18, 58), phase: rnd(0, 6.28),
+              amp: rnd(18, 58), flap: rnd(7, 11), base: 0, passed:false,
               tone: pick([0, 1, 2]) };
   o.base = o.x;
   obstacles.push(o);
@@ -712,27 +758,64 @@ function spawnDebris(){
   const size = kind === 'beam' ? rnd(84, 132) : rnd(44, 82);
   obstacles.push({ t:'debris', kind, x: rnd(50, W-50), y: -70,
                    w: size, h: kind === 'beam' ? size*0.34 : size*0.8,
-                   vx: rnd(-70, 70), vy: rnd(130, 260),
+                   vx: rnd(-42, 42), vy: rnd(90, 170),
                    rot: rnd(0, 6.28), spin: rnd(-2.6, 2.6), passed:false });
 }
 function spawnPlane(){
   const dir = Math.random() < 0.5 ? 1 : -1;
   obstacles.push({ t:'plane', dir, x: dir > 0 ? -170 : W + 170, y: -80,
-                   w: 232, h: 74, vx: dir * rnd(190, 320), vy: rnd(30, 70),
+                   w: 232, h: 74, vx: dir * rnd(125, 215), vy: rnd(26, 58),
                    passed:false, blink: 0 });
 }
 function spawnUFO(){
   obstacles.push({ t:'ufo', x: rnd(70, W-70), y: -70, w: 136, h: 64,
-                   vx: 0, vy: rnd(40, 90), phase: rnd(0,6.28),
-                   homing: rnd(60, 150), passed:false });
+                   vx: 0, vy: rnd(34, 74), phase: rnd(0,6.28),
+                   homing: rnd(36, 92), passed:false });
 }
 function spawnSat(){
   obstacles.push({ t:'sat', x: rnd(90, W-90), y: -80, w: 176, h: 56,
-                   vx: rnd(-50, 50), vy: rnd(40, 90),
+                   vx: rnd(-30, 30), vy: rnd(34, 74),
                    rot: rnd(-0.4, 0.4), spin: rnd(-0.35, 0.35), passed:false });
 }
+function spawnHeli(){
+  const dir = Math.random() < 0.5 ? 1 : -1;
+  obstacles.push({ t:'heli', dir, x: dir > 0 ? -150 : W + 150, y: -70,
+                   w: 168, h: 76, vx: dir * rnd(70, 122), vy: rnd(22, 52),
+                   bob: rnd(0, 6.28), rotor: 0, passed:false,
+                   livery: rndi(0, 2) });
+}
+function spawnMeteor(){
+  /* comes in steep and fast, burning as it goes */
+  const dir = Math.random() < 0.5 ? 1 : -1;
+  const r = rnd(13, 26);
+  obstacles.push({ t:'meteor', x: rnd(40, W-40), y: -90, r,
+                   w: r*2, h: r*2, tail: r * rnd(8.5, 11.5),
+                   vx: dir * rnd(40, 125), vy: rnd(150, 260),
+                   rot: rnd(0, 6.28), spin: rnd(-3, 3),
+                   flick: rnd(0, 6.28), passed:false });
+}
+function spawnAsteroid(){
+  const r = rnd(24, 48);
+  const lumps = Array.from({length: 11}, (_, i) =>
+    0.78 + 0.24 * Math.abs(Math.sin(i * 2.17 + r)));
+  obstacles.push({ t:'asteroid', x: rnd(60, W-60), y: -90, r, lumps,
+                   w: r*2, h: r*2, vx: rnd(-42, 42), vy: rnd(45, 110),
+                   rot: rnd(0, 6.28), spin: rnd(-1.1, 1.1), passed:false,
+                   craters: Array.from({length: rndi(2,4)}, () => ({
+                     a: rnd(0, 6.28), d: rnd(0.18, 0.52), s: rnd(0.13, 0.26) })) });
+}
+function spawnSatFrag(){
+  const kind = pick(['panel','dish','strut']);
+  const w = kind === 'panel' ? rnd(88, 130) : rnd(58, 92);
+  obstacles.push({ t:'satfrag', kind, x: rnd(60, W-60), y: -90,
+                   w, h: kind === 'panel' ? w*0.42 : w*0.78,
+                   vx: rnd(-48, 48), vy: rnd(40, 100),
+                   rot: rnd(0, 6.28), spin: rnd(-1.8, 1.8), passed:false });
+}
 const SPAWNERS = { bird:spawnBird, crane:spawnCrane, debris:spawnDebris,
-                   plane:spawnPlane, ufo:spawnUFO, sat:spawnSat };
+                   plane:spawnPlane, ufo:spawnUFO, sat:spawnSat,
+                   heli:spawnHeli, meteor:spawnMeteor,
+                   asteroid:spawnAsteroid, satfrag:spawnSatFrag };
 
 function spawnOne(){
   const mix = zoneFor(feet).mix;
@@ -740,6 +823,11 @@ function spawnOne(){
   for (const m of mix) total += m[1];
   let r = Math.random() * total, chosen = mix[0][0];
   for (const m of mix){ r -= m[1]; if (r <= 0){ chosen = m[0]; break; } }
+  /* nothing built reaches above CONSTRUCTION_TOP, whatever the mix says */
+  if (BUILT[chosen] && feet > CONSTRUCTION_TOP){
+    const alt = mix.find(m => !BUILT[m[0]]);
+    chosen = alt ? alt[0] : 'heli';
+  }
   /* full-width hazards need breathing room from each other */
   if (chosen === 'crane' && px - lastBlockerPx < lerp(520, 380, diff)){
     chosen = mix.length > 1 ? (mix.find(m => m[0] !== 'crane') || mix[0])[0] : 'bird';
@@ -816,16 +904,16 @@ function updateObstacles(dt, scroll){
     const o = obstacles[i];
 
     if (o.t === 'bird'){
-      o.phase += dt * 2.1;
+      o.phase += dt * 1.25;
       o.base += o.vx * dt;
       if (o.base < 40 || o.base > W - 40){ o.vx *= -1; o.base = clamp(o.base, 40, W-40); }
       o.x = clamp(o.base + Math.sin(o.phase) * o.amp, 34, W - 34);
       o.flapT = (o.flapT || 0) + dt * o.flap;
     } else if (o.t === 'ufo'){
-      o.phase += dt * 1.6;
+      o.phase += dt * 1.0;
       const toward = Math.sign(player.x - o.x) * o.homing;
       o.vx = lerp(o.vx, toward, Math.min(1, 1.4*dt));
-      o.x += (o.vx + Math.sin(o.phase) * 60) * dt;
+      o.x += (o.vx + Math.sin(o.phase) * 36) * dt;
       o.x = clamp(o.x, 60, W - 60);
     } else if (o.t === 'plane'){
       o.x += o.vx * dt;
@@ -838,6 +926,18 @@ function updateObstacles(dt, scroll){
       o.x += o.vx * dt;
       o.rot += o.spin * dt;
       if (o.x < 30 || o.x > W - 30){ o.vx *= -1; o.x = clamp(o.x, 30, W-30); }
+    } else if (o.t === 'heli'){
+      o.x += o.vx * dt;
+      o.bob += dt * 2.1;
+      o.rotor += dt * 26;
+    } else if (o.t === 'meteor'){
+      o.x += o.vx * dt;
+      o.rot += o.spin * dt;
+      o.flick += dt * 18;
+    } else if (o.t === 'asteroid' || o.t === 'satfrag'){
+      o.x += o.vx * dt;
+      o.rot += o.spin * dt;
+      if (o.x < 34 || o.x > W - 34){ o.vx *= -1; o.x = clamp(o.x, 34, W-34); }
     }
 
     o.y += (scroll + (o.vy || 0) * dt);
@@ -878,10 +978,10 @@ function updateObstacles(dt, scroll){
 
 let cloudT = 0;
 function cloudDensity(f){
-  if (f < 260) return 0;
-  if (f < 1200) return (f - 260) / 940 * 0.6;
-  if (f < 26000) return 1;
-  if (f < 34000) return 1 - (f - 26000) / 8000;
+  if (f < 380) return 0;
+  if (f < 1500) return (f - 380) / 1120 * 0.75;
+  if (f < 4200) return 1;
+  if (f < 6000) return 1 - (f - 4200) / 1800;    /* thinning out of the air */
   return 0;
 }
 function updateClouds(dt, scroll){
@@ -945,7 +1045,7 @@ function update(dt){
     while (feet >= nextMilestone){
       popup(commas(nextMilestone) + ' FT');
       Sound.ding();
-      nextMilestone += 2500;
+      nextMilestone += 1000;
     }
     if (!recordBeaten && best > 0 && feet > best){
       recordBeaten = true;
@@ -956,10 +1056,9 @@ function update(dt){
     updatePlayer(dt);
     thrust();
 
-    spawnT -= dt;
-    if (spawnT <= 0){
+    if (px >= nextSpawnPx){
       spawnOne();
-      spawnT = lerp(0.95, 0.36, diff) * rnd(0.82, 1.28);
+      nextSpawnPx = px + lerp(SPAWN_GAP_EASY, SPAWN_GAP_HARD, diff) * rnd(0.82, 1.28);
     }
     syncHUD();
   } else if (state === S.CRASH){
@@ -999,7 +1098,7 @@ function drawSky(){
   ctx.fillRect(0, 0, W, H);
 
   /* low sun sits near the horizon and fades out as we leave the haze */
-  const sunA = clamp(1 - feet / 16000, 0, 1);
+  const sunA = clamp(1 - feet / 4600, 0, 1);
   if (sunA > 0.01){
     const sg = ctx.createRadialGradient(W*0.78, H*0.80, 10, W*0.78, H*0.80, 420);
     sg.addColorStop(0, 'rgba(255,241,206,' + (0.55*sunA) + ')');
@@ -1010,7 +1109,7 @@ function drawSky(){
 }
 
 function drawStars(){
-  const a = clamp((feet - 13000) / 12000, 0, 1);
+  const a = clamp((feet - 4000) / 2800, 0, 1);
   if (a <= 0.01) return;
   ctx.save();
   for (const s of stars){
@@ -1026,9 +1125,9 @@ function drawStars(){
 }
 
 function drawEarthLimb(){
-  const a = clamp((feet - 28000) / 9000, 0, 1) * clamp(1 - (feet - 55000) / 30000, 0, 1);
+  const a = clamp((feet - 7000) / 1800, 0, 1) * clamp(1 - (feet - 16000) / 9000, 0, 1);
   if (a <= 0.01) return;
-  const sink = clamp((feet - 28000) / 34000, 0, 1) * 520;
+  const sink = clamp((feet - 7000) / 9000, 0, 1) * 520;
   const cy = H + 640 + sink, r = 980;
   ctx.save();
   ctx.globalAlpha = a;
@@ -1067,10 +1166,13 @@ function building(b, groundY, fill, winAlpha){
 }
 
 function drawCity(){
-  const farY  = H * 0.88 + px * 0.34;
-  const nearY = H * 0.94 + px * 0.58;
+  /* parallax is per pixel of climb, so these are set against the new
+     altitude scale: the skyline sinks away over the first 2,800ft and
+     is gone once we are above everything built */
+  const farY  = H * 0.88 + px * 0.016;
+  const nearY = H * 0.94 + px * 0.028;
   if (farY - 520 > H) return;
-  const haze = clamp(1 - feet / 3400, 0, 1);
+  const haze = clamp(1 - feet / 3000, 0, 1);
   ctx.save();
   ctx.globalAlpha = haze;
 
@@ -1114,7 +1216,7 @@ function drawCloud(c){
     ctx.arc(p.dx, p.dy, p.r, 0, 6.2832);
   }
 
-  const high = feet > 16000;
+  const high = feet > 4200;
   const g = ctx.createLinearGradient(0, c.top, 0, 24);
   if (high){
     g.addColorStop(0,   'rgba(226,236,250,0.95)');
@@ -1423,6 +1525,249 @@ function drawSat(o){
   ctx.restore();
 }
 
+
+/* ---- helicopter: the first thing up here that is not a bird -------- */
+const HELI_LIVERY = [
+  { hull:'#D8DEE6', hullLo:'#8D97A6', trim:'#D6453C', name:'news' },
+  { hull:'#2E4C7E', hullLo:'#16294A', trim:'#F2C14E', name:'police' },
+  { hull:'#E8752A', hullLo:'#A84A12', trim:'#F6E3C0', name:'rescue' }
+];
+function drawHeli(o){
+  const L = HELI_LIVERY[o.livery];
+  const d = o.dir;
+  ctx.save();
+  ctx.translate(o.x, o.y + Math.sin(o.bob) * 4);
+  ctx.scale(d, 1);
+  ctx.rotate(-0.05);
+
+  /* tail boom, back from the cabin */
+  ctx.fillStyle = L.hullLo;
+  ctx.beginPath();
+  ctx.moveTo(-24, -6); ctx.lineTo(-84, -9); ctx.lineTo(-84, 1); ctx.lineTo(-24, 8);
+  ctx.closePath(); ctx.fill();
+  /* tail fin */
+  ctx.fillStyle = L.trim;
+  ctx.beginPath();
+  ctx.moveTo(-72, -8); ctx.lineTo(-86, -30); ctx.lineTo(-72, -28); ctx.lineTo(-66, -8);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = L.hullLo;
+  ctx.beginPath();
+  ctx.moveTo(-78, 2); ctx.lineTo(-92, 16); ctx.lineTo(-76, 12); ctx.closePath(); ctx.fill();
+
+  /* cabin */
+  const hg = ctx.createLinearGradient(0, -22, 0, 22);
+  hg.addColorStop(0, '#FFFFFF');
+  hg.addColorStop(0.42, L.hull);
+  hg.addColorStop(1, L.hullLo);
+  ctx.fillStyle = hg;
+  ctx.beginPath();
+  ctx.moveTo(44, 2);
+  ctx.bezierCurveTo(44, -18, 24, -24, 4, -24);
+  ctx.lineTo(-22, -22);
+  ctx.bezierCurveTo(-30, -20, -30, 14, -20, 16);
+  ctx.lineTo(6, 20);
+  ctx.bezierCurveTo(28, 20, 44, 14, 44, 2);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(30,40,56,.55)'; ctx.lineWidth = 2; ctx.stroke();
+
+  /* nose glass */
+  const gg = ctx.createLinearGradient(10, -18, 34, 10);
+  gg.addColorStop(0, 'rgba(226,246,255,.95)');
+  gg.addColorStop(1, 'rgba(110,166,206,.9)');
+  ctx.fillStyle = gg;
+  ctx.beginPath();
+  ctx.moveTo(40, 0);
+  ctx.bezierCurveTo(40, -14, 24, -19, 8, -19);
+  ctx.lineTo(4, 12);
+  ctx.bezierCurveTo(24, 13, 38, 9, 40, 0);
+  ctx.closePath(); ctx.fill();
+
+  /* stripe and skids */
+  ctx.fillStyle = L.trim;
+  ctx.fillRect(-24, 2, 58, 5);
+  ctx.strokeStyle = '#59636F'; ctx.lineWidth = 3.4;
+  ctx.beginPath();
+  ctx.moveTo(-18, 18); ctx.lineTo(-14, 28); ctx.moveTo(16, 20); ctx.lineTo(14, 30);
+  ctx.moveTo(-26, 29); ctx.lineTo(28, 31);
+  ctx.stroke();
+
+  /* rotor: a disc of motion with two blades caught in it */
+  ctx.fillStyle = 'rgba(226,236,246,.20)';
+  ctx.beginPath(); ctx.ellipse(0, -30, 84, 7, 0, 0, 6.2832); ctx.fill();
+  ctx.strokeStyle = 'rgba(52,62,78,.75)'; ctx.lineWidth = 3;
+  const sp = Math.cos(o.rotor);
+  ctx.beginPath();
+  ctx.moveTo(-82*sp, -30 - 3*Math.sin(o.rotor));
+  ctx.lineTo( 82*sp, -30 + 3*Math.sin(o.rotor));
+  ctx.stroke();
+  ctx.fillStyle = L.hullLo;
+  ctx.fillRect(-5, -32, 10, 10);
+
+  /* tail rotor */
+  ctx.strokeStyle = 'rgba(52,62,78,.6)'; ctx.lineWidth = 2.4;
+  const tr = o.rotor * 1.6;
+  ctx.beginPath();
+  ctx.moveTo(-84 - 10*Math.cos(tr), -20 - 10*Math.sin(tr));
+  ctx.lineTo(-84 + 10*Math.cos(tr), -20 + 10*Math.sin(tr));
+  ctx.stroke();
+  ctx.restore();
+}
+
+/* ---- meteor: rock on the way in, burning ---------------------------- */
+function drawMeteor(o){
+  const m = Math.hypot(o.vx, o.vy) || 1;
+  const ux = -o.vx/m, uy = -o.vy/m;          /* back along the track */
+  const len = o.tail;
+  ctx.save();
+
+  /* the burn: a tapered streak plus a hot bloom at the head */
+  const tg = ctx.createLinearGradient(o.x, o.y, o.x + ux*len, o.y + uy*len);
+  tg.addColorStop(0,    'rgba(255,244,204,.92)');
+  tg.addColorStop(0.18, 'rgba(255,186,66,.72)');
+  tg.addColorStop(0.55, 'rgba(232,96,28,.34)');
+  tg.addColorStop(1,    'rgba(150,40,10,0)');
+  ctx.fillStyle = tg;
+  const px2 = -uy, py2 = ux;                  /* perpendicular */
+  ctx.beginPath();
+  ctx.moveTo(o.x + px2*o.r*0.95, o.y + py2*o.r*0.95);
+  ctx.lineTo(o.x + ux*len + px2*o.r*0.16, o.y + uy*len + py2*o.r*0.16);
+  ctx.lineTo(o.x + ux*len - px2*o.r*0.16, o.y + uy*len - py2*o.r*0.16);
+  ctx.lineTo(o.x - px2*o.r*0.95, o.y - py2*o.r*0.95);
+  ctx.closePath(); ctx.fill();
+
+  const bloom = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, o.r*3.1);
+  bloom.addColorStop(0,   'rgba(255,238,190,.85)');
+  bloom.addColorStop(0.4, 'rgba(255,156,52,.38)');
+  bloom.addColorStop(1,   'rgba(255,120,30,0)');
+  ctx.fillStyle = bloom;
+  ctx.beginPath(); ctx.arc(o.x, o.y, o.r*3.1, 0, 6.2832); ctx.fill();
+
+  /* sparks shedding off the back */
+  for (let i = 0; i < 5; i++){
+    const t = ((i * 0.21 + o.flick * 0.06) % 1);
+    const sx = o.x + ux*len*t + px2 * Math.sin(o.flick + i*2.4) * o.r * 0.7;
+    const sy = o.y + uy*len*t + py2 * Math.sin(o.flick + i*2.4) * o.r * 0.7;
+    ctx.fillStyle = 'rgba(255,' + (170 + ((i*37)%70)) + ',90,' + (0.75*(1-t)) + ')';
+    ctx.beginPath(); ctx.arc(sx, sy, (1 - t) * o.r * 0.26 + 1, 0, 6.2832); ctx.fill();
+  }
+
+  /* the rock itself, white hot on the leading face */
+  ctx.translate(o.x, o.y);
+  ctx.rotate(o.rot);
+  const rg = ctx.createLinearGradient(-o.r*0.4, -o.r*0.4, o.r*0.7, o.r*0.7);
+  rg.addColorStop(0, '#5A4238');
+  rg.addColorStop(0.55, '#3A2A24');
+  rg.addColorStop(1, '#FFD9A0');
+  ctx.fillStyle = rg;
+  ctx.beginPath();
+  for (let i = 0; i < 9; i++){
+    const a = i/9 * 6.2832;
+    const rr = o.r * (0.8 + 0.22*Math.abs(Math.sin(i*2.3 + o.r)));
+    const x = Math.cos(a)*rr, y = Math.sin(a)*rr;
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  }
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+/* ---- asteroid ------------------------------------------------------- */
+function drawAsteroid(o){
+  ctx.save();
+  ctx.translate(o.x, o.y);
+  ctx.rotate(o.rot);
+  const g = ctx.createLinearGradient(-o.r*0.6, -o.r*0.8, o.r*0.7, o.r*0.8);
+  g.addColorStop(0, '#B9AC9E');
+  g.addColorStop(0.45, '#8A7E72');
+  g.addColorStop(1, '#4A423C');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  for (let i = 0; i < o.lumps.length; i++){
+    const a = i / o.lumps.length * 6.2832;
+    const rr = o.r * o.lumps[i];
+    const x = Math.cos(a)*rr, y = Math.sin(a)*rr;
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  }
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(38,32,28,.6)'; ctx.lineWidth = 2.4; ctx.stroke();
+  ctx.save(); ctx.clip();
+  for (const c of o.craters){
+    const cx = Math.cos(c.a)*o.r*c.d, cy = Math.sin(c.a)*o.r*c.d;
+    ctx.fillStyle = 'rgba(58,50,44,.55)';
+    ctx.beginPath(); ctx.arc(cx, cy, o.r*c.s, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = 'rgba(214,204,192,.35)';
+    ctx.beginPath(); ctx.arc(cx - o.r*c.s*0.22, cy - o.r*c.s*0.26, o.r*c.s*0.72, 0, 6.2832); ctx.fill();
+  }
+  ctx.restore();
+  ctx.restore();
+}
+
+/* ---- satellite wreckage --------------------------------------------- */
+function drawSatFrag(o){
+  ctx.save();
+  ctx.translate(o.x, o.y);
+  ctx.rotate(o.rot);
+  const w = o.w, h = o.h;
+
+  if (o.kind === 'panel'){
+    /* a solar wing torn off at the root */
+    const pg = ctx.createLinearGradient(-w/2, -h/2, w/2, h/2);
+    pg.addColorStop(0, '#3C63C0');
+    pg.addColorStop(0.5, '#1E3A86');
+    pg.addColorStop(1, '#101F4E');
+    ctx.fillStyle = pg;
+    ctx.beginPath();
+    ctx.moveTo(-w/2, -h/2); ctx.lineTo(w/2 - 9, -h/2 + 4);
+    ctx.lineTo(w/2, h/2); ctx.lineTo(-w/2 + 6, h/2 - 3);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(150,180,240,.6)'; ctx.lineWidth = 1.6;
+    for (let i = 1; i < 5; i++){
+      const t = i/5;
+      ctx.beginPath();
+      ctx.moveTo(-w/2 + w*t, -h/2 + 3); ctx.lineTo(-w/2 + w*t - 3, h/2 - 3);
+      ctx.stroke();
+    }
+    ctx.beginPath(); ctx.moveTo(-w/2, 0); ctx.lineTo(w/2 - 4, 2); ctx.stroke();
+    ctx.strokeStyle = '#C8CFD8'; ctx.lineWidth = 4;          /* bent strut */
+    ctx.beginPath();
+    ctx.moveTo(-w/2, -2); ctx.lineTo(-w/2 - 16, 8); ctx.lineTo(-w/2 - 26, 2);
+    ctx.stroke();
+  } else if (o.kind === 'dish'){
+    /* a crumpled antenna dish */
+    const dg = ctx.createLinearGradient(0, -h/2, 0, h/2);
+    dg.addColorStop(0, '#EDF1F6');
+    dg.addColorStop(0.6, '#A8B2BE');
+    dg.addColorStop(1, '#5E6874');
+    ctx.fillStyle = dg;
+    ctx.beginPath(); ctx.ellipse(0, 0, w/2, h/2, 0, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = 'rgba(52,60,70,.5)';
+    ctx.beginPath(); ctx.ellipse(4, 3, w/2 - 9, h/2 - 8, 0.2, 0, 6.2832); ctx.fill();
+    ctx.strokeStyle = '#3C444E'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(w*0.34, -h*0.42); ctx.stroke();
+    ctx.fillStyle = '#D6DCE4';
+    ctx.beginPath(); ctx.arc(w*0.34, -h*0.42, 5.5, 0, 6.2832); ctx.fill();
+    ctx.strokeStyle = 'rgba(40,46,54,.55)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(0, 0, w/2, h/2, 0, 0, 6.2832); ctx.stroke();
+  } else {
+    /* a length of truss with foil still on it */
+    ctx.fillStyle = '#9BA5B2';
+    ctx.fillRect(-w/2, -h*0.16, w, h*0.32);
+    ctx.strokeStyle = '#5C6672'; ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    for (let i = 0; i < 5; i++){
+      const x0 = -w/2 + (w/5)*i;
+      ctx.moveTo(x0, -h*0.16); ctx.lineTo(x0 + w/5, h*0.16);
+      ctx.moveTo(x0, h*0.16);  ctx.lineTo(x0 + w/5, -h*0.16);
+    }
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(244,206,120,.9)';                  /* gold foil */
+    ctx.beginPath();
+    ctx.moveTo(w*0.16, -h*0.16); ctx.lineTo(w*0.46, -h*0.44);
+    ctx.lineTo(w*0.5, -h*0.06); ctx.lineTo(w*0.22, h*0.16);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawObstacle(o){
   switch(o.t){
     case 'bird':   drawBird(o);   break;
@@ -1431,6 +1776,10 @@ function drawObstacle(o){
     case 'plane':  drawPlane(o);  break;
     case 'ufo':    drawUFO(o);    break;
     case 'sat':    drawSat(o);    break;
+    case 'heli':     drawHeli(o);     break;
+    case 'meteor':   drawMeteor(o);   break;
+    case 'asteroid': drawAsteroid(o); break;
+    case 'satfrag':  drawSatFrag(o);  break;
   }
 }
 
