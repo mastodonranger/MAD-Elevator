@@ -42,9 +42,9 @@ the climb speed ramps from 240 to 620 px/s.
 
 | From | Zone | What is up there |
 | --- | --- | --- |
-| 0 ft | Street Level | pigeons, and the city right outside the glass |
-| 500 ft | Midtown | birds, the first crane booms |
-| 1,000 ft | High Rise | crane booms with one passable gap |
+| 0 ft | Street Level | pigeons, the first crane booms, the city outside the glass |
+| 500 ft | Midtown | birds and crane booms in earnest |
+| 1,000 ft | High Rise | cranes with one passable gap, and what falls off them |
 | 1,500 ft | Skyline | cranes, and what falls off them |
 | 2,000 ft | Spire | the top of the tallest towers ever built |
 | 2,500 ft | Rooftop Winds | construction thins out, the first helicopter |
@@ -82,9 +82,19 @@ Two things have to track the climb speed, or slowing the game down quietly
 makes it harder instead of calmer:
 
 **Hazard spacing is a distance, not a delay.** The gap between one hazard
-and the next is `470px` of climb at launch, tightening to `200px` — so the
+and the next is `430px` of climb at launch, tightening to `200px` — so the
 vertical spacing on screen is the same whatever the speed. Timed spawning
 would have packed hazards a third closer the moment the climb slowed.
+
+**Speed and pressure are separate curves.** `diff` drives the climb speed
+on a gentle `^0.85` ramp, so a 500ft zone keeps taking a while. `hazDiff`
+drives spacing, crane gap width and blocker spacing on a faster `^0.58`
+ramp, so the climb out of the city has to be flown rather than sat through.
+Sharing one curve meant the only way to add pressure was to add speed.
+
+No full-width hazard appears below `BLOCKER_FLOOR` (200ft). Birds are there
+from the off, but a crane in the first few seconds is a coin flip rather
+than difficulty.
 
 **Sideways motion scales with the climb.** A hazard that drifts across the
 lane at a fixed px/s covers much more ground during a slow approach than a
@@ -92,8 +102,9 @@ fast one, which turns dodging into luck. Bird drift and sway, saucer homing,
 and the lateral speed of everything that wanders are all set against the
 current speed range.
 
-Measured with an autopilot: the same bot survives about 30 seconds a run
-here against about 9 before the change.
+Measured with an autopilot: the same bot survives about 27 seconds a run
+here, against about 9 before the pacing rebuild. Through the first 2,000ft
+it now meets about 78 hazards rather than 67.
 
 ## Crashing
 
@@ -111,4 +122,5 @@ particles, simulation, rendering, main loop, boot.
 Tuning knobs worth knowing: `FEET_PER_PX` (how much altitude a pixel of
 travel is worth), `SPEED_MIN` / `SPEED_MAX`, `RAMP_FEET` (where difficulty
 maxes out), `SPAWN_GAP_EASY` / `SPAWN_GAP_HARD`, `ZONE_H`,
-`CONSTRUCTION_TOP`, the `ZONES` table, `SKY`, and `cloudDensity()`.
+`CONSTRUCTION_TOP`, `BLOCKER_FLOOR`, the two difficulty exponents in
+`update()`, the `ZONES` table, `SKY`, and `cloudDensity()`.

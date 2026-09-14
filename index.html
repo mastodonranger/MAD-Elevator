@@ -294,7 +294,8 @@ const PLAYER_W      = 84, PLAYER_H = 118;
 /* Hazard spacing is a DISTANCE, not a delay: the vertical gap between
    one hazard and the next has to hold whatever the climb speed is, or
    slowing the game down just packs them closer together. */
-const SPAWN_GAP_EASY = 470;   // px of climb between hazards at launch
+const BLOCKER_FLOOR  = 200;   // ft before the first full-width hazard
+const SPAWN_GAP_EASY = 430;   // px of climb between hazards at launch
 const SPAWN_GAP_HARD = 200;   // ...and once fully ramped
 const PLAYER_ACCEL  = 2600;   // keyboard steering acceleration, px/s^2
 const PLAYER_MAXV   = 640;
@@ -359,9 +360,9 @@ const ZONE_H = 500;            /* every zone is the same 500ft of climb */
 const CONSTRUCTION_TOP = 2800; /* nothing built reaches above this */
 const ZONES = [
   /* the built world - towers, cranes, and what falls off them */
-  { from:0,     name:'Street Level',      mix:[['bird',1]] },
-  { from:500,   name:'Midtown',           mix:[['bird',1],['crane',0.4]] },
-  { from:1000,  name:'High Rise',         mix:[['bird',0.7],['crane',1]] },
+  { from:0,     name:'Street Level',      mix:[['bird',1],['crane',0.2]] },
+  { from:500,   name:'Midtown',           mix:[['bird',1],['crane',0.6]] },
+  { from:1000,  name:'High Rise',         mix:[['bird',0.7],['crane',1],['debris',0.3]] },
   { from:1500,  name:'Skyline',           mix:[['bird',0.4],['crane',1],['debris',0.6]] },
   { from:2000,  name:'Spire',             mix:[['crane',1],['debris',0.9],['bird',0.3]] },
   { from:2500,  name:'Rooftop Winds',     mix:[['crane',0.6],['debris',0.5],['bird',0.7],['heli',0.6]] },
@@ -499,7 +500,8 @@ let feet      = 0;
 let speed     = SPEED_MIN;
 let topSpeed  = 0;
 let nearMiss  = 0;
-let diff      = 0;
+let diff      = 0;   // drives climb speed
+let hazDiff   = 0;   // drives how much is in the way
 let runTime   = 0;
 let shake     = 0;
 let flash     = 0;
@@ -642,7 +644,7 @@ function syncHUD(){
 function start(){
   obstacles.length = 0; clouds.length = 0; bits.length = 0; popups.length = 0;
   px = 0; feet = 0; speed = SPEED_MIN; topSpeed = 0; nearMiss = 0;
-  diff = 0; runTime = 0; shake = 0; flash = 0;
+  diff = 0; hazDiff = 0; runTime = 0; shake = 0; flash = 0;
   nextSpawnPx = 420; lastBlockerPx = -1e9; lastGapX = W/2;
   nextMilestone = 1000; recordBeaten = false;
   player.x = W/2; player.vx = 0; player.tilt = 0;
@@ -741,7 +743,7 @@ function spawnBird(){
   obstacles.push(o);
 }
 function spawnCrane(){
-  const gapW = lerp(230, 156, diff) * rnd(0.94, 1.08);
+  const gapW = lerp(224, 156, hazDiff) * rnd(0.94, 1.08);
   /* keep consecutive gaps reachable: never more than a short dash apart */
   const lo = clamp(lastGapX - 250, 12, W - gapW - 12);
   const hi = clamp(lastGapX + 250, 12, W - gapW - 12);
@@ -829,7 +831,11 @@ function spawnOne(){
     chosen = alt ? alt[0] : 'heli';
   }
   /* full-width hazards need breathing room from each other */
-  if (chosen === 'crane' && px - lastBlockerPx < lerp(520, 380, diff)){
+  /* birds from the off, but no full-width wall until the climb is
+     actually under way - a crane in the first few seconds is a coin flip,
+     not difficulty */
+  if (chosen === 'crane' &&
+      (feet < BLOCKER_FLOOR || px - lastBlockerPx < lerp(500, 380, hazDiff))){
     chosen = mix.length > 1 ? (mix.find(m => m[0] !== 'crane') || mix[0])[0] : 'bird';
   }
   (SPAWNERS[chosen] || spawnBird)();
@@ -1035,7 +1041,8 @@ function updateBits(dt){
 function update(dt){
   runTime += dt;
   if (state === S.PLAY){
-    diff  = Math.pow(clamp(feet / RAMP_FEET, 0, 1), 0.85);
+    diff    = Math.pow(clamp(feet / RAMP_FEET, 0, 1), 0.85);
+    hazDiff = Math.pow(clamp(feet / RAMP_FEET, 0, 1), 0.58);
     speed = lerp(SPEED_MIN, SPEED_MAX, diff);
     if (speed > topSpeed) topSpeed = speed;
 
@@ -1058,7 +1065,7 @@ function update(dt){
 
     if (px >= nextSpawnPx){
       spawnOne();
-      nextSpawnPx = px + lerp(SPAWN_GAP_EASY, SPAWN_GAP_HARD, diff) * rnd(0.82, 1.28);
+      nextSpawnPx = px + lerp(SPAWN_GAP_EASY, SPAWN_GAP_HARD, hazDiff) * rnd(0.82, 1.28);
     }
     syncHUD();
   } else if (state === S.CRASH){
