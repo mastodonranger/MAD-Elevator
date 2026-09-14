@@ -1,0 +1,43 @@
+# Publishes the game to GitHub Pages.
+#
+# configure-pages runs with enablement:true, so this turns Pages on by
+# itself the first time it runs - the Pages settings API is not reachable
+# from every environment, and this way the repo does not depend on anyone
+# clicking through Settings.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure Pages (enabling it if it is off)
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      # the whole game is one self-contained index.html at the root
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
