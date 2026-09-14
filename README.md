@@ -108,21 +108,47 @@ it now meets about 78 hazards rather than 67.
 
 ## Power-ups
 
-Both are collectibles that drift down the shaft, and both can be held at
-once — their labels stack at the top of the screen.
+Three of them, and they resolve in a fixed order when you hit something:
+the shield absorbs it first, then VMS3 rescues you, and only then does the
+run end.
 
-**VMS3** — a bubble, guaranteed at 1,200ft and then every 1,400–2,400ft.
-It absorbs one crash: the hit pops the bubble instead of ending the run
-and you get 1.3 seconds of mercy to fly clear of whatever hit you. The
-shell is translucent so the car still reads through it, and its rim
-flashes white the instant it takes the hit.
+**Shield** — a bubble, guaranteed at 1,100ft and then every 1,400–2,400ft.
+It absorbs one crash: the hit pops the bubble instead of ending the run and
+you get 1.3 seconds of mercy to fly clear. The shell is translucent so the
+car still reads through it, and its rim flashes white on the frame it takes
+the hit. (Placeholder name — this is the mechanic the old VMS3 had.)
+
+**VMS3** — an extra life, and **only one per run**. It appears from 900ft
+and stops appearing for good the moment you pick one up, so there is never
+a second. When you crash while holding it, the run does not end: the world
+freezes and the monitoring service picks up.
+
+The rescue runs on its own clock, about eight seconds:
+
+| At | Beat |
+| --- | --- |
+| 0.0s | the call button rings, shaking |
+| 1.3s | the call is answered |
+| 2.5s | passenger: *"The elevator is stuck."* |
+| 4.1s | agent: *"We have you covered. A technician is correcting the issue now."* |
+| 4.9s | the call icon turns into a green check |
+| 5.2s | 3 … 2 … 1 |
+| 8.2s | the rockets relight and the car climbs again |
+
+The shaft is cleared and you get 1.4 seconds of grace on the way out, so
+you never resume straight into whatever hit you.
 
 **F1 System Speed** — a rocket chevron, guaranteed at 2,200ft and then
-every 1,800–3,000ft. It lifts the car 190px up the shaft and runs the
-world 2.4× faster for three seconds, untouchable, then eases back down to
-station. The wind-down is the part that tells you it is about to end.
+every 1,800–3,000ft. It lifts the car 190px up the shaft and runs the world
+2.4× faster for three seconds, untouchable, with everything moving past you
+smeared into motion blur. Then it eases back down to station.
 
-Neither can drop while you are already holding it.
+The blur is done per moving object rather than over the whole frame.
+Post-processing the canvas needs a full-resolution read every frame, which
+drops the boost to 12fps at 2× device pixel ratio — 38 even through a
+quarter-size buffer, since the read is the cost rather than the stamps.
+Smearing each moving sprite instead holds 60fps, and it is closer to right
+anyway: the near things streak and the distant skyline barely does.
 
 ## Crashing
 

@@ -106,9 +106,67 @@
     box-shadow:0 0 calc(var(--u)*18) rgba(255,59,48,.45);
     animation:pwrPulse 1s ease-in-out infinite;
   }
+  .pwr.vms{background:rgba(10,72,44,.94);border-color:#4FD98A;color:#E6FFF0}
   .pwr[hidden]{display:none}
   @keyframes pwrPulse{0%,100%{opacity:1}50%{opacity:.55}}
   @media (prefers-reduced-motion:reduce){ .pwr{animation:none} }
+  /* ---- VMS3 rescue ------------------------------------------- */
+  #rescue{background:linear-gradient(180deg,rgba(4,7,14,.62),rgba(4,7,14,.90))}
+  .rcard{
+    width:100%;max-width:calc(var(--u)*430);
+    display:flex;flex-direction:column;align-items:center;
+    gap:calc(var(--u)*16);
+  }
+  .ricon{
+    width:calc(var(--u)*86);height:calc(var(--u)*86);
+    border-radius:50%;display:grid;place-items:center;
+    background:rgba(255,59,48,.16);
+    border:calc(var(--u)*3) solid var(--alarm);
+    color:var(--alarm);
+  }
+  .ricon .glyph{width:calc(var(--u)*40);height:calc(var(--u)*40)}
+  .ricon .tick{display:none}
+  #rescue.ringing .ricon{animation:ringShake .32s ease-in-out infinite}
+  @keyframes ringShake{
+    0%,100%{transform:rotate(-9deg) translateX(calc(var(--u)*-3))}
+    50%    {transform:rotate(9deg)  translateX(calc(var(--u)*3))}
+  }
+  #rescue.fixed .ricon{
+    background:rgba(60,220,130,.18);border-color:#4FD98A;color:#4FD98A;
+    animation:tickPop .4s ease-out;
+  }
+  #rescue.fixed .phone{display:none}
+  #rescue.fixed .tick{display:block}
+  @keyframes tickPop{0%{transform:scale(.6)}60%{transform:scale(1.12)}100%{transform:scale(1)}}
+  .rtag{
+    font-size:calc(var(--u)*13);letter-spacing:calc(var(--u)*3);
+    text-transform:uppercase;color:var(--dim);font-weight:700;
+  }
+  .rchat{
+    width:100%;display:flex;flex-direction:column;gap:calc(var(--u)*10);
+    min-height:calc(var(--u)*150);justify-content:flex-start;
+  }
+  .rmsg{
+    max-width:86%;padding:calc(var(--u)*12) calc(var(--u)*15);
+    border-radius:calc(var(--u)*14);
+    font-size:calc(var(--u)*16);line-height:1.45;text-align:left;
+    animation:msgIn .26s ease-out;
+  }
+  .rmsg[hidden]{display:none}
+  .rmsg.them{align-self:flex-start;background:rgba(232,238,248,.92);color:#10141E;
+             border-bottom-left-radius:calc(var(--u)*4)}
+  .rmsg.us{align-self:flex-end;background:#12724A;color:#EAFFF3;
+           border-bottom-right-radius:calc(var(--u)*4)}
+  @keyframes msgIn{from{opacity:0;transform:translateY(calc(var(--u)*8))}to{opacity:1;transform:none}}
+  .rcount{
+    font-size:calc(var(--u)*78);font-weight:800;line-height:1;
+    color:#FFF3D6;min-height:calc(var(--u)*80);
+  }
+  .rcount.tick{animation:countPop .5s ease-out}
+  @keyframes countPop{0%{transform:scale(1.5);opacity:.2}100%{transform:scale(1);opacity:1}}
+  @media (prefers-reduced-motion:reduce){
+    #rescue.ringing .ricon,#rescue.fixed .ricon,.rcount.tick,.rmsg{animation:none}
+  }
   #zone{
     margin-top:calc(var(--u)*10);
     display:inline-block;
@@ -251,8 +309,30 @@
       </div>
     </div>
     <div id="powerups">
-      <div class="pwr" id="vmsLabel" hidden>VMS3 Activated</div>
+      <div class="pwr" id="shieldLabel" hidden>Shield Active</div>
+      <div class="pwr vms" id="vmsLabel" hidden>VMS3 On Call</div>
       <div class="pwr" id="f1Label" hidden>F1 System Speed</div>
+    </div>
+  </div>
+
+  <div class="screen rescue" id="rescue" hidden>
+    <div class="rcard">
+      <div class="ricon">
+        <svg class="glyph phone" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M6.6 2.9l2.4 3.4-2 1.7a12 12 0 0 0 5.5 5.5l1.7-2 3.4 2.4-.7 3a1.6 1.6 0 0 1-1.8 1.2A16.6 16.6 0 0 1 3.3 5.4 1.6 1.6 0 0 1 4.5 3.6z"></path>
+        </svg>
+        <svg class="glyph tick" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 12.5l5.2 5.2L20 6.8"></path>
+        </svg>
+      </div>
+      <div class="rtag">VMS3 Monitoring</div>
+      <div class="rchat">
+        <div class="rmsg them" id="rPass" hidden>The elevator is stuck.</div>
+        <div class="rmsg us" id="rAgent" hidden>We have you covered. A technician is correcting the issue now.</div>
+      </div>
+      <div class="rcount" id="rCount"></div>
     </div>
   </div>
 
@@ -320,9 +400,10 @@ const PLAYER_W      = 84, PLAYER_H = 118;
 /* Power-ups. VMS3 is a bubble that eats one crash; F1 System Speed is a
    rocket that throws the car up the shaft untouchable for a few seconds.
    Both can be held at once and their labels stack. */
-const VMS3_AT       = 1200;   // ft: first bubble, guaranteed
+const SHIELD_AT     = 1100;   // ft: first bubble, guaranteed
 const F1_AT         = 2200;   // ft: first rocket, guaranteed
-const VMS3_MERCY    = 1.3;    // s of grace after the bubble pops
+const VMS3_AT       = 900;    // ft: the one extra life, guaranteed
+const SHIELD_MERCY  = 1.3;    // s of grace after the bubble pops
 const F1_TIME       = 3.0;    // s of boost
 const F1_RISE       = 190;    // px the car climbs up the screen
 const F1_MULT       = 2.4;    // climb speed multiplier while boosting
@@ -524,16 +605,22 @@ function saveBest(v){
 /* ================================================================
    7. Game state
    ================================================================ */
-const S = { MENU:0, PLAY:1, CRASH:2, OVER:3, PAUSE:4 };
+const S = { MENU:0, PLAY:1, CRASH:2, OVER:3, PAUSE:4, RESCUE:5 };
+/* VMS3 rescue beats, in seconds: the call rings, it is picked up, the
+   passenger speaks, the agent answers, the ticket closes green, 3-2-1. */
+const R_RING = 1.3, R_PASS = 2.5, R_AGENT = 4.1, R_OK = 4.9,
+      R_COUNT = 5.2, R_GO = 8.2;
+let rescueT = 0;
 let state = S.MENU;
 
 const player = {
   x: W/2, vx: 0, tilt: 0,
-  shield: false, mercy: 0, boost: 0, bubble: 0,
+  shield: false, mercy: 0, boost: 0, bubble: 0, vms3: false,
   crashT: 0, crashVy: 0, crashSpin: 0, crashRot: 0, crashX: 0, crashY: 0
 };
 let carY = PLAYER_Y;                 /* the boost lifts this up the screen */
-let nextVms3 = VMS3_AT, nextF1 = F1_AT;
+let nextShield = SHIELD_AT, nextF1 = F1_AT, nextVms3 = VMS3_AT;
+let vms3Taken = false;   /* one extra life per run, ever */
 
 let px        = 0;    // pixels climbed this run
 let feet      = 0;
@@ -645,7 +732,12 @@ const el = {
   alt:      document.getElementById('alt'),
   best:     document.getElementById('best'),
   zone:     document.getElementById('zone'),
+  shieldLbl:document.getElementById('shieldLabel'),
   vms:      document.getElementById('vmsLabel'),
+  rescue:   document.getElementById('rescue'),
+  rPass:    document.getElementById('rPass'),
+  rAgent:   document.getElementById('rAgent'),
+  rCount:   document.getElementById('rCount'),
   f1:       document.getElementById('f1Label'),
   title:    document.getElementById('title'),
   over:     document.getElementById('over'),
@@ -686,9 +778,11 @@ function syncHUD(){
 function start(){
   obstacles.length = 0; clouds.length = 0; bits.length = 0; popups.length = 0;
   px = 0; feet = 0; speed = SPEED_MIN; topSpeed = 0; nearMiss = 0;
-  diff = 0; hazDiff = 0; runTime = 0; shake = 0; flash = 0;
+  diff = 0; hazDiff = 0; runTime = 0; shake = 0; flash = 0; rescueT = 0;
+  el.rescue.hidden = true;
   player.shield = false; player.mercy = 0; player.boost = 0; player.bubble = 0;
-  carY = PLAYER_Y; nextVms3 = VMS3_AT; nextF1 = F1_AT;
+  carY = PLAYER_Y; nextShield = SHIELD_AT; nextF1 = F1_AT;
+  nextVms3 = VMS3_AT; vms3Taken = false; player.vms3 = false;
   nextSpawnPx = 420; lastBlockerPx = -1e9; lastGapX = W/2;
   nextMilestone = 1000; recordBeaten = false;
   player.x = W/2; player.vx = 0; player.tilt = 0;
@@ -757,7 +851,7 @@ function rectsOf(o){
       { x: o.x - 30,    y: o.y - 34, w: 60,  h: 34 }
     ];
   }
-  if (o.t === 'vms3' || o.t === 'f1'){
+  if (o.t === 'vms3' || o.t === 'f1' || o.t === 'shield'){
     return [{ x: o.x - 34, y: o.y - 34, w: 68, h: 68 }];
   }
   if (o.t === 'heli'){
@@ -932,21 +1026,37 @@ function boostEnv(){
   return 1 - easeOut((t - 0.62) / 0.38);
 }
 function setLabels(){
-  el.vms.hidden = !player.shield;
-  el.f1.hidden  = player.boost <= 0;
+  el.shieldLbl.hidden = !player.shield;
+  el.vms.hidden       = !player.vms3;
+  el.f1.hidden        = player.boost <= 0;
 }
 function crash(x, y){
   if (state !== S.PLAY) return;
   if (player.mercy > 0 || player.boost > 0) return;
-  el.vms.hidden = true; el.f1.hidden = true;
-  if (player.shield){                      /* VMS3 absorbs it */
+  el.shieldLbl.hidden = true; el.vms.hidden = true; el.f1.hidden = true;
+  if (player.shield){                      /* the shield absorbs it */
     player.shield = false;
-    player.mercy = VMS3_MERCY;
+    player.mercy = SHIELD_MERCY;
     player.bubble = 1;
     shake = 14; flash = 0.5;
     burst(x, y, 30, ['#FF6F60','#FFB13B','#FFFFFF'], 460);
     setLabels();
     Sound.pop();
+    return;
+  }
+  if (player.vms3){                        /* the extra life, once a run */
+    player.vms3 = false;
+    state = S.RESCUE; rescueT = 0;
+    player.crashX = player.x; player.crashY = carY;
+    player.crashRot = 0; player.vx = 0;
+    shake = 18; flash = 0.55;
+    burst(x, y, 30, ['#FFE9A8','#FFB13B','#FF4D2A','#FFFFFF'], 480);
+    el.shieldLbl.hidden = true; el.vms.hidden = true; el.f1.hidden = true;
+    el.rescue.hidden = false;
+    el.rescue.className = 'screen rescue ringing';
+    el.rPass.hidden = true; el.rAgent.hidden = true;
+    el.rCount.textContent = '';
+    Sound.crash();
     return;
   }
   state = S.CRASH;
@@ -1011,7 +1121,7 @@ function updateObstacles(dt, scroll){
       o.x += o.vx * dt;
       o.rot += o.spin * dt;
       if (o.x < 30 || o.x > W - 30){ o.vx *= -1; o.x = clamp(o.x, 30, W-30); }
-    } else if (o.t === 'vms3' || o.t === 'f1'){
+    } else if (o.t === 'vms3' || o.t === 'f1' || o.t === 'shield'){
       o.phase += dt * 1.5;
       o.spin += dt * 1.1;
       o.x = clamp(o.base + Math.sin(o.phase) * 42, 56, W - 56);
@@ -1036,10 +1146,15 @@ function updateObstacles(dt, scroll){
       const rs = rectsOf(o);
       for (const r of rs){
         if (overlap(pr, r)){
-          if (o.t === 'vms3'){
+          if (o.t === 'shield'){
             player.shield = true; player.bubble = 1;
-            setLabels(); popup('VMS3', '#FF8A7A');
+            setLabels(); popup('SHIELD', '#FF8A7A');
             burst(o.x, o.y, 22, ['#FF6F60','#FFD8A0','#FFFFFF'], 320);
+            Sound.shield(); obstacles.splice(i, 1);
+          } else if (o.t === 'vms3'){
+            player.vms3 = true; vms3Taken = true;
+            setLabels(); popup('VMS3 ON CALL', '#7CE8A8');
+            burst(o.x, o.y, 24, ['#7CE8A8','#D8FFE8','#FFFFFF'], 340);
             Sound.shield(); obstacles.splice(i, 1);
           } else if (o.t === 'f1'){
             player.boost = F1_TIME;
@@ -1153,9 +1268,14 @@ function update(dt){
     if (player.mercy > 0) player.mercy = Math.max(0, player.mercy - dt);
     if (player.bubble > 0) player.bubble = Math.max(0, player.bubble - dt * 1.6);
 
-    if (feet >= nextVms3){
-      if (!player.shield) spawnPickup('vms3');
-      nextVms3 = feet + rnd(1400, 2400);
+    if (feet >= nextShield){
+      if (!player.shield) spawnPickup('shield');
+      nextShield = feet + rnd(1400, 2400);
+    }
+    /* the extra life stops appearing for good once one has been taken */
+    if (!vms3Taken && feet >= nextVms3){
+      if (!player.vms3) spawnPickup('vms3');
+      nextVms3 = feet + rnd(900, 1600);
     }
     if (feet >= nextF1){
       if (player.boost <= 0) spawnPickup('f1');
@@ -1185,6 +1305,40 @@ function update(dt){
       nextSpawnPx = px + lerp(SPAWN_GAP_EASY, SPAWN_GAP_HARD, hazDiff) * rnd(0.82, 1.28);
     }
     syncHUD();
+  } else if (state === S.RESCUE){
+    rescueT += dt;
+    speed = Math.max(0, speed - 900 * dt);     /* the car stalls */
+    shake = Math.max(0, shake - dt * 42);
+    if (rescueT >= R_RING && el.rescue.classList.contains('ringing')){
+      el.rescue.classList.remove('ringing');
+      el.rescue.classList.add('answered');
+      Sound.ding();
+    }
+    if (rescueT >= R_PASS && el.rPass.hidden){ el.rPass.hidden = false; Sound.near(); }
+    if (rescueT >= R_AGENT && el.rAgent.hidden){ el.rAgent.hidden = false; Sound.near(); }
+    if (rescueT >= R_OK && !el.rescue.classList.contains('fixed')){
+      el.rescue.classList.add('fixed');
+      Sound.shield();
+    }
+    if (rescueT >= R_COUNT){
+      const n = Math.max(1, 3 - Math.floor(rescueT - R_COUNT));
+      if (el.rCount.textContent !== String(n)){
+        el.rCount.textContent = String(n);
+        el.rCount.classList.remove('tick'); void el.rCount.offsetWidth;
+        el.rCount.classList.add('tick');
+        Sound.ding();
+      }
+    }
+    if (rescueT >= R_GO){
+      /* back under way with a clear shaft and a moment of grace */
+      obstacles.length = 0;
+      player.mercy = 1.4;
+      el.rescue.hidden = true;
+      state = S.PLAY;
+      setLabels();
+      Sound.launch();
+    }
+
   } else if (state === S.CRASH){
     player.crashT += dt;
     speed = Math.max(0, speed - 900 * dt);
@@ -1200,12 +1354,13 @@ function update(dt){
     speed = 70;                 /* wreckage and clouds keep drifting past */
   }
 
-  const scroll = (state === S.PAUSE) ? 0 : speed * dt;
-  if (state !== S.PAUSE){
+  const held = (state === S.PAUSE || state === S.RESCUE);
+  const scroll = held ? 0 : speed * dt;
+  if (!held){
     updateObstacles(dt, scroll);
     updateClouds(dt, scroll);
-    updateBits(dt);
   }
+  if (state !== S.PAUSE) updateBits(dt);    /* the impact still sparks */
   shake = Math.max(0, shake - 60 * dt);
   flash = Math.max(0, flash - 2.6 * dt);
 }
@@ -1368,9 +1523,11 @@ function drawCloud(c){
 
   ctx.restore();
 }
-function drawClouds(front){
+function drawClouds(front, smear){
   for (const c of clouds){
-    if ((c.par > 0.58) === front) drawCloud(c);
+    if ((c.par > 0.58) !== front) continue;
+    if (smear > 0.02) smearPass(() => drawCloud(c), smear);
+    drawCloud(c);
   }
 }
 
@@ -1893,7 +2050,7 @@ function drawSatFrag(o){
 }
 
 /* ---- power-ups ------------------------------------------------ */
-function drawVms3(o){
+function drawShieldPk(o){
   const pulse = 0.5 + 0.5 * Math.sin(runTime * 4 + o.phase);
   ctx.save();
   ctx.translate(o.x, o.y);
@@ -1917,7 +2074,47 @@ function drawVms3(o){
   ctx.fillStyle = '#FFF1DC';
   ctx.font = '700 15px ui-sans-serif, system-ui, sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('VMS3', 0, 1);
+  ctx.fillText('SHLD', 0, 1);
+  ctx.restore();
+}
+/* VMS3: a monitoring call badge. Green, so it never reads as a hazard
+   and never gets confused with the red shield or the gold rocket. */
+function drawVms3(o){
+  const pulse = 0.5 + 0.5 * Math.sin(runTime * 4 + o.phase);
+  ctx.save();
+  ctx.translate(o.x, o.y);
+  const g = ctx.createRadialGradient(0, 0, 4, 0, 0, 46);
+  g.addColorStop(0, 'rgba(112,242,168,' + (0.40 + 0.20*pulse) + ')');
+  g.addColorStop(1, 'rgba(60,200,130,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(0, 0, 46, 0, 6.2832); ctx.fill();
+
+  const bg = ctx.createLinearGradient(-20, -22, 16, 22);
+  bg.addColorStop(0, '#DFFFEE');
+  bg.addColorStop(0.45, '#3FC98A');
+  bg.addColorStop(1, '#0C6440');
+  ctx.fillStyle = bg;
+  ctx.beginPath(); ctx.arc(0, 0, 25, 0, 6.2832); ctx.fill();
+  ctx.strokeStyle = 'rgba(232,255,242,.95)'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(0, 0, 25, 0, 6.2832); ctx.stroke();
+
+  /* handset */
+  ctx.strokeStyle = '#08301F'; ctx.lineWidth = 4.6;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-8.5, -9.5);
+  ctx.lineTo(-4.5, -3.5);
+  ctx.lineTo(-7, -0.5);
+  ctx.bezierCurveTo(-3.5, 5.5, 0.5, 9, 5.5, 11);
+  ctx.lineTo(8, 8);
+  ctx.lineTo(13, 11.5);
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+
+  /* the ring, pulsing outward */
+  ctx.strokeStyle = 'rgba(224,255,238,' + (0.75 - 0.5*pulse) + ')';
+  ctx.lineWidth = 2.4;
+  ctx.beginPath(); ctx.arc(0, 0, 29 + pulse * 9, 0, 6.2832); ctx.stroke();
   ctx.restore();
 }
 function drawF1(o){
@@ -1992,6 +2189,19 @@ function drawBoostWake(x, y, env){
   ctx.restore();
 }
 
+/* Motion blur, done per moving object rather than over the whole frame.
+   Post-processing the canvas needs a full-resolution read every frame,
+   which drops the boost to 12fps at 2x DPR (38 even through a quarter-size
+   buffer) - the read is the cost, not the stamps. Smearing each moving
+   thing instead is a handful of extra sprite draws, and it is closer to
+   right anyway: the near stuff streaks, the distant skyline barely does. */
+function smearPass(drawFn, s){
+  const reach = 40 * s;
+  ctx.save(); ctx.globalAlpha = 0.30; ctx.translate(0, -reach * 0.45); drawFn(); ctx.restore();
+  ctx.save(); ctx.globalAlpha = 0.17; ctx.translate(0, -reach);        drawFn(); ctx.restore();
+  ctx.save(); ctx.globalAlpha = 0.15; ctx.translate(0,  reach * 0.38); drawFn(); ctx.restore();
+}
+
 function drawObstacle(o){
   switch(o.t){
     case 'bird':   drawBird(o);   break;
@@ -2004,6 +2214,7 @@ function drawObstacle(o){
     case 'meteor':   drawMeteor(o);   break;
     case 'asteroid': drawAsteroid(o); break;
     case 'satfrag':  drawSatFrag(o);  break;
+    case 'shield':   drawShieldPk(o); break;
     case 'vms3':     drawVms3(o);     break;
     case 'f1':       drawF1(o);       break;
   }
@@ -2030,7 +2241,8 @@ function drawFlames(x, y, strength){
 
 function drawElevator(x, y, rot, broken){
   const hw = PLAYER_W/2, hh = PLAYER_H/2;
-  const thrusting = (state === S.PLAY || state === S.MENU || state === S.PAUSE);
+  const thrusting = (state === S.PLAY || state === S.MENU || state === S.PAUSE ||
+                     (state === S.RESCUE && rescueT >= R_GO - 1.0));
 
   if (thrusting) drawFlames(x, y + hh - 2, 1 + (speed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN) * 0.8);
 
@@ -2179,16 +2391,24 @@ function draw(){
   drawStars();
   drawEarthLimb();
   drawCity();
-  drawClouds(false);
+  const benv = boostEnv();
+  drawClouds(false, benv);
   drawSpeedLines();
 
-  for (const o of obstacles) drawObstacle(o);
+  /* F1 streaks everything that is moving past you */
+  for (const o of obstacles){
+    if (benv > 0.02) smearPass(() => drawObstacle(o), benv);
+    drawObstacle(o);
+  }
 
   if (state === S.CRASH){
     drawElevator(player.crashX, player.crashY, player.crashRot, true);
+  } else if (state === S.RESCUE){
+    const wob = rescueT < R_GO - 1 ? Math.sin(rescueT * 9) * 0.045 : 0;
+    drawElevator(player.x, carY, wob, false);
   } else if (state !== S.OVER){
     const bob = state === S.MENU ? Math.sin(runTime * 2.2) * 5 : 0;
-    const env = boostEnv();
+    const env = benv;
     if (env > 0.01) drawBoostWake(player.x, carY + bob, env);
     const blink = player.mercy > 0 && Math.floor(player.mercy * 12) % 2 === 0;
     if (!blink) drawElevator(player.x, carY + bob, player.tilt, false);
@@ -2196,7 +2416,7 @@ function draw(){
   }
 
   drawBits();
-  drawClouds(true);
+  drawClouds(true, boostEnv());
   drawPopups();
   ctx.restore();
 
