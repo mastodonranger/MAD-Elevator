@@ -265,8 +265,10 @@
 
   /* ---- crash screen ------------------------------------------- */
   #over .verdict{
-    font-size:calc(var(--u)*30);font-weight:900;letter-spacing:calc(var(--u)*4);
-    text-transform:uppercase;color:var(--alarm);
+    font-size:calc(var(--u)*27);font-weight:800;line-height:1.28;
+    letter-spacing:calc(var(--u)*.2);color:var(--alarm);
+    max-width:calc(var(--u)*420);
+    text-shadow:0 calc(var(--u)*2) calc(var(--u)*14) rgba(0,0,0,.55);
   }
   #over .score{
     margin-top:calc(var(--u)*22);
@@ -653,6 +655,7 @@ const player = {
 let carY = PLAYER_Y;                 /* the boost lifts this up the screen */
 let nextShield = SHIELD_AT, nextF1 = F1_AT, nextVms3 = VMS3_AT;
 let vms3Taken = false;   /* one extra life per run, ever */
+let killedBy = '';       /* what ended the run, for the results card */
 
 let px        = 0;    // pixels climbed this run
 let feet      = 0;
@@ -784,10 +787,55 @@ const el = {
 };
 let shownZone = '';
 
-const VERDICTS = [
-  'Structural Failure', 'Cable Snapped', 'Out of Order',
-  'Emergency Stop', 'Doors Closing', 'Service Interrupted'
-];
+/* What the results card leads with. Keyed by hazard, and by sub-kind
+   where one exists, so it names the thing that actually got you. */
+const CRASH_LINES = {
+  bird: ['Oops, you hit a bird!',
+         'That pigeon had right of way.',
+         'The bird did not move. You did not either.'],
+  crane: ['You clipped a crane boom.',
+          'Hard hat area, apparently.',
+          'That scaffolding was not going anywhere.'],
+  debris: ['Something fell off the building. Then you hit it.',
+           'Loose masonry. Classic.'],
+  'debris:brick': ['A brick. Just one brick.',
+                   'Felled by a single brick.'],
+  'debris:slab': ['A concrete slab got there first.',
+                  'You met a falling slab.'],
+  'debris:beam': ['You caught a girder.',
+                  'That beam came out of nowhere.'],
+  heli: ['Where did that helicopter come from?!',
+         'You met a chopper mid-hover.',
+         'Rotor wash is no joke.'],
+  plane: ['Where did that plane come from?!',
+          'You found the flight path.',
+          'That was a scheduled service. You were not.'],
+  meteor: ['A meteor got there first.',
+           'You flew into the shower.',
+           'It was already on fire. Now so are you.'],
+  asteroid: ['You hit an asteroid.',
+             'That rock had been there for four billion years.',
+             'Asteroid. No warning, no apology.'],
+  sat: ['You hit a satellite.',
+        'That one was still operational.',
+        'Somebody is going to file a report about this.'],
+  satfrag: ['Orbital debris got you.',
+            "You hit somebody else's wreckage."],
+  'satfrag:panel': ['You hit a torn-off solar wing.',
+                    "Somebody else's solar panel. Now in pieces."],
+  'satfrag:dish': ['You hit a dead antenna dish.',
+                   'That dish stopped listening years ago.'],
+  'satfrag:strut': ['You hit a length of truss.',
+                    'Foil-wrapped truss. Still solid.'],
+  ufo: ['Abducted. Briefly.',
+        'That saucer was aiming for you.',
+        'First contact. Went badly.'],
+  default: ['Out of service.', 'Service interrupted.']
+};
+function crashLine(key){
+  const base = String(key || '').split(':')[0];
+  return pick(CRASH_LINES[key] || CRASH_LINES[base] || CRASH_LINES.default);
+}
 
 if (matchMedia('(hover:none)').matches){
   el.titleCta.textContent = 'Tap to Launch';
@@ -811,6 +859,7 @@ function start(){
   obstacles.length = 0; clouds.length = 0; bits.length = 0; popups.length = 0;
   px = 0; feet = 0; speed = SPEED_MIN; topSpeed = 0; nearMiss = 0;
   diff = 0; hazDiff = 0; runTime = 0; shake = 0; flash = 0; rescueT = 0;
+  killedBy = '';
   el.rescue.hidden = true;
   player.shield = false; player.mercy = 0; player.boost = 0; player.bubble = 0;
   carY = PLAYER_Y; nextShield = SHIELD_AT; nextF1 = F1_AT;
@@ -847,7 +896,7 @@ function gameOver(){
   const reached = Math.floor(feet);
   const isRecord = reached > best;
   if (isRecord) saveBest(reached);
-  el.verdict.textContent  = pick(VERDICTS);
+  el.verdict.textContent  = crashLine(killedBy);
   el.finalAlt.textContent = commas(reached);
   el.finalBest.textContent= commas(best);
   el.finalSpeed.textContent = commas(topSpeed * FEET_PER_PX * 0.681818) + ' MPH';
@@ -1062,9 +1111,10 @@ function setLabels(){
   el.vms.hidden       = !player.vms3;
   el.f1.hidden        = player.boost <= 0;
 }
-function crash(x, y){
+function crash(x, y, o){
   if (state !== S.PLAY) return;
   if (player.mercy > 0 || player.boost > 0) return;
+  killedBy = o ? (o.kind ? o.t + ':' + o.kind : o.t) : '';
   el.shieldLbl.hidden = true; el.vms.hidden = true; el.f1.hidden = true;
   if (player.shield){                      /* the shield absorbs it */
     player.shield = false;
@@ -1194,7 +1244,7 @@ function updateObstacles(dt, scroll){
             burst(o.x, o.y, 26, ['#FFE9A8','#FFB13B','#FFFFFF'], 420);
             Sound.boost(); obstacles.splice(i, 1);
           } else {
-            crash(clamp(player.x, r.x, r.x + r.w), clamp(carY, r.y, r.y + r.h));
+            crash(clamp(player.x, r.x, r.x + r.w), clamp(carY, r.y, r.y + r.h), o);
           }
           break;
         }

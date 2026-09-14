@@ -163,7 +163,11 @@ anyway: the near things streak and the distant skyline barely does.
 The run does not simply stop. The car tumbles through a short screen jiggle
 and the frame **freezes**, debris hanging in mid-air. A red curtain wipes
 down over the held frame carrying **GAME OVER**, holds for a beat, and fades
-to black — and the results come up behind it.
+to black — and the results come up behind it, led by what actually got you:
+*"Oops, you hit a bird!"*, *"Where did that plane come from?!"*, *"Felled
+by a single brick."* The line is keyed by hazard, and by sub-kind where one
+exists, so falling debris names the brick or the girder and orbital
+wreckage names the solar wing or the dish.
 
 ## Layout of `index.html`
 
