@@ -90,6 +90,25 @@
     font-size:calc(var(--u)*26);font-weight:700;line-height:1.15;
     text-shadow:0 calc(var(--u)*1) calc(var(--u)*10) rgba(0,0,0,.7);
   }
+  #powerups{
+    position:absolute;left:0;right:0;top:calc(var(--u)*196);
+    display:flex;flex-direction:column;align-items:center;
+    gap:calc(var(--u)*10);pointer-events:none;
+  }
+  .pwr{
+    font-size:calc(var(--u)*15);font-weight:800;line-height:1;
+    letter-spacing:calc(var(--u)*2);text-transform:uppercase;
+    color:#FFF4E2;background:rgba(112,16,10,.94);
+    text-shadow:0 calc(var(--u)*1) 0 rgba(0,0,0,.55);
+    border:calc(var(--u)*2) solid #FF6A55;
+    border-radius:calc(var(--u)*4);
+    padding:calc(var(--u)*8) calc(var(--u)*13);
+    box-shadow:0 0 calc(var(--u)*18) rgba(255,59,48,.45);
+    animation:pwrPulse 1s ease-in-out infinite;
+  }
+  .pwr[hidden]{display:none}
+  @keyframes pwrPulse{0%,100%{opacity:1}50%{opacity:.55}}
+  @media (prefers-reduced-motion:reduce){ .pwr{animation:none} }
   #zone{
     margin-top:calc(var(--u)*10);
     display:inline-block;
@@ -231,6 +250,10 @@
         <div id="best" class="mono">0 FT</div>
       </div>
     </div>
+    <div id="powerups">
+      <div class="pwr" id="vmsLabel" hidden>VMS3 Activated</div>
+      <div class="pwr" id="f1Label" hidden>F1 System Speed</div>
+    </div>
   </div>
 
   <!-- Title -->
@@ -294,6 +317,15 @@ const PLAYER_W      = 84, PLAYER_H = 118;
 /* Hazard spacing is a DISTANCE, not a delay: the vertical gap between
    one hazard and the next has to hold whatever the climb speed is, or
    slowing the game down just packs them closer together. */
+/* Power-ups. VMS3 is a bubble that eats one crash; F1 System Speed is a
+   rocket that throws the car up the shaft untouchable for a few seconds.
+   Both can be held at once and their labels stack. */
+const VMS3_AT       = 1200;   // ft: first bubble, guaranteed
+const F1_AT         = 2200;   // ft: first rocket, guaranteed
+const VMS3_MERCY    = 1.3;    // s of grace after the bubble pops
+const F1_TIME       = 3.0;    // s of boost
+const F1_RISE       = 190;    // px the car climbs up the screen
+const F1_MULT       = 2.4;    // climb speed multiplier while boosting
 const BLOCKER_FLOOR  = 200;   // ft before the first full-width hazard
 const SPAWN_GAP_EASY = 430;   // px of climb between hazards at launch
 const SPAWN_GAP_HARD = 200;   // ...and once fully ramped
@@ -456,6 +488,11 @@ const Sound = (() => {
     ding(){   tone(880, 0.16, 'triangle', 0.10); setTimeout(()=>tone(1320,0.22,'triangle',0.08), 90); },
     near(){   tone(1500, 0.06, 'sine', 0.05); },
     crash(){  noise(0.9, 0.35); tone(150, 0.7, 'sawtooth', 0.10, 40); },
+    shield(){ tone(520, 0.12, 'triangle', 0.09);
+              setTimeout(()=>tone(784, 0.14, 'triangle', 0.08), 80);
+              setTimeout(()=>tone(1046, 0.20, 'triangle', 0.07), 160); },
+    pop(){    noise(0.26, 0.20); tone(420, 0.24, 'square', 0.08, 120); },
+    boost(){  tone(220, 0.5, 'sawtooth', 0.09, 1200); noise(0.4, 0.13); },
     toggle(){
       on = !on;
       try { localStorage.setItem('madElevator.mute', on ? '0' : '1'); } catch(e){}
@@ -492,8 +529,11 @@ let state = S.MENU;
 
 const player = {
   x: W/2, vx: 0, tilt: 0,
+  shield: false, mercy: 0, boost: 0, bubble: 0,
   crashT: 0, crashVy: 0, crashSpin: 0, crashRot: 0, crashX: 0, crashY: 0
 };
+let carY = PLAYER_Y;                 /* the boost lifts this up the screen */
+let nextVms3 = VMS3_AT, nextF1 = F1_AT;
 
 let px        = 0;    // pixels climbed this run
 let feet      = 0;
@@ -605,6 +645,8 @@ const el = {
   alt:      document.getElementById('alt'),
   best:     document.getElementById('best'),
   zone:     document.getElementById('zone'),
+  vms:      document.getElementById('vmsLabel'),
+  f1:       document.getElementById('f1Label'),
   title:    document.getElementById('title'),
   over:     document.getElementById('over'),
   pause:    document.getElementById('pause'),
@@ -645,6 +687,8 @@ function start(){
   obstacles.length = 0; clouds.length = 0; bits.length = 0; popups.length = 0;
   px = 0; feet = 0; speed = SPEED_MIN; topSpeed = 0; nearMiss = 0;
   diff = 0; hazDiff = 0; runTime = 0; shake = 0; flash = 0;
+  player.shield = false; player.mercy = 0; player.boost = 0; player.bubble = 0;
+  carY = PLAYER_Y; nextVms3 = VMS3_AT; nextF1 = F1_AT;
   nextSpawnPx = 420; lastBlockerPx = -1e9; lastGapX = W/2;
   nextMilestone = 1000; recordBeaten = false;
   player.x = W/2; player.vx = 0; player.tilt = 0;
@@ -713,6 +757,9 @@ function rectsOf(o){
       { x: o.x - 30,    y: o.y - 34, w: 60,  h: 34 }
     ];
   }
+  if (o.t === 'vms3' || o.t === 'f1'){
+    return [{ x: o.x - 34, y: o.y - 34, w: 68, h: 68 }];
+  }
   if (o.t === 'heli'){
     return [
       { x: o.x - 38, y: o.y - 20, w: 76,  h: 42 },   /* cabin */
@@ -733,6 +780,13 @@ function rectsOf(o){
   return [{ x: o.x - o.w*sx/2, y: o.y - o.h*sy/2, w: o.w*sx, h: o.h*sy }];
 }
 
+function spawnPickup(kind){
+  const o = { t:kind, x: rnd(78, W-78), y: -80, w: 74, h: 74,
+              vx: 0, vy: rnd(18, 40), phase: rnd(0, 6.28), base: 0,
+              spin: 0, passed: true };
+  o.base = o.x;
+  obstacles.push(o);
+}
 function spawnBird(){
   const y = -60;
   const o = { t:'bird', x: rnd(60, W-60), y, w:64, h:38,
@@ -854,7 +908,7 @@ function burst(x, y, n, colors, power){
 }
 function thrust(){
   for (let i=0;i<2;i++){
-    bits.push({ x: player.x + rnd(-24, 24), y: PLAYER_Y + PLAYER_H/2 - 4,
+    bits.push({ x: player.x + rnd(-24, 24), y: carY + PLAYER_H/2 - 4,
                 vx: rnd(-40, 40) - player.vx*0.25, vy: rnd(120, 260),
                 life: rnd(0.14, 0.32), max: 0.32, r: rnd(2, 5),
                 c: pick(['#FFE9A8','#FFB13B','#FF6A2A','#FFFFFF']), g: 0 });
@@ -862,24 +916,49 @@ function thrust(){
 }
 function popup(text, color){
   popups.push({ text, color: color || '#F4C34A',
-                y: PLAYER_Y - 140 - popups.length * 44, life: 1.5 });
+                y: carY - 140 - popups.length * 44, life: 1.5 });
 }
 
 /* ================================================================
    12. Simulation
    ================================================================ */
+/* 0 -> 1 -> 0 over the life of a boost: a quick ramp in, a hold, a slower
+   ease back down to station */
+function boostEnv(){
+  if (player.boost <= 0) return 0;
+  const t = 1 - player.boost / F1_TIME;
+  if (t < 0.15) return easeOut(t / 0.15);
+  if (t < 0.62) return 1;
+  return 1 - easeOut((t - 0.62) / 0.38);
+}
+function setLabels(){
+  el.vms.hidden = !player.shield;
+  el.f1.hidden  = player.boost <= 0;
+}
 function crash(x, y){
   if (state !== S.PLAY) return;
+  if (player.mercy > 0 || player.boost > 0) return;
+  el.vms.hidden = true; el.f1.hidden = true;
+  if (player.shield){                      /* VMS3 absorbs it */
+    player.shield = false;
+    player.mercy = VMS3_MERCY;
+    player.bubble = 1;
+    shake = 14; flash = 0.5;
+    burst(x, y, 30, ['#FF6F60','#FFB13B','#FFFFFF'], 460);
+    setLabels();
+    Sound.pop();
+    return;
+  }
   state = S.CRASH;
   player.crashT = 0;
   player.crashX = player.x;
-  player.crashY = PLAYER_Y;
+  player.crashY = carY;
   player.crashVy = -180;
   player.crashSpin = (player.vx > 0 ? 1 : -1) * rnd(2.2, 4.4);
   player.crashRot = 0;
   shake = 26; flash = 1;
   burst(x, y, 46, ['#FFE9A8','#FFB13B','#FF4D2A','#FFFFFF','#9AD8FF'], 640);
-  burst(player.x, PLAYER_Y, 28, ['#BFE9FF','#7FC6F0','#FFFFFF'], 420);
+  burst(player.x, carY, 28, ['#BFE9FF','#7FC6F0','#FFFFFF'], 420);
   Sound.crash();
 }
 
@@ -901,7 +980,7 @@ function updatePlayer(dt){
 }
 
 function playerRect(){
-  return { x: player.x - 33, y: PLAYER_Y - 50, w: 66, h: 100 };
+  return { x: player.x - 33, y: carY - 50, w: 66, h: 100 };
 }
 
 function updateObstacles(dt, scroll){
@@ -932,6 +1011,10 @@ function updateObstacles(dt, scroll){
       o.x += o.vx * dt;
       o.rot += o.spin * dt;
       if (o.x < 30 || o.x > W - 30){ o.vx *= -1; o.x = clamp(o.x, 30, W-30); }
+    } else if (o.t === 'vms3' || o.t === 'f1'){
+      o.phase += dt * 1.5;
+      o.spin += dt * 1.1;
+      o.x = clamp(o.base + Math.sin(o.phase) * 42, 56, W - 56);
     } else if (o.t === 'heli'){
       o.x += o.vx * dt;
       o.bob += dt * 2.1;
@@ -953,14 +1036,27 @@ function updateObstacles(dt, scroll){
       const rs = rectsOf(o);
       for (const r of rs){
         if (overlap(pr, r)){
-          crash(clamp(player.x, r.x, r.x + r.w), clamp(PLAYER_Y, r.y, r.y + r.h));
+          if (o.t === 'vms3'){
+            player.shield = true; player.bubble = 1;
+            setLabels(); popup('VMS3', '#FF8A7A');
+            burst(o.x, o.y, 22, ['#FF6F60','#FFD8A0','#FFFFFF'], 320);
+            Sound.shield(); obstacles.splice(i, 1);
+          } else if (o.t === 'f1'){
+            player.boost = F1_TIME;
+            setLabels(); popup('F1 SYSTEM SPEED', '#FFD05A');
+            burst(o.x, o.y, 26, ['#FFE9A8','#FFB13B','#FFFFFF'], 420);
+            Sound.boost(); obstacles.splice(i, 1);
+          } else {
+            crash(clamp(player.x, r.x, r.x + r.w), clamp(carY, r.y, r.y + r.h));
+          }
           break;
         }
       }
+      if (!obstacles[i] || obstacles[i] !== o) continue;
     }
 
     /* near miss bookkeeping, scored the moment it clears the car */
-    if (!o.passed && o.y - o.h/2 > PLAYER_Y + 54){
+    if (!o.passed && o.y - o.h/2 > carY + 54){
       o.passed = true;
       if (state === S.PLAY){
         let gap = Infinity;
@@ -1044,6 +1140,27 @@ function update(dt){
     diff    = Math.pow(clamp(feet / RAMP_FEET, 0, 1), 0.85);
     hazDiff = Math.pow(clamp(feet / RAMP_FEET, 0, 1), 0.58);
     speed = lerp(SPEED_MIN, SPEED_MAX, diff);
+
+    /* F1: ease up the shaft, run the world faster, ease back down. The
+       wind-down is the part that tells you it is about to end. */
+    if (player.boost > 0){
+      player.boost = Math.max(0, player.boost - dt);
+      if (player.boost === 0) setLabels();
+    }
+    const env = boostEnv();
+    carY  = PLAYER_Y - env * F1_RISE;
+    speed *= 1 + (F1_MULT - 1) * env;
+    if (player.mercy > 0) player.mercy = Math.max(0, player.mercy - dt);
+    if (player.bubble > 0) player.bubble = Math.max(0, player.bubble - dt * 1.6);
+
+    if (feet >= nextVms3){
+      if (!player.shield) spawnPickup('vms3');
+      nextVms3 = feet + rnd(1400, 2400);
+    }
+    if (feet >= nextF1){
+      if (player.boost <= 0) spawnPickup('f1');
+      nextF1 = feet + rnd(1800, 3000);
+    }
     if (speed > topSpeed) topSpeed = speed;
 
     px += speed * dt;
@@ -1775,6 +1892,106 @@ function drawSatFrag(o){
   ctx.restore();
 }
 
+/* ---- power-ups ------------------------------------------------ */
+function drawVms3(o){
+  const pulse = 0.5 + 0.5 * Math.sin(runTime * 4 + o.phase);
+  ctx.save();
+  ctx.translate(o.x, o.y);
+  const g = ctx.createRadialGradient(0, 0, 4, 0, 0, 46);
+  g.addColorStop(0, 'rgba(255,150,130,' + (0.42 + 0.20*pulse) + ')');
+  g.addColorStop(1, 'rgba(255,90,70,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(0, 0, 46, 0, 6.2832); ctx.fill();
+
+  const bg = ctx.createLinearGradient(-22, -22, 18, 22);
+  bg.addColorStop(0, 'rgba(255,230,220,.92)');
+  bg.addColorStop(0.45, 'rgba(255,110,92,.72)');
+  bg.addColorStop(1, 'rgba(176,32,22,.80)');
+  ctx.fillStyle = bg;
+  ctx.beginPath(); ctx.arc(0, 0, 25, 0, 6.2832); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,238,220,.95)'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(0, 0, 25, 0, 6.2832); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.85)';
+  ctx.beginPath(); ctx.ellipse(-8, -10, 8, 5, -0.6, 0, 6.2832); ctx.fill();
+
+  ctx.fillStyle = '#FFF1DC';
+  ctx.font = '700 15px ui-sans-serif, system-ui, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('VMS3', 0, 1);
+  ctx.restore();
+}
+function drawF1(o){
+  const pulse = 0.5 + 0.5 * Math.sin(runTime * 5 + o.phase);
+  ctx.save();
+  ctx.translate(o.x, o.y);
+  const g = ctx.createRadialGradient(0, 0, 4, 0, 0, 48);
+  g.addColorStop(0, 'rgba(255,214,120,' + (0.44 + 0.20*pulse) + ')');
+  g.addColorStop(1, 'rgba(255,170,40,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(0, 0, 48, 0, 6.2832); ctx.fill();
+
+  ctx.rotate(Math.sin(o.spin) * 0.12);
+  const bg = ctx.createLinearGradient(0, -26, 0, 26);
+  bg.addColorStop(0, '#FFF3CE');
+  bg.addColorStop(0.5, '#F4C34A');
+  bg.addColorStop(1, '#A9700C');
+  ctx.fillStyle = bg;
+  /* a chevron pointing up the shaft - it only ever means "go" */
+  ctx.beginPath();
+  ctx.moveTo(0, -25); ctx.lineTo(21, 2); ctx.lineTo(10, 2);
+  ctx.lineTo(10, 24); ctx.lineTo(-10, 24); ctx.lineTo(-10, 2);
+  ctx.lineTo(-21, 2);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(94,58,4,.75)'; ctx.lineWidth = 2.5; ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.7)';
+  ctx.fillRect(-6, -8, 12, 4);
+  ctx.restore();
+}
+
+/* VMS3 shell: a translucent dome so the car still reads through it, and
+   a hard rim that flashes white the instant it takes the hit */
+function drawBubble(x, y){
+  const r = 76 + Math.sin(runTime * 3.4) * 2.5;
+  const pop = player.bubble;
+  ctx.save();
+  ctx.translate(x, y);
+  const g = ctx.createRadialGradient(-16, -20, 8, 0, 0, r);
+  g.addColorStop(0,    'rgba(255,236,226,' + (0.16 + pop*0.42) + ')');
+  g.addColorStop(0.62, 'rgba(255,128,104,' + (0.13 + pop*0.30) + ')');
+  g.addColorStop(1,    'rgba(214,52,34,'  + (0.30 + pop*0.45) + ')');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, 6.2832); ctx.fill();
+  ctx.strokeStyle = pop > 0.05 ? 'rgba(255,248,240,.95)'
+                               : 'rgba(255,140,116,.85)';
+  ctx.lineWidth = 3 + pop * 4;
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, 6.2832); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(0, 0, r - 9, Math.PI*1.08, Math.PI*1.52); ctx.stroke();
+  ctx.restore();
+}
+/* F1 wake: the shaft blurs past while the rockets are lit */
+function drawBoostWake(x, y, env){
+  ctx.save();
+  ctx.globalAlpha = 0.30 + env * 0.45;
+  ctx.strokeStyle = '#FFD98A';
+  ctx.lineWidth = 3;
+  for (let i = 0; i < 14; i++){
+    const sx = ((i * 83.7 + (px * 2.2) % 900) % (W + 120)) - 60;
+    const sy = ((i * 173.3 + px * 3.1) % (H + 320)) - 160;
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx, sy + 90 + env * 190); ctx.stroke();
+  }
+  ctx.globalAlpha = 0.5 + env * 0.4;
+  const g = ctx.createLinearGradient(x, y + 40, x, y + 40 + 240 * env);
+  g.addColorStop(0, 'rgba(255,224,150,.9)');
+  g.addColorStop(1, 'rgba(255,120,30,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.moveTo(x - 30, y + 40); ctx.lineTo(x + 30, y + 40);
+  ctx.lineTo(x, y + 40 + 240 * env);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
 function drawObstacle(o){
   switch(o.t){
     case 'bird':   drawBird(o);   break;
@@ -1787,6 +2004,8 @@ function drawObstacle(o){
     case 'meteor':   drawMeteor(o);   break;
     case 'asteroid': drawAsteroid(o); break;
     case 'satfrag':  drawSatFrag(o);  break;
+    case 'vms3':     drawVms3(o);     break;
+    case 'f1':       drawF1(o);       break;
   }
 }
 
@@ -1969,7 +2188,11 @@ function draw(){
     drawElevator(player.crashX, player.crashY, player.crashRot, true);
   } else if (state !== S.OVER){
     const bob = state === S.MENU ? Math.sin(runTime * 2.2) * 5 : 0;
-    drawElevator(player.x, PLAYER_Y + bob, player.tilt, false);
+    const env = boostEnv();
+    if (env > 0.01) drawBoostWake(player.x, carY + bob, env);
+    const blink = player.mercy > 0 && Math.floor(player.mercy * 12) % 2 === 0;
+    if (!blink) drawElevator(player.x, carY + bob, player.tilt, false);
+    if (player.shield || player.bubble > 0) drawBubble(player.x, carY + bob);
   }
 
   drawBits();

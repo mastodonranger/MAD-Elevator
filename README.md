@@ -106,6 +106,24 @@ Measured with an autopilot: the same bot survives about 27 seconds a run
 here, against about 9 before the pacing rebuild. Through the first 2,000ft
 it now meets about 78 hazards rather than 67.
 
+## Power-ups
+
+Both are collectibles that drift down the shaft, and both can be held at
+once — their labels stack at the top of the screen.
+
+**VMS3** — a bubble, guaranteed at 1,200ft and then every 1,400–2,400ft.
+It absorbs one crash: the hit pops the bubble instead of ending the run
+and you get 1.3 seconds of mercy to fly clear of whatever hit you. The
+shell is translucent so the car still reads through it, and its rim
+flashes white the instant it takes the hit.
+
+**F1 System Speed** — a rocket chevron, guaranteed at 2,200ft and then
+every 1,800–3,000ft. It lifts the car 190px up the shaft and runs the
+world 2.4× faster for three seconds, untouchable, then eases back down to
+station. The wind-down is the part that tells you it is about to end.
+
+Neither can drop while you are already holding it.
+
 ## Crashing
 
 The run does not simply stop. The car tumbles through a short screen jiggle
