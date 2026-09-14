@@ -407,6 +407,7 @@ const SHIELD_MERCY  = 1.3;    // s of grace after the bubble pops
 const F1_TIME       = 3.0;    // s of boost
 const F1_RISE       = 190;    // px the car climbs up the screen
 const F1_MULT       = 2.4;    // climb speed multiplier while boosting
+const F1_GRACE      = 1.0;    // s of immunity once it drops you back off
 const BLOCKER_FLOOR  = 200;   // ft before the first full-width hazard
 const SPAWN_GAP_EASY = 430;   // px of climb between hazards at launch
 const SPAWN_GAP_HARD = 200;   // ...and once fully ramped
@@ -1260,7 +1261,12 @@ function update(dt){
        wind-down is the part that tells you it is about to end. */
     if (player.boost > 0){
       player.boost = Math.max(0, player.boost - dt);
-      if (player.boost === 0) setLabels();
+      if (player.boost === 0){
+        setLabels();
+        /* the car is already back at station by now, so this is a clear
+           beat to read the shaft again before anything can touch you */
+        player.mercy = Math.max(player.mercy, F1_GRACE);
+      }
     }
     const env = boostEnv();
     carY  = PLAYER_Y - env * F1_RISE;

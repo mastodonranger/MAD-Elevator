@@ -141,7 +141,10 @@ you never resume straight into whatever hit you.
 **F1 System Speed** — a rocket chevron, guaranteed at 2,200ft and then
 every 1,800–3,000ft. It lifts the car 190px up the shaft and runs the world
 2.4× faster for three seconds, untouchable, with everything moving past you
-smeared into motion blur. Then it eases back down to station.
+smeared into motion blur. Then it eases back down to station and hands you
+**one second of immunity** to read the shaft again before anything can
+touch you — the car blinks while it lasts. The ease-down finishes first, so
+the grace begins with the car already back at station and at normal speed.
 
 The blur is done per moving object rather than over the whole frame.
 Post-processing the canvas needs a full-resolution read every frame, which
