@@ -656,6 +656,7 @@ let carY = PLAYER_Y;                 /* the boost lifts this up the screen */
 let nextShield = SHIELD_AT, nextF1 = F1_AT, nextVms3 = VMS3_AT;
 let vms3Taken = false;   /* one extra life per run, ever */
 let killedBy = '';       /* what ended the run, for the results card */
+let cleared = 0;         /* hazards survived, so we know the first one */
 
 let px        = 0;    // pixels climbed this run
 let feet      = 0;
@@ -831,6 +832,7 @@ const CRASH_LINES = {
   ufo: ['Abducted. Briefly.',
         'That saucer was aiming for you.',
         'First contact. Went badly.'],
+  first: ['Is this thing going up?'],
   default: ['Out of service.', 'Service interrupted.']
 };
 function crashLine(key){
@@ -860,7 +862,7 @@ function start(){
   obstacles.length = 0; clouds.length = 0; bits.length = 0; popups.length = 0;
   px = 0; feet = 0; speed = SPEED_MIN; topSpeed = 0; nearMiss = 0;
   diff = 0; hazDiff = 0; runTime = 0; shake = 0; flash = 0; rescueT = 0;
-  killedBy = '';
+  killedBy = ''; cleared = 0;
   el.rescue.hidden = true;
   player.shield = false; player.mercy = 0; player.boost = 0; player.bubble = 0;
   carY = PLAYER_Y; nextShield = SHIELD_AT; nextF1 = F1_AT;
@@ -1115,7 +1117,9 @@ function setLabels(){
 function crash(x, y, o){
   if (state !== S.PLAY) return;
   if (player.mercy > 0 || player.boost > 0) return;
-  killedBy = o ? (o.kind ? o.t + ':' + o.kind : o.t) : '';
+  /* going out to the very first thing in the shaft has its own line */
+  killedBy = cleared === 0 ? 'first'
+           : o ? (o.kind ? o.t + ':' + o.kind : o.t) : '';
   el.shieldLbl.hidden = true; el.vms.hidden = true; el.f1.hidden = true;
   if (player.shield){                      /* the shield absorbs it */
     player.shield = false;
@@ -1256,6 +1260,7 @@ function updateObstacles(dt, scroll){
     /* near miss bookkeeping, scored the moment it clears the car */
     if (!o.passed && o.y - o.h/2 > carY + 54){
       o.passed = true;
+      cleared++;
       if (state === S.PLAY){
         let gap = Infinity;
         for (const r of rectsOf(o)){
@@ -1641,7 +1646,7 @@ function drawSpeedLines(){
 const BIRD_TONES = [
   { body:'#2C3444', wing:'#3C465A', beak:'#F2A93B' },
   { body:'#5A4033', wing:'#6E5140', beak:'#E9C46A' },
-  { body:'#E9EEF5', wing:'#C4CFDD', beak:'#F4A261' }
+  { body:'#C9CFD6', wing:'#525B66', beak:'#F4A261' }   /* dark wings, or it vanishes into a pale sky */
 ];
 function drawBird(o){
   const t = BIRD_TONES[o.tone];

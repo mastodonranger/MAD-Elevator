@@ -167,7 +167,9 @@ to black — and the results come up behind it, led by what actually got you:
 *"Oops, you hit a bird!"*, *"Where did that plane come from?!"*, *"Felled
 by a single brick."* The line is keyed by hazard, and by sub-kind where one
 exists, so falling debris names the brick or the girder and orbital
-wreckage names the solar wing or the dish.
+wreckage names the solar wing or the dish. Going out to the very first
+thing in the shaft — before you have got past anything at all — has its
+own: *"Is this thing going up?"*
 
 ## Layout of `index.html`
 
