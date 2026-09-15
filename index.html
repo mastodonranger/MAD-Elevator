@@ -304,6 +304,33 @@
   }
   #sound:hover{color:var(--ink);border-color:var(--edge)}
 
+  /* ---- pause button ------------------------------------------- */
+  #pauseBtn{
+    position:absolute;left:calc(var(--u)*22);bottom:calc(var(--u)*20);
+    z-index:4;pointer-events:auto;cursor:pointer;
+    width:calc(var(--u)*58);height:calc(var(--u)*58);
+    display:grid;place-items:center;padding:0;
+    border-radius:50%;
+    color:var(--brass);background:rgba(6,9,18,.62);
+    border:calc(var(--u)*2) solid var(--edge);
+  }
+  #pauseBtn[hidden]{display:none}
+  #pauseBtn svg{width:calc(var(--u)*24);height:calc(var(--u)*24);display:block}
+  #pauseBtn:active{background:rgba(244,195,74,.22)}
+
+  /* ---- resume countdown --------------------------------------- */
+  #countWrap{
+    z-index:3;background:rgba(5,7,14,.42);
+    backdrop-filter:blur(calc(var(--u)*1.5));
+  }
+  #countWrap[hidden]{display:none}
+  .countTag{
+    margin-top:calc(var(--u)*6);
+    font-size:calc(var(--u)*17);font-weight:700;
+    letter-spacing:calc(var(--u)*3.4);text-transform:uppercase;
+    color:var(--dim);
+  }
+
   /* stage gets a soft inner vignette so the canvas edges sit back */
   #vignette{
     position:absolute;inset:0;pointer-events:none;z-index:2;
@@ -401,9 +428,20 @@
   <!-- Pause -->
   <div class="screen" id="pause" hidden>
     <div class="verdict" style="color:var(--brass)">Holding</div>
-    <div class="cta">Tap or Press Space to Resume</div>
+    <div class="cta" id="resumeCta">Tap to Resume</div>
   </div>
 
+  <div class="layer center" id="countWrap" hidden>
+    <div class="rcount" id="bigCount">3</div>
+    <div class="countTag">Resuming</div>
+  </div>
+
+  <button id="pauseBtn" type="button" aria-label="Pause" hidden>
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <rect x="6" y="4" width="4.4" height="16" rx="1.2"></rect>
+      <rect x="13.6" y="4" width="4.4" height="16" rx="1.2"></rect>
+    </svg>
+  </button>
   <button id="sound" type="button">SOUND ON</button>
 </div>
 
@@ -620,6 +658,13 @@ const Sound = (() => {
 
 const soundBtn = document.getElementById('sound');
 soundBtn.textContent = Sound.on ? 'SOUND ON' : 'SOUND OFF';
+const pauseBtn = document.getElementById('pauseBtn');
+pauseBtn.addEventListener('pointerdown', e => e.stopPropagation());
+pauseBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  pauseGame();
+  pauseBtn.blur();
+});
 soundBtn.addEventListener('click', e => {
   e.stopPropagation();
   soundBtn.textContent = Sound.toggle() ? 'SOUND ON' : 'SOUND OFF';
@@ -639,12 +684,14 @@ function saveBest(v){
 /* ================================================================
    7. Game state
    ================================================================ */
-const S = { MENU:0, PLAY:1, CRASH:2, OVER:3, PAUSE:4, RESCUE:5 };
+const S = { MENU:0, PLAY:1, CRASH:2, OVER:3, PAUSE:4, RESCUE:5, RESUMING:6 };
 /* VMS3 rescue beats, in seconds: the call rings, it is picked up, the
    passenger speaks, the agent answers, the ticket closes green, 3-2-1. */
 const R_RING = 1.3, R_PASS = 2.5, R_AGENT = 4.1, R_OK = 4.9,
       R_COUNT = 5.2, R_GO = 8.2;
 let rescueT = 0;
+const RESUME_T = 3.0;   /* count back in after a pause */
+let resumeT = 0;
 let state = S.MENU;
 
 const player = {
@@ -736,7 +783,7 @@ function toLogicalX(clientX){
   return clamp((clientX - r.left) / r.width * W, 0, W);
 }
 stage.addEventListener('pointerdown', e => {
-  if (e.target === soundBtn) return;
+  if (e.target === soundBtn || e.target.closest('#pauseBtn')) return;
   if (state === S.PLAY){
     pointerOn = true;
     pointerX = toLogicalX(e.clientX);
@@ -778,6 +825,9 @@ const el = {
   title:    document.getElementById('title'),
   over:     document.getElementById('over'),
   pause:    document.getElementById('pause'),
+  pauseBtn: document.getElementById('pauseBtn'),
+  countWrap:document.getElementById('countWrap'),
+  bigCount: document.getElementById('bigCount'),
   finalAlt: document.getElementById('finalAlt'),
   finalBest:document.getElementById('finalBest'),
   finalSpeed:document.getElementById('finalSpeed'),
@@ -843,6 +893,8 @@ function crashLine(key){
 if (matchMedia('(hover:none)').matches){
   el.titleCta.textContent = 'Tap to Launch';
   document.getElementById('overCta').textContent = 'Tap to Ride Again';
+} else {
+  document.getElementById('resumeCta').textContent = 'Tap or Press Space to Resume';
 }
 
 function syncHUD(){
@@ -888,10 +940,21 @@ function pauseGame(){
   keys.left = keys.right = false;
   el.pause.hidden = false;
 }
+/* Resuming never drops you straight back into traffic: the world stays
+   frozen through a 3-2-1 and steering is locked, so a pause can't be used
+   to reposition for free either. */
 function resume(){
   if (state !== S.PAUSE) return;
-  state = S.PLAY;
+  state = S.RESUMING;
+  resumeT = RESUME_T;
+  keys.left = keys.right = false;
+  pointerOn = false;
   el.pause.hidden = true;
+  el.countWrap.hidden = false;
+  el.bigCount.textContent = '3';
+  el.bigCount.classList.remove('tick'); void el.bigCount.offsetWidth;
+  el.bigCount.classList.add('tick');
+  Sound.ding();
 }
 
 function gameOver(){
@@ -915,13 +978,24 @@ function gameOver(){
    Every obstacle stores its CENTRE in x,y with full w,h. rectsOf()
    turns one into the axis-aligned boxes we actually test.
    ================================================================ */
+/* A tumbling rectangle's footprint changes as it spins, so a fixed
+   axis-aligned box cannot match it - debris swung between 1.0x and 1.7x
+   its hitbox depending on the frame. This tracks the rotation. */
+function rotBox(o, m){
+  const c = Math.abs(Math.cos(o.rot)), s = Math.abs(Math.sin(o.rot));
+  const w = (o.w*c + o.h*s) * m, h = (o.w*s + o.h*c) * m;
+  return [{ x: o.x - w/2, y: o.y - h/2, w, h }];
+}
 function rectsOf(o){
   if (o.t === 'crane'){
     const top = o.y - o.h/2;
-    return [
+    const rs = [
       { x: -40,              y: top, w: o.gapX + 40,              h: o.h },
       { x: o.gapX + o.gapW,  y: top, w: W - o.gapX - o.gapW + 40, h: o.h }
     ];
+    /* the hanging crate is painted, so it has to be solid too */
+    if (o.load) rs.push({ x: o.loadX - 30, y: top + o.h + o.loadDrop, w: 60, h: 44 });
+    return rs;
   }
   if (o.t === 'plane'){
     return [
@@ -950,9 +1024,8 @@ function rectsOf(o){
   if (o.t === 'asteroid'){
     return [{ x: o.x - o.r*0.82, y: o.y - o.r*0.82, w: o.r*1.64, h: o.r*1.64 }];
   }
-  if (o.t === 'satfrag'){
-    return [{ x: o.x - o.w*0.38, y: o.y - o.h*0.42, w: o.w*0.76, h: o.h*0.84 }];
-  }
+  if (o.t === 'satfrag') return rotBox(o, 0.78);
+  if (o.t === 'debris')  return rotBox(o, 0.90);
   const sx = o.t === 'bird' ? 0.62 : 0.82;      // birds are forgiving
   const sy = o.t === 'bird' ? 0.66 : 0.82;
   return [{ x: o.x - o.w*sx/2, y: o.y - o.h*sy/2, w: o.w*sx, h: o.h*sy }];
@@ -985,7 +1058,10 @@ function spawnCrane(){
   obstacles.push({ t:'crane', x: W/2, y: -70, w: W, h: 46,
                    gapX, gapW, vx:0, vy:0, passed:false,
                    towerRight: gapX < W/2, load: Math.random() < 0.65,
-                   loadDrop: rnd(60, 130) });
+                   loadDrop: rnd(60, 130),
+                   /* computed once so the drawing and the hitbox cannot drift */
+                   loadX: gapX > 120 ? gapX * 0.5
+                                     : gapX + gapW + (W - gapX - gapW) * 0.5 });
 }
 function spawnDebris(){
   const kind = pick(['brick','slab','beam']);
@@ -1398,6 +1474,21 @@ function update(dt){
       nextSpawnPx = px + lerp(SPAWN_GAP_EASY, SPAWN_GAP_HARD, hazDiff) * rnd(0.82, 1.28);
     }
     syncHUD();
+  } else if (state === S.RESUMING){
+    resumeT -= dt;
+    const n = Math.max(1, Math.ceil(resumeT));
+    if (el.bigCount.textContent !== String(n)){
+      el.bigCount.textContent = String(n);
+      el.bigCount.classList.remove('tick'); void el.bigCount.offsetWidth;
+      el.bigCount.classList.add('tick');
+      Sound.ding();
+    }
+    if (resumeT <= 0){
+      el.countWrap.hidden = true;
+      state = S.PLAY;
+      Sound.launch();
+    }
+
   } else if (state === S.RESCUE){
     rescueT += dt;
     speed = Math.max(0, speed - 900 * dt);     /* the car stalls */
@@ -1447,7 +1538,7 @@ function update(dt){
     speed = 70;                 /* wreckage and clouds keep drifting past */
   }
 
-  const held = (state === S.PAUSE || state === S.RESCUE);
+  const held = (state === S.PAUSE || state === S.RESCUE || state === S.RESUMING);
   const scroll = held ? 0 : speed * dt;
   if (!held){
     updateObstacles(dt, scroll);
@@ -1456,6 +1547,7 @@ function update(dt){
   if (state !== S.PAUSE) updateBits(dt);    /* the impact still sparks */
   shake = Math.max(0, shake - 60 * dt);
   flash = Math.max(0, flash - 2.6 * dt);
+  el.pauseBtn.hidden = (state !== S.PLAY);
 }
 
 /* ================================================================
@@ -1719,8 +1811,7 @@ function drawCrane(o){
 
   /* hanging load, always over solid deck */
   if (o.load){
-    const leftDeck = o.gapX > 120;
-    const lx = leftDeck ? o.gapX * 0.5 : (o.gapX + o.gapW + (W - o.gapX - o.gapW) * 0.5);
+    const lx = o.loadX;
     ctx.strokeStyle = '#4A5464';
     ctx.lineWidth = 3;
     ctx.beginPath();
@@ -1766,8 +1857,8 @@ function drawDebris(o){
     ctx.strokeStyle = '#5B646F'; ctx.lineWidth = 3; ctx.stroke();
     ctx.strokeStyle = '#6C4A2E'; ctx.lineWidth = 3;   /* rebar */
     ctx.beginPath();
-    ctx.moveTo(w/2 - 10, -h/4); ctx.lineTo(w/2 + 16, -h/4 - 8);
-    ctx.moveTo(w/2 - 10, h/6);  ctx.lineTo(w/2 + 20, h/6 + 4);
+    ctx.moveTo(w/2 - 18, -h/4); ctx.lineTo(w/2 - 1, -h/4 - 6);
+    ctx.moveTo(w/2 - 18, h/6);  ctx.lineTo(w/2 - 1, h/6 + 3);
     ctx.stroke();
   } else {
     ctx.fillStyle = '#8A5A3B';                         /* rusted I-beam */
@@ -2009,12 +2100,12 @@ function drawMeteor(o){
   ctx.lineTo(o.x - px2*o.r*0.95, o.y - py2*o.r*0.95);
   ctx.closePath(); ctx.fill();
 
-  const bloom = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, o.r*3.1);
+  const bloom = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, o.r*1.05);
   bloom.addColorStop(0,   'rgba(255,238,190,.85)');
-  bloom.addColorStop(0.4, 'rgba(255,156,52,.38)');
+  bloom.addColorStop(0.5, 'rgba(255,156,52,.34)');
   bloom.addColorStop(1,   'rgba(255,120,30,0)');
   ctx.fillStyle = bloom;
-  ctx.beginPath(); ctx.arc(o.x, o.y, o.r*3.1, 0, 6.2832); ctx.fill();
+  ctx.beginPath(); ctx.arc(o.x, o.y, o.r*1.05, 0, 6.2832); ctx.fill();
 
   /* sparks shedding off the back */
   for (let i = 0; i < 5; i++){
@@ -2103,7 +2194,7 @@ function drawSatFrag(o){
     ctx.beginPath(); ctx.moveTo(-w/2, 0); ctx.lineTo(w/2 - 4, 2); ctx.stroke();
     ctx.strokeStyle = '#C8CFD8'; ctx.lineWidth = 4;          /* bent strut */
     ctx.beginPath();
-    ctx.moveTo(-w/2, -2); ctx.lineTo(-w/2 - 16, 8); ctx.lineTo(-w/2 - 26, 2);
+    ctx.moveTo(-w/2 + 16, -2); ctx.lineTo(-w/2 + 6, 8); ctx.lineTo(-w/2 + 1, 2);
     ctx.stroke();
   } else if (o.kind === 'dish'){
     /* a crumpled antenna dish */
@@ -2295,7 +2386,30 @@ function smearPass(drawFn, s){
   ctx.save(); ctx.globalAlpha = 0.15; ctx.translate(0,  reach * 0.38); drawFn(); ctx.restore();
 }
 
+/* Measured drawn bounds against each hitbox: the bird was 1.88x wider
+   than the box that actually kills you, satfrag 1.43x, plane 1.30x. That
+   reads as a much fatter obstacle than it is, so you dodge space that was
+   never dangerous. These bring the painted sprite down to the hitbox, so
+   what you see is what you hit. The crane is left alone - its art is
+   already narrower than its box, and scaling a full-width wall about its
+   centre would open fake gaps at the edges. */
+const VIS = { bird:0.53, satfrag:0.86, plane:0.77, sat:0.81,
+              debris:0.90, asteroid:0.87, heli:0.86, meteor:0.85 };
+
 function drawObstacle(o){
+  const k = VIS[o.t];
+  if (k){
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    ctx.scale(k, k);
+    ctx.translate(-o.x, -o.y);
+    paintObstacle(o);
+    ctx.restore();
+    return;
+  }
+  paintObstacle(o);
+}
+function paintObstacle(o){
   switch(o.t){
     case 'bird':   drawBird(o);   break;
     case 'crane':  drawCrane(o);  break;
@@ -2335,6 +2449,7 @@ function drawFlames(x, y, strength){
 function drawElevator(x, y, rot, broken){
   const hw = PLAYER_W/2, hh = PLAYER_H/2;
   const thrusting = (state === S.PLAY || state === S.MENU || state === S.PAUSE ||
+                     state === S.RESUMING ||
                      (state === S.RESCUE && rescueT >= R_GO - 1.0));
 
   if (thrusting) drawFlames(x, y + hh - 2, 1 + (speed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN) * 0.8);

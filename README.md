@@ -25,7 +25,8 @@ whatever window it gets, so it plays the same on a phone and on a desktop.
 | `←` `→` or `A` / `D` | steer the car |
 | hold left / right half | steers that way, like holding an arrow key |
 | `Space` / `Enter` / tap | launch, and ride again after a crash |
-| `Esc` / `P` | pause (on the results screen, back to menu) |
+| pause button (bottom left) | hold the run |
+| `Esc` / `P` | same, from a keyboard |
 | `R` | restart mid-run |
 | `M` | mute |
 
@@ -157,6 +158,43 @@ drops the boost to 12fps at 2× device pixel ratio — 38 even through a
 quarter-size buffer, since the read is the cost rather than the stamps.
 Smearing each moving sprite instead holds 60fps, and it is closer to right
 anyway: the near things streak and the distant skyline barely does.
+
+## Pausing
+
+There is a pause button at the bottom left during a run, and `Esc` / `P`
+from a keyboard. Losing focus or switching tabs pauses too.
+
+Resuming never drops you straight back into traffic: the world stays
+frozen through a **3-2-1** count, and steering is locked while it runs, so
+a pause cannot be used to reposition for free either.
+
+## What you see is what you hit
+
+Every sprite is drawn no larger than the hitbox that actually kills you.
+This was measured rather than eyeballed - each hazard was painted alone on
+a buffer and its painted pixels compared against its collision box:
+
+| hazard | before | after |
+| --- | --- | --- |
+| bird | 1.88x wider than its box | 0.98x |
+| meteor | 3.12x | 0.92x |
+| satellite wreckage | 1.43x | 0.94x |
+| falling debris | up to 1.68x | 1.01x |
+| airliner | 1.30x | 1.01x |
+| satellite | 1.23x | 1.01x |
+| asteroid | 1.19x | 1.04x |
+| helicopter | 1.16x | 1.00x |
+
+A sprite fatter than its hitbox reads as a wider obstacle than it is, so
+you dodge air that was never dangerous. Two related fixes fell out of the
+measurement: a tumbling rectangle's footprint changes as it spins, so
+debris and wreckage now take a rotation-aware box instead of a fixed one;
+and the crane's hanging crate was painted but not solid, which is now
+part of its hitbox.
+
+The crane is deliberately left alone - its art is already narrower than
+its box, and scaling a full-width wall about its centre would open fake
+gaps at the screen edges.
 
 ## Crashing
 
