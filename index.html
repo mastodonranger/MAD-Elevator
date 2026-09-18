@@ -851,10 +851,10 @@ const CRASH_LINES = {
            'Loose masonry. Classic.'],
   'debris:brick': ['A brick. Just one brick.',
                    'Felled by a single brick.'],
-  'debris:slab': ['A concrete slab got there first.',
-                  'You met a falling slab.'],
-  'debris:beam': ['You caught a girder.',
-                  'That beam came out of nowhere.'],
+  'debris:rubble': ['A chunk of the building got there first.',
+                    'You met a lump of falling concrete.'],
+  'debris:cinder': ['A cinder block. Through and through.',
+                    'You found the one block with holes in it.'],
   heli: ['Someone took "get to the chopper" too literally.',
          'Where did that helicopter come from?!',
          'You met a chopper mid-hover.',
@@ -981,6 +981,20 @@ function gameOver(){
 /* A tumbling rectangle's footprint changes as it spins, so a fixed
    axis-aligned box cannot match it - debris swung between 1.0x and 1.7x
    its hitbox depending on the frame. This tracks the rotation. */
+/* Kinds are names so the crash lines stay readable; the sprite index is
+   looked up when drawing. */
+const KIND = {
+  bird:   ['pigeon','crow','sparrow'],
+  debris: ['brick','rubble','cinder'],
+  heli:   ['news','rescue','cargo'],
+  plane:  ['airliner','turboprop','bizjet','twin']
+};
+const KIX = {};
+for (const t in KIND) KIND[t].forEach((n,i) => KIX[t+':'+n] = i);
+const BIRD_FLAP  = { pigeon:7.5, crow:5.6, sparrow:11 };
+const BIRD_FRAME = [0,1,2,1];
+const PLANE_TRAIL = { airliner:1, bizjet:1 };
+
 function rotBox(o, m){
   const c = Math.abs(Math.cos(o.rot)), s = Math.abs(Math.sin(o.rot));
   const w = (o.w*c + o.h*s) * m, h = (o.w*s + o.h*c) * m;
@@ -997,12 +1011,8 @@ function rectsOf(o){
     if (o.load) rs.push({ x: o.loadX - 30, y: top + o.h + o.loadDrop, w: 60, h: 44 });
     return rs;
   }
-  if (o.t === 'plane'){
-    return [
-      { x: o.x - o.w/2, y: o.y - 12,     w: o.w,      h: 24 },          // wing span
-      { x: o.x - 58,    y: o.y - o.h/2,  w: 116,      h: o.h }          // fuselage + tail
-    ];
-  }
+  if (o.t === 'plane')
+    return SPR.rectsFor(SPR.hitKey('plane', KIX['plane:'+o.kind]), o.x, o.y, o.dir);
   if (o.t === 'ufo'){
     return [
       { x: o.x - o.w/2, y: o.y - 10, w: o.w, h: 22 },
@@ -1012,12 +1022,8 @@ function rectsOf(o){
   if (o.t === 'vms3' || o.t === 'f1' || o.t === 'shield'){
     return [{ x: o.x - 34, y: o.y - 34, w: 68, h: 68 }];
   }
-  if (o.t === 'heli'){
-    return [
-      { x: o.x - 38, y: o.y - 20, w: 76,  h: 42 },   /* cabin */
-      { x: o.x - 76, y: o.y - 34, w: 152, h: 10 }    /* rotor disc */
-    ];
-  }
+  if (o.t === 'heli')
+    return SPR.rectsFor(SPR.hitKey('heli', KIX['heli:'+o.kind]), o.x, o.y, o.dir);
   if (o.t === 'meteor'){
     return [{ x: o.x - o.r*0.85, y: o.y - o.r*0.85, w: o.r*1.7, h: o.r*1.7 }];
   }
@@ -1025,9 +1031,11 @@ function rectsOf(o){
     return [{ x: o.x - o.r*0.82, y: o.y - o.r*0.82, w: o.r*1.64, h: o.r*1.64 }];
   }
   if (o.t === 'satfrag') return rotBox(o, 0.78);
-  if (o.t === 'debris')  return rotBox(o, 0.90);
-  const sx = o.t === 'bird' ? 0.62 : 0.82;      // birds are forgiving
-  const sy = o.t === 'bird' ? 0.66 : 0.82;
+  /* The sprite IS the hitbox now - w,h come from the baked art - so the
+     old shrink factors would only make it lie the other way. */
+  if (o.t === 'debris')  return rotBox(o, 1);
+  if (o.t === 'bird')    return [{ x:o.x-o.w/2, y:o.y-o.h/2, w:o.w, h:o.h }];
+  const sx = 0.82, sy = 0.82;
   return [{ x: o.x - o.w*sx/2, y: o.y - o.h*sy/2, w: o.w*sx, h: o.h*sy }];
 }
 
@@ -1039,11 +1047,11 @@ function spawnPickup(kind){
   obstacles.push(o);
 }
 function spawnBird(){
-  const y = -60;
-  const o = { t:'bird', x: rnd(60, W-60), y, w:64, h:38,
+  const kind = pick(KIND.bird), d = SPR.dims('bird', KIX['bird:'+kind]);
+  const o = { t:'bird', kind, x: rnd(60, W-60), y: -60, w: d.w, h: d.h,
               vx: rnd(-52, 52), vy: rnd(18, 58), phase: rnd(0, 6.28),
-              amp: rnd(18, 58), flap: rnd(7, 11), base: 0, passed:false,
-              tone: pick([0, 1, 2]) };
+              amp: rnd(18, 58), flap: BIRD_FLAP[kind], flapT: rnd(0, 6),
+              base: 0, passed:false };
   o.base = o.x;
   obstacles.push(o);
 }
@@ -1064,17 +1072,19 @@ function spawnCrane(){
                                      : gapX + gapW + (W - gapX - gapW) * 0.5 });
 }
 function spawnDebris(){
-  const kind = pick(['brick','slab','beam']);
-  const size = kind === 'beam' ? rnd(84, 132) : rnd(44, 82);
+  const kind = pick(KIND.debris), d = SPR.dims('debris', KIX['debris:'+kind]);
   obstacles.push({ t:'debris', kind, x: rnd(50, W-50), y: -70,
-                   w: size, h: kind === 'beam' ? size*0.34 : size*0.8,
+                   w: d.w, h: d.h,
                    vx: rnd(-42, 42), vy: rnd(90, 170),
                    rot: rnd(0, 6.28), spin: rnd(-2.6, 2.6), passed:false });
 }
+const PLANE_SIZE = { airliner:[228,78], turboprop:[228,62],
+                     bizjet:[156,56], twin:[120,48] };
 function spawnPlane(){
   const dir = Math.random() < 0.5 ? 1 : -1;
-  obstacles.push({ t:'plane', dir, x: dir > 0 ? -170 : W + 170, y: -80,
-                   w: 232, h: 74, vx: dir * rnd(125, 215), vy: rnd(26, 58),
+  const kind = pick(KIND.plane), sz = PLANE_SIZE[kind];
+  obstacles.push({ t:'plane', kind, dir, x: dir > 0 ? -sz[0] : W + sz[0], y: -80,
+                   w: sz[0], h: sz[1], vx: dir * rnd(125, 215), vy: rnd(26, 58),
                    passed:false, blink: 0 });
 }
 function spawnUFO(){
@@ -1089,10 +1099,11 @@ function spawnSat(){
 }
 function spawnHeli(){
   const dir = Math.random() < 0.5 ? 1 : -1;
-  obstacles.push({ t:'heli', dir, x: dir > 0 ? -150 : W + 150, y: -70,
-                   w: 168, h: 76, vx: dir * rnd(70, 122), vy: rnd(22, 52),
-                   bob: rnd(0, 6.28), rotor: 0, passed:false,
-                   livery: rndi(0, 2) });
+  const kind = pick(KIND.heli);
+  obstacles.push({ t:'heli', kind, dir, x: dir > 0 ? -160 : W + 160, y: -70,
+                   w: 158, h: kind === 'cargo' ? 82 : 56,
+                   vx: dir * rnd(70, 122), vy: rnd(22, 52),
+                   bob: rnd(0, 6.28), rotor: 0, passed:false });
 }
 function spawnMeteor(){
   /* comes in steep and fast, burning as it goes */
@@ -2370,8 +2381,9 @@ const SPR = (function(){
     /* nav lights: green on the starboard wingtip, red on the fin */
     px(72,wy+9,6,5, lit?NAVG:NAVG0);
     px(15, S.finTop+1, 6,5, lit?NAVR:NAVR0);
-    if(S.contrail) for(let i=0;i<7;i++)
-      px(-8-i*9, FY+9, 7, 4, 'rgba(255,255,255,'+(0.26-i*0.035)+')');
+    /* The contrail is decoration and is drawn live by the game: baking
+       it made the sprite 62px wider than anything solid, which would
+       have dragged the hitbox out with it. */
   }
 
   const PPAL=(hull,hullHi,hullLo,wing,fin,finHi)=>({hull,hullHi,hullLo,wing,fin,finHi});
@@ -2545,7 +2557,7 @@ const SPR = (function(){
     const BIG  = [PLANES[0][2], PLANES[3][2]];
     const LITE = [[SMALL[0][3], SPALS[0]], [SMALL[1][3], SPALS[1]]];
     /* the airliner's contrail runs 62px behind the tail */
-    const PLANE_BOX = [[310,94,70,2],[242,84,3,2],[164,66,4,3],[142,60,4,3]];
+    const PLANE_BOX = [[236,94,4,2],[242,90,3,2],[164,66,4,3],[142,60,4,3]];
     cache.plane = [0,1,2,3].map(n => [0,1].map(lit =>
       (n === 1 || n === 3 ? [0,1,2,3] : [0]).map(f => {
         const B = PLANE_BOX[n];
@@ -2578,6 +2590,7 @@ const SPR = (function(){
     cache.bird.forEach((a,i) => a.forEach(add('bird'+i)));
     cache.heli.forEach((a,i) => a.forEach(add('heli'+i)));
     cache.plane.forEach((a,i) => a.forEach(b => b.forEach(add('plane'+i))));
+    index();
     stats = { ms: +(performance.now()-t0).toFixed(2), sprites: n,
               kb: Math.round(bytes/1024), clipped, where };
     return stats;
@@ -2595,8 +2608,89 @@ const SPR = (function(){
     return cv;
   }
 
+  /* Hitboxes in SPRITE space, paired with the anchor that maps to an
+     obstacle's x,y. Derived from the drawing code, then checked against
+     the baked pixels by the coverage test. */
+  const HIT = {
+    heli: { anchor:[76,28], rects:[
+      [-2,3,156,10],        /* rotor disc            */
+      [38,22,76,34],        /* cabin down to the skids */
+      [0,9,14,28],          /* fin + tail rotor      */
+      [6,28,38,11] ] },     /* tail boom             */
+    heliCargo: { anchor:[76,40], rects:[
+      [-2,3,156,10], [38,22,76,34], [0,9,14,28], [6,28,38,11],
+      [62,65,28,15] ] },
+    plane: { anchor:[113,46], rects:[
+      [0,34,226,28],        /* fuselage        */
+      [8,8,42,28],          /* fin             */
+      [66,58,101,26] ] },   /* wing + engines  */
+    planeHigh: { anchor:[113,40], rects:[
+      [0,34,226,28], [8,10,42,26], [60,18,110,28] ] },
+    bizjet: { anchor:[78,32], rects:[
+      [0,28,154,20], [4,4,46,26], [40,44,60,12] ] },
+    twin: { anchor:[60,30], rects:[
+      [8,26,110,20], [0,8,36,20], [16,18,76,18] ] }
+  };
+
+  /* Surface padding per family, so nothing outside has to know it. */
+  const PAD = { car:[0,2], bird:[5,6], debris:[2,2], heli:[5,2],
+                plane:[[4,2],[3,2],[4,3],[4,3]] };
+  const HIT_KEY = { plane:['plane','planeHigh','bizjet','twin'],
+                    heli:['heli','heli','heliCargo'] };
+  const anchors = {}, boxes = {};
+
+  function boxOf(cv){
+    const c = cv.getContext('2d');
+    const d = c.getImageData(0,0,cv.width,cv.height).data;
+    let x0=1e9,y0=1e9,x1=-1,y1=-1;
+    for (let y=0;y<cv.height;y++) for (let x=0;x<cv.width;x++)
+      if (d[(y*cv.width+x)*4+3] > 8){
+        if (x<x0) x0=x; if (x>x1) x1=x; if (y<y0) y0=y; if (y>y1) y1=y; }
+    return { x:x0, y:y0, w:x1-x0+1, h:y1-y0+1 };
+  }
+  const mid = cv => { const b = boxOf(cv); return [b.x + b.w/2, b.y + b.h/2]; };
+
+  function index(){
+    boxes.car    = cache.car.map(boxOf);
+    boxes.bird   = cache.bird.map(a => boxOf(a[1]));
+    boxes.debris = cache.debris.map(boxOf);
+    anchors.car    = cache.car.map(mid);
+    anchors.bird   = cache.bird.map(a => mid(a[1]));
+    anchors.debris = cache.debris.map(mid);
+    anchors.heli   = HIT_KEY.heli.map(k =>
+      [HIT[k].anchor[0]+PAD.heli[0], HIT[k].anchor[1]+PAD.heli[1]]);
+    anchors.plane  = HIT_KEY.plane.map((k,i) =>
+      [HIT[k].anchor[0]+PAD.plane[i][0], HIT[k].anchor[1]+PAD.plane[i][1]]);
+  }
+
+  function put(ctx, cv, anc, x, y, dir, rot){
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.translate(Math.round(x), Math.round(y));
+    if (rot) ctx.rotate(rot);
+    if (dir < 0) ctx.scale(-1, 1);
+    ctx.drawImage(cv, -anc[0], -anc[1]);
+    ctx.restore();
+  }
+  /* Sprite-space rects to world rects, mirroring with the sprite so the
+     hitbox always follows the art. */
+  function rectsFor(key, x, y, dir){
+    const H = HIT[key], ax = H.anchor[0], ay = H.anchor[1];
+    return H.rects.map(([rx,ry,rw,rh]) => ({
+      x: x + (dir < 0 ? -(rx - ax) - rw : rx - ax),
+      y: y + (ry - ay), w: rw, h: rh }));
+  }
+
   return {
-    bake, stats: () => stats,
+    bake, stats: () => stats, hit: k => HIT[k],
+    put, rectsFor, hitKey: (fam,k) => HIT_KEY[fam][k],
+    dims: (fam,k) => boxes[fam][k],
+    drawCar:    (ctx,i,x,y)         => put(ctx, cache.car[i], anchors.car[i], x, y, 1, 0),
+    drawBird:   (ctx,k,f,x,y,dir)   => put(ctx, cache.bird[k][f], anchors.bird[k], x, y, dir, 0),
+    drawDebris: (ctx,k,x,y,rot)     => put(ctx, cache.debris[k], anchors.debris[k], x, y, 1, rot),
+    drawHeli:   (ctx,k,f,x,y,dir)   => put(ctx, cache.heli[k][f], anchors.heli[k], x, y, dir, 0),
+    drawPlane:  (ctx,k,f,on,x,y,dir)=> { const a = cache.plane[k][on?1:0];
+                                         put(ctx, a[f % a.length], anchors.plane[k], x, y, dir, 0); },
     car:    i        => cache.car[i],
     bird:   (k,f)    => cache.bird[k][f],
     debris: k        => cache.debris[k],
@@ -2604,6 +2698,15 @@ const SPR = (function(){
     plane:  (k,f,on) => { const a = cache.plane[k][on?1:0]; return a[f % a.length]; },
     boom:   boomFor,
     riders: () => RIDERS.map(r => r[0]),
+    /* content bounds within each baked surface, so the game can centre a
+       sprite on an obstacle's x,y without guessing at the padding */
+    box: (cv) => { const c = cv.getContext('2d');
+      const d = c.getImageData(0,0,cv.width,cv.height).data;
+      let x0=1e9,y0=1e9,x1=-1,y1=-1;
+      for (let y=0;y<cv.height;y++) for (let x=0;x<cv.width;x++)
+        if (d[(y*cv.width+x)*4+3] > 8){
+          if (x<x0) x0=x; if (x>x1) x1=x; if (y<y0) y0=y; if (y>y1) y1=y; }
+      return { x:x0, y:y0, w:x1-x0+1, h:y1-y0+1 }; },
     counts: () => ({ car:cache.car.length, bird:cache.bird.length,
                      debris:cache.debris.length, heli:cache.heli.length,
                      plane:cache.plane.length })
@@ -3453,8 +3556,7 @@ function smearPass(drawFn, s){
    what you see is what you hit. The crane is left alone - its art is
    already narrower than its box, and scaling a full-width wall about its
    centre would open fake gaps at the edges. */
-const VIS = { bird:0.53, satfrag:0.86, plane:0.77, sat:0.81,
-              debris:0.90, asteroid:0.87, heli:0.86, meteor:0.85 };
+const VIS = { satfrag:0.86, sat:0.81, asteroid:0.87, meteor:0.85 };
 
 function drawObstacle(o){
   const k = VIS[o.t];
@@ -3469,15 +3571,36 @@ function drawObstacle(o){
   }
   paintObstacle(o);
 }
+/* The contrail is not part of the sprite - it is decoration that would
+   otherwise drag the hitbox 62px past the tail. */
+function paintPlane(o){
+  if (PLANE_TRAIL[o.kind]){
+    for (let i = 0; i < 8; i++){
+      ctx.fillStyle = 'rgba(255,255,255,' + (0.24 - i*0.03) + ')';
+      ctx.fillRect(o.x - o.dir * (o.w/2 + 6 + i*10) - 4, o.y + 4, 8, 4);
+    }
+  }
+  SPR.drawPlane(ctx, KIX['plane:'+o.kind], Math.floor(o.blink * 15) & 3,
+                (Math.floor(o.blink * 1.6) & 1) === 0, o.x, o.y, o.dir);
+}
 function paintObstacle(o){
   switch(o.t){
-    case 'bird':   drawBird(o);   break;
+    case 'bird':
+      SPR.drawBird(ctx, KIX['bird:'+o.kind],
+                   BIRD_FRAME[Math.floor(o.flapT) & 3],   /* flapT already counts flaps */
+                   o.x, o.y, o.vx < 0 ? -1 : 1);
+      break;
     case 'crane':  drawCrane(o);  break;
-    case 'debris': drawDebris(o); break;
-    case 'plane':  drawPlane(o);  break;
+    case 'debris':
+      SPR.drawDebris(ctx, KIX['debris:'+o.kind], o.x, o.y, o.rot);
+      break;
+    case 'plane':  paintPlane(o); break;
     case 'ufo':    drawUFO(o);    break;
     case 'sat':    drawSat(o);    break;
-    case 'heli':     drawHeli(o);     break;
+    case 'heli':
+      SPR.drawHeli(ctx, KIX['heli:'+o.kind], Math.floor(o.rotor) & 3,
+                   o.x, o.y + Math.sin(o.bob) * 4, o.dir);
+      break;
     case 'meteor':   drawMeteor(o);   break;
     case 'asteroid': drawAsteroid(o); break;
     case 'satfrag':  drawSatFrag(o);  break;
@@ -3712,6 +3835,17 @@ function frame(t){
 resize();
 buildSkyline();
 const _spr = SPR.bake();
+/* Test hooks, only with ?debug - the sprite measurement harness and the
+   hitbox/coverage checks run against these. */
+if (location.search.indexOf('debug') >= 0){
+window.SPRDBG = SPR;
+window.DBG = {
+  live: () => obstacles.map(o => o.t + (o.kind ? ':'+o.kind : '')),
+  boxes: () => obstacles.map(o => ({ t:o.t, k:o.kind, n:rectsOf(o).length })),
+  feet: () => Math.floor(feet),
+  spawn: t => SPAWNERS[t]()
+};
+}
 console.log('[sprites] ' + _spr.sprites + ' baked in ' + _spr.ms + 'ms, ' +
             _spr.kb + ' KB, ' + _spr.clipped + ' clipped ' + JSON.stringify(_spr.where));
 document.getElementById('titleBest').textContent = commas(best) + ' FT';
