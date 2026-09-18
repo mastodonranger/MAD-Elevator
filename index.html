@@ -1551,6 +1551,1066 @@ function update(dt){
 }
 
 /* ================================================================
+   12b. Pixel sprite library
+
+   Six asset families, all inside one IIFE. Developing them as separate
+   files turned up three const collisions - G0, S0..S4 and PAL - and a
+   duplicate const in one scope is a SyntaxError that silently kills the
+   whole file. This file is one flat scope with far more in it, so the
+   sprites get their own and expose nothing but SPR.
+
+   Everything is baked to a bitmap once at boot and blitted thereafter:
+   drawing per-pixel at a fractional scale rounds each column separately
+   and combs, and rebuilding paths every frame is what the old vector
+   art did.
+   ================================================================ */
+const SPR = (function(){
+  let _g = null, P = 1, OX = 0, OY = 0;
+  const px  = (x,y,w,h,col) => { _g.fillStyle = col; _g.fillRect(OX+x*P, OY+y*P, w*P, h*P); };
+  const dot = (x,y,col)     => px(x,y,1,1,col);
+  const clr = (x,y,w,h)     => _g.clearRect(OX+x*P, OY+y*P, w*P, h*P);
+
+  /* ---- shared palette + panoramic cabin, 76x100 grid ------------------- */
+  const O='#1A1002', D2='#4A2E06', D='#7A4E0A', M='#C8921E', L='#F0C44E', S='#FFF2C0', W='#FFFFFF';
+  const G0='#E8F6FF', G1='#CDEAF8', G2='#93C9E8', G3='#5F9CC6', G4='#3E7AA6';
+  const SK='#F5CEA6', SK2='#D9A97E', HR='#33241A', HR2='#4A3626';
+  const CT='#232B42', CTL='#3A4868', CTD='#161C2E', SHT='#E6ECF6', TR='#1B2136', SHO='#0E1220';
+
+  /* panoramic geometry: thin posts, glass wrapping the corners */
+  const PL=8, PR=66;            /* posts, 2 cells each: 8..9 and 66..67 */
+  const CL=10, CR=62;           /* chamfer (corner) glass, 4 cells each */
+  const GX=15, GW=46;           /* main glass 15..60 */
+  const GY=14, GH=58;           /* 14..71 */
+  const FLOOR=72;
+
+  function band(x,y,w,h,a,b,ph){for(let j=0;j<h;j++)for(let i=0;i<w;i++)dot(x+i,y+j,((i+j+(ph||0))%2)?b:a);}
+
+  function mainGlass(){
+    px(GX,GY,GW,16,G1);
+    band(GX,GY+16,GW,6,G1,G2);
+    px(GX,GY+22,GW,12,G2);
+    band(GX,GY+34,GW,6,G2,G3,1);
+    px(GX,GY+40,GW,10,G3);
+    band(GX,GY+50,GW,8,G3,G4);
+    px(GX,GY+28,GW,1,'#BEE2F5');                    /* horizon */
+    px(GX+2,GY+1,5,GH-2,G0); px(GX+3,GY+1,2,GH-2,W);
+    px(GX+9,GY+1,2,GH-2,G1);
+    px(GX+GW-5,GY+1,2,GH-2,'#BEE2F5');
+  }
+  /* the corner panels are what make it read panoramic - angled, so they catch
+     a different, brighter reflection than the flat front pane */
+  function chamfer(x){
+    px(x,GY,4,GH,G1);
+    band(x,GY+18,4,8,G1,G2);
+    px(x,GY+26,4,GH-26,G2);
+    band(x,GY+44,4,8,G2,G3,1);
+    px(x,GY+52,4,GH-52,G3);
+    px(x+1,GY+1,2,GH-2,G0);                         /* angled-face highlight */
+    px(x,GY+28,4,1,'#BEE2F5');
+  }
+  function cabin(){
+    /* crown */
+    px(11,1,54,1,L); px(10,2,56,3,M); px(11,3,54,1,S);
+    px(8,5,60,4,M); px(9,5,58,1,L);
+    px(8,9,60,1,D); px(8,10,60,2,D2); px(8,12,60,2,O);
+    for(let i=0;i<9;i++) dot(12+i*6,7,S);            /* rivets move to the cap */
+    /* thin posts + wrap-around glass */
+    px(PL,GY,2,GH,D); px(PL,GY,1,GH,M);
+    px(PR,GY,2,GH,D); px(PR+1,GY,1,GH,M);
+    chamfer(CL); chamfer(CR);
+    px(14,GY,1,GH,D); px(61,GY,1,GH,D);              /* corner mullions */
+    mainGlass();
+    px(PL,GY+34,60,2,D); px(PL,GY+34,60,1,M);        /* low handrail, wraps */
+    /* floor + skirt */
+    px(8,FLOOR,60,2,O);
+    px(9,FLOOR+2,58,4,M); px(10,FLOOR+3,56,1,L); px(9,FLOOR+5,58,1,D);
+    px(9,FLOOR+6,58,3,M); px(10,FLOOR+6,56,1,S);
+    px(8,FLOOR+9,60,2,D2); px(8,FLOOR+11,60,2,O);
+  }
+  function panelBox(){
+    px(53,34,8,31,O);
+    px(54,35,6,29,D); px(54,35,6,1,M);
+    px(55,36,4,27,'#1A2036');
+    px(55,37,4,4,'#0E3A2E'); px(56,38,2,2,'#7CFF9A');
+    for(let i=0;i<5;i++){ const y=43+i*4; px(55,y,1,2,D2); px(56,y,2,2,i===2?'#7CFF9A':L); dot(56,y,S); }
+    dot(58,43,'#FF8A5A');
+  }
+  function flame(x,y,w){
+    px(x,y,w,3,S); px(x,y+3,w,4,'#F2A93B');
+    px(x+1,y+7,Math.max(1,w-2),4,'#E2542A');
+    px(x+2,y+11,Math.max(1,w-4),2,'#B03A18');
+  }
+  function jets(x,y,w,n){
+    const st=Math.floor(w/n);
+    for(let i=0;i<n;i++){ const jx=x+i*st+((st-4)>>1);
+      px(jx-1,y-2,6,2,D2); px(jx-1,y-2,6,1,D); flame(jx,y,4); }
+  }
+
+  const CX = 32;
+  /* one skeleton, everything else is palette + extras */
+  function person(p){
+    const x = CX-10, bot = FLOOR-1;
+    const sk = p.skin||SK, sk2 = p.skin2||SK2;
+    if(!p.bald){ px(x+4,bot-38,12,5,p.hair); px(x+5,bot-38,4,2,p.hair2||p.hair); }
+    if(p.long){ px(x+3,bot-36,2,12,p.hair); px(x+15,bot-36,2,12,p.hair);
+                px(x+2,bot-26,3,4,p.hair); px(x+15,bot-26,3,4,p.hair); }
+    px(x+5,bot-33,10,8,sk); px(x+5,bot-33,10,1,sk2);
+    px(x+4,bot-31,1,4,sk2); px(x+15,bot-31,1,4,sk2);
+    px(x+7,bot-31,2,2,'#2A1C10'); px(x+12,bot-31,2,2,'#2A1C10');
+    px(x+9,bot-29,2,2,sk2); px(x+8,bot-26,4,1,'#B07A5E');
+    px(x+8,bot-25,4,1,sk2);
+    px(x+2,bot-24,16,14,p.coat); px(x+4,bot-24,4,14,p.coatL); px(x+2,bot-24,16,1,p.coatD);
+    if(p.shirt){ px(x+8,bot-24,4,4,p.shirt); px(x+7,bot-24,1,5,p.coatD); px(x+12,bot-24,1,5,p.coatD); }
+    if(p.btn){ dot(x+10,bot-18,p.btn); dot(x+10,bot-15,p.btn); }
+    px(x+2,bot-12,16,1,p.coatD);
+    px(x+1,bot-23,2,9,p.coat); px(x+1,bot-15,2,2,p.cuff||sk2);
+    px(x+16,bot-23,3,6,p.coat);
+    px(x+18,bot-18,10,3,p.coat); px(x+18,bot-18,10,1,p.coatL);
+    px(x+28,bot-18,3,3,p.glove||sk);
+    px(x+3,bot-11,6,10,p.trou); px(x+10,bot-11,6,10,p.trou);
+    px(x+4,bot-11,2,10,p.trouL); px(x+11,bot-11,2,10,p.trouL);
+    px(x+2,bot-1,8,2,p.shoe); px(x+10,bot-1,8,2,p.shoe);
+    px(x+2,bot-1,8,1,p.shoeL||p.shoe); px(x+10,bot-1,8,1,p.shoeL||p.shoe);
+    if(p.extra) p.extra(x,bot);
+  }
+  const SUIT = {hair:HR,hair2:HR2,coat:CT,coatL:CTL,coatD:CTD,shirt:SHT,btn:L,
+                trou:TR,trouL:'#2A3350',shoe:SHO,shoeL:'#1C2438'};
+  const RIDERS=[];
+
+  RIDERS.push(['Businessman', ()=>person(SUIT)]);
+
+  RIDERS.push(['Businesswoman', ()=>person({...SUIT, hair:'#6B3A1E', hair2:'#8A5030', long:true,
+    coat:'#4A2E52', coatL:'#68466E', coatD:'#2E1C34', shirt:'#F2E4EC',
+    trou:'#33213A', trouL:'#4A3252'})]);
+
+  RIDERS.push(['Bellhop', ()=>person({hair:'#2A1C10',hair2:'#3E2C1C',
+    coat:'#B0242C', coatL:'#D4383E', coatD:'#6E1218', shirt:'#F4E2C0', btn:S,
+    trou:'#8E1C22', trouL:'#B0242C', shoe:'#0E1220', shoeL:'#1C2438',
+    glove:'#F4F6FA', cuff:'#F4F6FA',
+    extra:(x,bot)=>{ px(x+4,bot-42,12,4,'#B0242C'); px(x+5,bot-42,4,2,'#D4383E');
+                     px(x+3,bot-38,14,2,L); dot(x+9,bot-43,L);
+                     px(x+6,bot-20,8,1,L); }})]);
+
+  RIDERS.push(['Kid', ()=>{
+    const x = CX-8, bot = FLOOR-1;
+    px(x-1,bot-16,4,12,'#3A7A4A'); px(x-1,bot-16,4,1,'#4E9E60');   /* pack, behind him */
+    px(x-1,bot-5,4,1,'#2A5A36');
+    px(x+3,bot-29,11,5,'#8A5A2A'); px(x+4,bot-29,3,2,'#A87240');
+    px(x+4,bot-24,9,8,SK); px(x+4,bot-24,9,1,SK2);
+    px(x+6,bot-22,2,2,'#2A1C10'); px(x+11,bot-22,2,2,'#2A1C10');
+    px(x+8,bot-20,2,2,SK2); px(x+7,bot-17,4,1,'#B07A5E'); px(x+7,bot-16,4,1,SK2);
+    px(x+2,bot-15,12,10,'#C8443A'); px(x+4,bot-15,3,10,'#E05A4E');
+    px(x+2,bot-15,12,1,'#8E2A24');
+    px(x+3,bot-15,2,9,'#3A7A4A'); px(x+10,bot-15,2,9,'#3A7A4A');   /* straps */
+    px(x+1,bot-14,2,7,'#C8443A'); px(x+1,bot-8,2,2,SK);
+    px(x+13,bot-14,2,4,'#C8443A');
+    px(x+15,bot-11,10,3,'#C8443A'); px(x+15,bot-11,10,1,'#E05A4E');
+    px(x+25,bot-11,3,3,SK);
+    px(x+3,bot-5,4,4,'#2A4A8A'); px(x+8,bot-5,4,4,'#2A4A8A');
+    px(x+3,bot-2,4,2,SK); px(x+8,bot-2,4,2,SK);
+    px(x+2,bot-1,6,2,'#F4F6FA'); px(x+8,bot-1,6,2,'#F4F6FA');
+  }]);
+
+  RIDERS.push(['Technician', ()=>person({bald:true, hair:HR,
+    coat:'#2E5E8A', coatL:'#4078A8', coatD:'#1A3A58', shirt:null,
+    trou:'#2E5E8A', trouL:'#4078A8', shoe:'#2A1C10', shoeL:'#3E2C1C',
+    glove:'#C87A2E', cuff:'#C87A2E',
+    extra:(x,bot)=>{ px(x+2,bot-39,16,5,'#F2C43A'); px(x+3,bot-39,6,2,'#FFE47A');
+                     px(x+1,bot-35,18,2,'#D9A81E'); px(x+8,bot-41,3,2,'#F2C43A');
+                     px(x+2,bot-14,16,3,'#5A3A1A'); px(x+2,bot-14,16,1,'#7A522A');
+                     px(x+4,bot-13,2,4,'#9AA2B0'); px(x+13,bot-13,3,4,'#9AA2B0');
+                     px(x+8,bot-24,4,12,'#3E7098'); }})]);
+
+  RIDERS.push(['Tourist', ()=>person({hair:'#4A3626',hair2:'#664A34',
+    coat:'#3FA8A0', coatL:'#5FC8BE', coatD:'#2A7A74', shirt:null,
+    trou:'#D8CEAE', trouL:'#EDE3C2', shoe:'#F4F6FA', shoeL:'#FFFFFF',
+    extra:(x,bot)=>{
+      for(let i=0;i<5;i++){ dot(x+4+(i%3)*5,bot-22+Math.floor(i/3)*6,'#FFE47A');
+                            dot(x+6+(i%3)*5,bot-18+Math.floor(i/3)*5,'#F06A5A'); }
+      px(x+1,bot-38,18,2,'#E8D89A'); px(x+5,bot-43,10,5,'#E8D89A');
+      px(x+5,bot-43,10,1,'#F6EAC0'); px(x+5,bot-40,10,1,'#C8A85E');
+      px(x+6,bot-24,8,1,'#3A3A44');                                   /* camera strap */
+      px(x+7,bot-20,7,5,'#2A2A32'); px(x+8,bot-19,3,3,'#7CC8E8'); dot(x+12,bot-19,S);
+      px(x+3,bot-11,6,5,SK); px(x+10,bot-11,6,5,SK);                  /* bare legs */
+    }})]);
+
+  RIDERS.push(['Chef', ()=>person({bald:true,
+    coat:'#F2F4F8', coatL:'#FFFFFF', coatD:'#C8CEDA', shirt:null, btn:'#9AA2B0',
+    trou:'#5A6070', trouL:'#787E8E', shoe:'#1A1A20', shoeL:'#2E2E38',
+    extra:(x,bot)=>{
+      px(x+4,bot-43,12,7,'#FAFCFF'); px(x+5,bot-43,4,3,'#FFFFFF');
+      px(x+3,bot-36,14,3,'#E2E6EE'); px(x+3,bot-36,14,1,'#FFFFFF');
+      for(let j=0;j<5;j++) for(let i=0;i<6;i++)
+        if((i+j)%2) dot(x+3+i*2, bot-11+j*2, '#3E4450');              /* check trousers */
+      px(x+8,bot-24,1,12,'#C8CEDA'); px(x+11,bot-24,1,12,'#C8CEDA');
+      px(x+6,bot-25,8,2,'#F2F4F8');
+    }})]);
+
+  RIDERS.push(['Astronaut', ()=>person({bald:true,
+    coat:'#E4E8F0', coatL:'#FFFFFF', coatD:'#A8B0C0', shirt:null,
+    trou:'#D4DAE6', trouL:'#EEF2F8', shoe:'#8A92A4', shoeL:'#A8B0C0',
+    glove:'#FFFFFF', cuff:'#FFFFFF',
+    extra:(x,bot)=>{
+      px(x+3,bot-39,14,1,'#F4F8FF'); px(x+2,bot-38,1,12,'#F4F8FF'); px(x+17,bot-38,1,12,'#F4F8FF');
+      px(x+3,bot-26,14,1,'#F4F8FF');
+      px(x+3,bot-38,2,12,'#BEE2F5'); px(x+15,bot-38,2,12,'#BEE2F5');   /* visor glass */
+      px(x+4,bot-37,2,4,'#FFFFFF');
+      px(x+2,bot-25,16,2,'#9AA2B0');                                   /* neck ring */
+      px(x+5,bot-22,10,7,'#B8C0D0'); px(x+6,bot-21,3,2,'#7CFF9A');     /* chest pack */
+      dot(x+11,bot-21,'#FF8A5A'); dot(x+13,bot-21,'#7CC8E8');
+      px(x+2,bot-20,2,6,'#C84A3A'); px(x+2,bot-20,2,1,'#E06A54');      /* arm stripe */
+    }})]);
+
+  RIDERS.push(['Older Gent', ()=>person({hair:'#B8BCC6',hair2:'#D6DAE2',
+    coat:'#3A3A48', coatL:'#52525E', coatD:'#22222C', shirt:'#E6ECF6', btn:'#9AA2B0',
+    trou:'#2E2E38', trouL:'#44444E', shoe:'#1A1A20', shoeL:'#2E2E38',
+    extra:(x,bot)=>{
+      px(x+2,bot-38,16,2,'#2A2A32'); px(x+5,bot-44,10,6,'#2A2A32');
+      px(x+5,bot-44,10,1,'#3E3E48'); px(x+5,bot-40,10,1,'#8A5A2A');    /* hat band */
+      px(x+2,bot-12,16,9,'#3A3A48'); px(x+4,bot-12,4,9,'#52525E');     /* long coat */
+      px(x+2,bot-3,16,1,'#22222C');
+      px(x,bot-14,2,15,'#8A5A2A'); px(x,bot-14,1,15,'#A87240');        /* cane */
+      px(x-1,bot-15,4,2,'#D6DAE2');
+    }})]);
+
+  RIDERS.push(['Courier', ()=>person({hair:'#2A1C10',
+    coat:'#C8621E', coatL:'#E8823A', coatD:'#8E4010', shirt:null,
+    trou:'#3A4450', trouL:'#525E6E', shoe:'#1A1A20', shoeL:'#2E2E38',
+    extra:(x,bot)=>{
+      px(x+4,bot-42,12,4,'#2E3A4A'); px(x+5,bot-42,4,2,'#44526A');
+      px(x+3,bot-38,15,2,'#2E3A4A'); px(x+16,bot-38,4,2,'#2E3A4A');    /* cap + brim */
+      px(x+2,bot-23,16,2,'#8E4010'); px(x+2,bot-23,16,1,'#B05A20');    /* strap */
+      px(x-3,bot-18,9,9,'#B08248'); px(x-3,bot-18,9,1,'#C89A60');      /* parcel */
+      px(x-3,bot-15,9,1,'#7A5A30'); px(x+0,bot-18,2,9,'#7A5A30');
+      px(x+1,bot-19,2,10,SK);
+      px(x+4,bot-11,6,3,'#3A4450');
+    }})]);
+
+  /* ---- pixel birds, side view, facing right --------------------------
+     Hand-placed spans, not generated shapes. Each entry is [y, x0, x1]
+     inclusive. Master grid 38x24, pivot (17,14). Game mirrors on vx<0. */
+
+  const BODY = [[9,16,24],[10,13,26],[11,10,27],[12,8,27],[13,7,27],[14,7,26],
+                [15,8,25],[16,10,23],[17,13,21],[18,16,19]];
+  const BACK = [[9,17,23],[10,14,22],[11,11,20]];
+  const BELL = [[15,10,24],[16,11,22],[17,13,21],[18,16,19]];
+  /* head overlaps the body's front rows - no gap, or it reads as a floating ball */
+  const HEAD = [[4,25,30],[5,24,31],[6,23,32],[7,23,32],[8,22,31],[9,22,30],[10,23,28]];
+  const HLIT = [[4,25,29],[5,24,27]];
+  const BEAK = [[6,32,36],[7,32,35]];
+  const BEAD = [[8,32,34]];
+  const TAIL = [[12,3,9],[13,2,9],[14,1,9],[15,1,9],[16,2,9]];
+  const TALD = [[13,1,3],[14,1,3],[15,1,4]];
+  const CHEEK= [[9,23,26],[10,24,27]];
+
+  /* three drawn wing positions; the cycle plays up, mid, down, mid */
+  const WINGS = [
+    { main:[[0,18,22],[1,17,23],[2,16,23],[3,15,23],[4,14,23],[5,13,23],
+            [6,13,22],[7,14,22],[8,15,21],[9,17,20]],
+      prim:[[0,18,21],[1,17,20],[2,16,19],[3,15,18],[4,14,17],[5,13,16],[6,13,16]] },
+    { main:[[5,15,20],[6,12,22],[7,10,24],[8,8,25],[9,7,25],[10,7,24],[11,9,22],[12,13,19]],
+      prim:[[6,12,15],[7,10,14],[8,8,13],[9,7,12],[10,7,12],[11,9,12]] },
+    { main:[[15,15,22],[16,12,23],[17,10,23],[18,8,22],[19,7,20],[20,6,18],[21,7,15],[22,9,13]],
+      prim:[[18,8,12],[19,7,11],[20,6,10],[21,7,11],[22,9,12]] },
+  ];
+  const FRAMES = [0,1,2,1];
+
+  const PIVX=17, PIVY=13;
+  /* Scaling each source row forward through Math.round leaves destination rows
+     unclaimed (1.08x drops two, 1.14x drops three), which shows as a missing
+     line of pixels. So walk the DESTINATION rows and map each one back. */
+  function blit(spans,f,dx,dy,col){
+    dx=dx||0; dy=dy||0;
+    if(f===1){ for(const [y,a,b] of spans) px(a+dx,y+dy,b-a+1,1,col); return; }
+    const map=new Map(); let lo=Infinity, hi=-Infinity;
+    for(const [y,a,b] of spans){ map.set(y,[a,b]); if(y<lo)lo=y; if(y>hi)hi=y; }
+    const Y0=Math.round((lo-PIVY)*f)+PIVY, Y1=Math.round((hi-PIVY)*f)+PIVY;
+    for(let Y=Y0;Y<=Y1;Y++){
+      let sy=Math.round((Y-PIVY)/f)+PIVY;
+      if(sy<lo) sy=lo; if(sy>hi) sy=hi;
+      const sp=map.get(sy); if(!sp) continue;
+      const a=Math.round((sp[0]-PIVX)*f)+PIVX+dx;
+      const b=Math.round((sp[1]-PIVX)*f)+PIVX+dx;
+      px(a,Y+dy,b-a+1,1,col);
+    }
+  }
+
+  function drawBird(S,fi){
+    const p=S.pal, f=S.f||1, W=WINGS[FRAMES[fi]];
+    const hd=S.head||[0,0];
+    blit(W.main,f,1,2, p.far);                       /* far wing, behind */
+    blit(TAIL,f,0,0,p.wing); blit(TALD,f,0,0,p.wingD);
+    blit(BODY,f,0,0,p.body); blit(BACK,f,0,0,p.lit); blit(BELL,f,0,0,p.dk);
+    if(S.neck) blit(S.neck,f,0,0,p.neck);
+    blit(HEAD,f,hd[0],hd[1],p.body);
+    blit(HLIT,f,hd[0],hd[1],p.lit);
+    blit(BEAK,f,hd[0],hd[1],p.beak);
+    blit(BEAD,f,hd[0],hd[1],p.beakD);
+    if(S.cheek) blit(CHEEK,f,0,0,S.cheek);
+    const ey=Math.round((6-PIVY)*f)+PIVY+hd[1], ex=Math.round((27-PIVX)*f)+PIVX+hd[0];
+    px(ex,ey,2,2, p.eye||'#0B0F16');
+    blit(W.main,f,0,0,p.wing); blit(W.prim,f,0,0,p.wingD);
+    if(S.band){                                          /* barring across coverts */
+      W.main.forEach((r,i)=>{
+        if(i%2) return;
+        const Y=Math.round((r[0]-PIVY)*f)+PIVY, B=Math.round((r[2]-PIVX)*f)+PIVX;
+        if(r[2]-r[1]>6) px(B-4,Y,2,1,S.band);
+      });
+    }
+  }
+
+  const GOOSE_NECK=[[4,25,28],[5,25,28],[6,24,28],[7,24,27],[8,23,27],[9,23,26],[10,22,26]];
+
+  const BIRDS=[
+   ['Pigeon','city default - broad, blunt, teal neck flash',
+    {f:1, pal:{body:'#4E5A74',lit:'#7A88A4',dk:'#2A3244',wing:'#3C4659',wingD:'#242C3C',
+               far:'#1E2634',beak:'#E8A23C',beakD:'#B87A22'}, cheek:'#5FD0C0'}],
+   ['Gull','pale body, dark wings - holds up on a bright sky',
+    {f:1.06, pal:{body:'#D6DCE4',lit:'#F6FAFE',dk:'#9CA6B4',wing:'#5C6672',wingD:'#3A434F',
+               far:'#2E3640',beak:'#F4A261',beakD:'#C07838'}}],
+   ['Crow','all dark, broadest wing - holds up on a pale sky',
+    {f:1.08, pal:{body:'#2C3344',lit:'#4C5674',dk:'#161C28',wing:'#1F2533',wingD:'#121720',
+               far:'#0E131C',beak:'#12161F',beakD:'#0A0D13',eye:'#CAD2DC'}}],
+   ['Sparrow','small and quick, least threatening',
+    {f:0.72, pal:{body:'#9A7442',lit:'#C49A64',dk:'#604620',wing:'#6C4E2A',wingD:'#483218',
+               far:'#382614',beak:'#3C3020',beakD:'#261E14'}}],
+   ['Hawk','banded wings, biggest wing area, yellow eye',
+    {f:1.14, pal:{body:'#8E6234',lit:'#C08E50',dk:'#583C1A',wing:'#5C4020',wingD:'#3C2A12',
+               far:'#30220E',beak:'#3E301A',beakD:'#F2C43A',eye:'#F2C43A'}, band:'#DCB87C'}],
+   ['Goose','long neck, biggest silhouette',
+    {f:1.10, head:[3,-3], neck:GOOSE_NECK,
+     pal:{body:'#BEC4D0',lit:'#E8EEF6',dk:'#828A98',wing:'#666E7C',wingD:'#434B56',
+          far:'#333A45',beak:'#E8A23C',beakD:'#B87A22',neck:'#2C3038'}}],
+  ];
+
+  /* ---- crane: a single cantilevered boom from one edge -----------------
+     Not a full-width wall with a hole. The boom reaches in from the left
+     or the right; everything past the tip is open sky. Difficulty is how
+     far it reaches, so there is exactly ONE edge for the player to judge.
+     Cell grid 235 x 95. Beam y8..49, planks y50..57.                     */
+  const CTOP=8, CH=42, DECK=CTOP+CH;
+
+  const Y0='#2A1C08', Y1='#8A5A10', Y2='#C8861A', Y3='#E8A020', Y4='#F4C84E';
+  const S0='#20262E', S1='#3A424E', S2='#6A7484', S3='#9CA6B4', S4='#C6CEDA';
+  const T1='#5E3F1C', T2='#9A6B34', T3='#C09050';
+  const RED='#E4353F', RDK='#5A1A18';
+
+  function hazard(x0,x1,y,h,col){ for(let x=x0;x<x1-3;x+=12) px(x,y,6,h,col); }
+
+  /* lattice boom body, rooted off-screen at the left, tip at x=t */
+  function boom(t){
+    px(-4,CTOP,t+4,5,Y3); px(-4,CTOP,t+4,2,Y4);              /* top chord */
+    px(-4,CTOP+CH-5,t+4,5,Y3); px(-4,CTOP+CH-2,t+4,2,Y1);    /* bottom chord */
+    for(let x=-4;x<t-10;x+=22){                               /* X web */
+      for(let i=0;i<CH-10;i++){
+        const d=Math.round(i*0.70);
+        /* clamp to the tip - bracing past the edge is art outside the hitbox */
+        const a=x+d, b=x+20-d;
+        if(a<t) px(a,CTOP+5+i,Math.min(3,t-a),1,Y2);
+        if(b<t) px(b,CTOP+5+i,Math.min(3,t-b),1,Y1);
+      }
+    }
+    hazard(-4,t,CTOP,3,Y0);
+    px(-4,DECK,t+4,7,T2); px(-4,DECK,t+4,2,T3); px(-4,DECK+5,t+4,2,T1);
+  }
+  function beacon(x,y){
+    px(x-1,y-1,9,9,S1);
+    px(x,y,7,7,RDK); px(x+1,y+1,5,5,RED); px(x+2,y+2,2,2,'#FFB0A0');
+    px(x-2,y+7,11,2,S2);
+  }
+  function cable(x,y0,y1){ px(x,y0,2,y1-y0,S1); px(x,y0,1,y1-y0,S2); }
+  function crate(x,y){
+    px(x,y,44,2,'#8E2A1E'); px(x,y+2,44,22,'#C4452F'); px(x,y+2,44,2,'#DC6048');
+    px(x,y+24,44,2,'#7A2418');
+    for(let i=0;i<4;i++) px(x+4+i*11,y+3,3,20,'rgba(0,0,0,.30)');
+    px(x,y+2,2,22,'#8E2A1E'); px(x+42,y+2,2,22,'#8E2A1E');
+  }
+
+  const TIP=140;                 /* medium reach; 95 cells of passage left */
+  const CRANES=[];
+
+  CRANES.push(['Chevron post','a banded post capping the truss',()=>{
+    boom(TIP);
+    px(TIP,CTOP-2,9,CH+4,Y0); px(TIP+1,CTOP-1,7,CH+2,Y4);
+    for(let i=0;i<CH;i+=8) px(TIP+1,CTOP+i,7,4,Y0);
+    beacon(TIP+1,CTOP-15); px(TIP+4,CTOP-7,3,7,S1);
+    cable(60,DECK+7,DECK+28); crate(38,DECK+28);
+  }]);
+
+  CRANES.push(['Tapered nose','the truss narrows to a point',()=>{
+    const n=20, x0=TIP-n;
+    boom(x0);
+    for(let i=0;i<n;i++){                                     /* converging chords */
+      const ins=Math.round(i*(CH-14)/(2*n));
+      px(x0+i,CTOP+ins,1,5,Y3);        px(x0+i,CTOP+ins,1,2,Y4);
+      px(x0+i,CTOP+CH-ins-5,1,5,Y3);   px(x0+i,CTOP+CH-ins-2,1,2,Y1);
+    }
+    for(let i=0;i<n;i++){                                     /* nose diagonals */
+      const f=i/n;
+      px(x0+i,CTOP+6+Math.round(f*(CH-22)),2,1,Y2);
+      px(x0+i,CTOP+CH-7-Math.round(f*(CH-22)),2,1,Y1);
+    }
+    px(TIP-2,CTOP+(CH>>1)-5,3,10,Y0); px(TIP-1,CTOP+(CH>>1)-4,1,8,Y4);
+    beacon(TIP-5,CTOP-15); px(TIP-2,CTOP-7,3,15,S1);
+    cable(60,DECK+7,DECK+28); crate(38,DECK+28);
+  }]);
+
+  CRANES.push(['Counterweight','a heavy block slung under the tip',()=>{
+    boom(TIP);
+    px(TIP,CTOP-2,7,CH+4,Y0); px(TIP+1,CTOP-1,5,CH+2,Y4);
+    px(TIP-26,DECK+7,34,4,S1);
+    px(TIP-24,DECK+11,30,16,S2); px(TIP-24,DECK+11,30,3,S3);
+    hazard(TIP-24,TIP+6,DECK+11,16,Y0);
+    px(TIP-24,DECK+27,30,3,S0);
+    beacon(TIP,CTOP-15); px(TIP+3,CTOP-7,3,7,S1);
+    cable(55,DECK+7,DECK+28); crate(33,DECK+28);
+  }]);
+
+  CRANES.push(['Hook block','the load hangs at the tip, not mid-deck',()=>{
+    boom(TIP);
+    px(TIP,CTOP-2,7,CH+4,Y0); px(TIP+1,CTOP-1,5,CH+2,Y4);
+    beacon(TIP,CTOP-15); px(TIP+3,CTOP-7,3,7,S1);
+    cable(TIP-10,DECK+7,DECK+22);
+    px(TIP-18,DECK+22,18,10,S2); px(TIP-18,DECK+22,18,3,S3);
+    px(TIP-18,DECK+30,18,2,S0);
+    crate(TIP-31,DECK+32);
+  }]);
+
+  CRANES.push(['Beacon mast','a short mast, twin lights, no full tower',()=>{
+    boom(TIP);
+    px(TIP,CTOP-2,7,CH+4,Y0); px(TIP+1,CTOP-1,5,CH+2,Y4);
+    px(TIP+1,CTOP-26,2,26,Y1); px(TIP+5,CTOP-26,2,26,Y1);
+    for(let y=CTOP-26;y<CTOP;y+=7) px(TIP+1,y,6,2,Y2);
+    beacon(TIP,CTOP-36); beacon(TIP,CTOP-16);
+    cable(60,DECK+7,DECK+28); crate(38,DECK+28);
+  }]);
+
+  CRANES.push(['Cut truss','no cap - the last bay is painted solid',()=>{
+    boom(TIP);
+    px(TIP-22,CTOP+5,22,CH-10,Y3);
+    hazard(TIP-22,TIP+1,CTOP+5,CH-10,Y0);
+    px(TIP-1,CTOP,2,CH,Y1);
+    beacon(TIP-8,CTOP-15); px(TIP-5,CTOP-7,3,7,S1);
+    cable(55,DECK+7,DECK+28); crate(33,DECK+28);
+  }]);
+
+  /* ---- falling debris -------------------------------------------------
+     Everything here tumbles (spin up to 2.6 rad/s), so the silhouette has
+     to read at any angle. Three things separate them: overall PROPORTION,
+     whether the outline is REGULAR or BROKEN, and hue.
+     1 cell = 1 world px. Game sizes: brick/slab 44-82, beam 84-132.      */
+
+  /* clay */   const B0='#3E1810', B1='#6E3020', B2='#A8503A', B3='#C4664A', B4='#DC8468';
+  /* concrete*/const C0='#4A5058', C1='#6E767F', C2='#9AA3AE', C3='#C2CAD4', C4='#E2E8EE';
+  /* rust   */ const R0='#2E1A0C', R1='#5A3418', R2='#8A5226', R3='#B87438', R4='#D89A5A';
+  /* galv   */ const GV0='#2A3038', GV1='#4E5660', GV2='#7C8794', GV3='#A8B2BE', GV4='#D2DAE4';
+
+  function rows(spans,col){ for(const [y,a,b] of spans) px(a,y,b-a+1,1,col); }
+  function speck(x0,y0,w,h,n,col,seed){
+    let s=seed;
+    for(let i=0;i<n;i++){ s=(s*1103515245+12345)&0x7fffffff;
+      px(x0+(s>>7)%w, y0+(s>>3)%h, 1,1, col); }
+  }
+
+  const DEBRIS=[];
+
+  /* --- A. brick: small, hard 2:1 rectangle, one chipped corner -------- */
+  DEBRIS.push(['Brick','46×23 · smallest, hardest outline', 46,23, ()=>{
+    rows([[0,0,39],[1,0,43],[2,0,45]],B0);
+    for(let y=3;y<20;y++) rows([[y,0,45]],B0);
+    rows([[20,0,45],[21,2,45],[22,6,45]],B0);
+    px(1,3,44,16,B2); px(1,3,44,3,B3); px(2,2,38,1,B4);
+    px(1,17,44,2,B1); px(1,19,44,1,B0);
+    px(40,3,5,3,B1);                                  /* chip */
+    speck(3,5,40,12,14,'#C9A88C',7);
+    px(22,4,1,14,B1); px(1,10,44,1,B1);               /* face lines */
+  }]);
+
+  /* --- B. brick stack: three courses, mortar, stepped end ------------ */
+  DEBRIS.push(['Brick stack','48×34 · stepped, reads as mass', 48,34, ()=>{
+    const c=[[2,0,45],[13,3,47],[24,0,42]];
+    c.forEach(([y,a,b],i)=>{
+      px(a,y,b-a+1,10,B0); px(a+1,y+1,b-a-1,8,B2);
+      px(a+1,y+1,b-a-1,2,B3); px(a+1,y+7,b-a-1,2,B1);
+      speck(a+2,y+2,b-a-3,6,9,'#C9A88C',13+i*5);
+    });
+    px(2,12,44,2,'#C8C0B4'); px(3,23,42,2,'#C8C0B4');  /* mortar */
+    px(40,2,6,3,B1); px(3,31,8,2,B1);
+  }]);
+
+  /* --- C. slab: broad, broken outline, rebar whiskers ---------------- */
+  DEBRIS.push(['Slab','62\u00d738 \u00b7 broken edge + rebar whiskers', 62,44, ()=>{
+    px(54,4,8,2,R2); px(56,3,6,1,R3);                  /* whiskers first */
+    px(52,12,10,2,R2); px(58,11,4,1,R3);
+    px(55,22,7,2,R2);
+    const S=[[5,9,44],[6,5,49],[7,2,52],[8,3,55],[9,0,56],[10,1,54],[11,0,56],
+             [12,2,55],[13,0,56],[14,1,53],[15,0,55],[16,2,56],[17,0,54],
+             [18,1,56],[19,0,55],[20,2,53],[21,0,56],[22,1,54],[23,0,55],
+             [24,2,56],[25,0,53],[26,1,55],[27,3,52],[28,1,54],[29,4,50],
+             [30,2,47],[31,6,44],[32,9,40],[33,14,33]];
+    rows(S,C0);
+    for(const [y,p,q] of S) px(p+1,y,q-p-1,1,y<9?C3:(y>28?C1:C2));
+    px(3,8,50,3,C3); px(5,7,36,1,C4);
+    px(3,27,46,3,C1);
+    speck(4,10,46,17,30,C1,31); speck(6,9,42,15,16,C3,71);
+    px(12,13,2,11,C1); px(30,10,2,15,C1);              /* cracks */
+  }]);
+
+  /* --- D. rubble chunk: lumpy, no straight edges --------------------- */
+  DEBRIS.push(['Rubble chunk','50\u00d744 \u00b7 no straight edges at all', 50,44, ()=>{
+    const S=[[2,20,30],[3,15,34],[4,11,38],[5,8,42],[6,6,45],[7,4,47],[8,3,48],
+             [9,2,49],[10,1,49],[11,0,48],[12,0,47],[13,1,48],[14,2,49],[15,1,47],
+             [16,0,45],[17,0,44],[18,1,46],[19,2,48],[20,1,47],[21,0,45],[22,0,43],
+             [23,1,42],[24,2,44],[25,3,46],[26,2,45],[27,1,43],[28,2,41],[29,4,39],
+             [30,6,40],[31,5,38],[32,7,36],[33,9,34],[34,11,32],[35,14,30],
+             [36,17,28],[37,20,26],[38,22,25]];
+    rows(S,C0);
+    for(const [y,p,q] of S) if(q-p>2) px(p+1,y,q-p-1,1, y<8?C3:(y>32?C1:C2));
+    px(12,4,22,3,C3); px(14,3,14,1,C4);
+    speck(6,8,36,24,42,C1,17); speck(9,7,30,20,20,C3,53);
+    px(16,10,3,15,C1); px(28,14,2,13,C1);
+  }]);
+
+  /* --- E. I-beam: long, flanged, bolt holes -------------------------- */
+  DEBRIS.push(['I-beam','104×30 · longest, flanged profile', 104,30, ()=>{
+    px(0,0,104,9,R0); px(1,1,102,7,R2); px(1,1,102,2,R3); px(2,0,96,1,R4);
+    px(0,21,104,9,R0); px(1,22,102,7,R2); px(1,27,102,2,R1);
+    px(0,9,104,12,R0); px(1,10,102,10,R1);            /* web, full length */
+    px(1,10,102,3,R2); px(1,17,102,3,R0);
+    px(36,9,30,12,R0); px(37,10,28,10,R2);            /* thicker mid section */
+    px(37,10,3,10,R3); px(62,10,3,10,R1);
+    for(const x of [8,26,78,96]){ px(x,3,4,4,R0); px(x+1,4,2,2,R1);
+                                  px(x,24,4,4,R0); px(x+1,25,2,2,R1); }
+    speck(2,2,100,6,26,R1,11); speck(2,23,100,6,26,R1,29);
+    px(96,1,7,7,R1); px(1,22,6,7,R1);                  /* sheared ends */
+  }]);
+
+  /* --- F. scaffold pole: thinnest, with a clamp ---------------------- */
+  DEBRIS.push(['Scaffold pole','110×16 · thinnest, clamp breaks symmetry', 110,18, ()=>{
+    px(0,4,110,10,GV0); px(1,5,108,8,GV2);
+    px(1,5,108,2,GV4); px(1,11,108,2,GV1);
+    px(0,4,2,10,GV1); px(108,4,2,10,GV1);
+    for(let x=6;x<104;x+=17) px(x,5,1,8,GV1);
+    px(28,1,16,16,GV0); px(29,2,14,14,GV3);              /* clamp */
+    px(29,2,14,3,GV4); px(29,12,14,3,GV1);
+    px(34,0,4,18,GV1); px(35,0,2,18,GV2);
+    px(84,5,4,8,GV1);
+    speck(4,6,100,6,22,GV1,41);
+  }]);
+
+  /* ---- cinder block ---------------------------------------------------
+     CMU grey, distinct from the rubble's pale concrete. The cores are the
+     point: a hole you can see sky through reads at any rotation, which is
+     something no solid silhouette in this set can do.                    */
+  const K0='#2A3038', K1='#545C66', K2='#7C8590', K3='#A4ACB6', K4='#C8D0D8';
+
+  DEBRIS.push(['Cinder block','58×32 · two cores punched right through', 58,32, ()=>{
+    px(0,0,58,32,K0);
+    px(1,1,56,30,K2);
+    px(1,1,56,3,K3); px(3,0,48,1,K4);
+    px(1,27,56,4,K1);
+    speck(3,4,52,24,34,K1,23); speck(5,3,46,20,16,K3,61);
+    [[8,8],[36,8]].forEach(([cx,cy])=>{
+      px(cx-1,cy-1,16,18,K0);
+      clr(cx,cy,14,16);
+      px(cx-1,cy+16,16,1,K3);                       /* lit bottom rim */
+      px(cx-1,cy-1,16,1,K1);
+    });
+    px(23,1,2,30,K1); px(25,1,1,30,K3);             /* centre web */
+  }]);
+
+  DEBRIS.push(['Cinder, three-quarter','58\u00d740 \u00b7 cores as recesses, shows thickness', 58,40, ()=>{
+    for(let i=0;i<8;i++) px(i,8-i,58-i*2,1,K0);        /* top face, receding */
+    px(0,8,58,32,K0);
+    px(1,9,56,30,K2); px(1,9,56,2,K3); px(1,35,56,4,K1);
+    speck(3,12,52,22,30,K1,19);
+    for(let i=1;i<7;i++) px(i+1,8-i,54-i*2,1, i<3?K4:K3);
+    [[12,1],[34,1]].forEach(([cx,cy])=>{               /* recessed cores */
+      for(let i=0;i<6;i++) px(cx+i,cy+6-i,12,1,'#1A1E24');
+      px(cx+5,cy+1,12,1,K1);
+    });
+    px(25,9,2,30,K1);
+  }]);
+
+  DEBRIS.push(['Cinder, snapped','38\u00d732 \u00b7 half a block, core torn open', 38,32, ()=>{
+    const S=[[0,0,29],[1,0,33],[2,0,27],[3,0,31],[4,0,36],[5,0,26],[6,0,30],
+             [7,0,37],[8,0,25],[9,0,32],[10,0,28],[11,0,35],[12,0,24],[13,0,31],
+             [14,0,37],[15,0,26],[16,0,33],[17,0,29],[18,0,36],[19,0,25],
+             [20,0,32],[21,0,27],[22,0,34],[23,0,30],[24,0,37],[25,0,26],
+             [26,0,31],[27,0,28],[28,0,35],[29,0,25],[30,0,30],[31,0,27]];
+    rows(S,K0);
+    for(const [y,p,q] of S) px(p+1,y,q-p-1,1, y<3?K3:(y>27?K1:K2));
+    px(2,0,22,2,K3); speck(2,4,20,24,22,K1,37);
+    px(4,8,16,18,K0); clr(5,9,14,16); px(4,25,16,1,K3);
+    px(21,7,2,18,'#1A1E24'); px(23,6,2,20,K1);         /* torn-open core wall */
+  }]);
+
+  /* ---- helicopter, side view facing right -----------------------------
+     1 cell = 1 world px. Sprite 152x60. Laid out to match the hitbox:
+     rotor disc 152x10 across the top, cabin 76x42 centred below it.
+     Game mirrors on dir<0.                                              */
+  const HW=152, HH=60, HCX=76;
+  const ROTOR_Y=3, MAST_Y=11, CAB_X=38, CAB_W=76, CAB_Y=22, CAB_H=23;
+
+  const MG0='#1A1E26', MG1='#3A424E', MG2='#6A7484', MG3='#9CA6B4', MG4='#D2DAE4';
+  const GLS='#7EC8E8', GLS2='#B8E4F6', GLS3='#3E7AA6';
+
+  function hrows(sp,col){ for(const [y,a,b] of sp) px(a,y,b-a+1,1,col); }
+
+  /* Rotor: faint swept disc, and now and then you catch one blade. Drawn
+     from the SIDE, so the disc is edge-on - a blade's tip runs around the
+     rim rather than shortening into the hub, and the tip caps sit parked
+     at the disc's extremes where a fixed radius puts them. */
+  function rotor(f,p){
+    const cy=ROTOR_Y+4, R=76;
+    px(0,cy-2,HW,5,p.disc0); px(0,cy-2,HW,1,p.disc1);   /* swept area */
+    const d=[6,2,-6,-2][f];                             /* blade cone */
+    for(let i=-R;i<=R;i++){
+      const t=Math.abs(i)/R, y=cy+Math.round(d*t*t);
+      px(HCX+i,y-2,1,4,p.blade); px(HCX+i,y-2,1,1,p.bladeHi);
+    }
+    px(-2,cy-4,4,9,p.tip); px(HW-2,cy-4,4,9,p.tip);     /* tip caps */
+  }
+  function tailRotor(f,p){
+    const cx=11, cy=22, R=13;
+    px(cx,cy-R,3,R*2,p.disc0);
+    const d=[5,2,-5,-2][f];
+    for(let i=-R;i<=R;i++){
+      const t=Math.abs(i)/R, x=cx+1+Math.round(d*t*t*0.3);
+      px(x,cy+i,2,1,p.blade);
+    }
+    px(cx,cy-R-1,3,3,p.tip); px(cx,cy+R-1,3,3,p.tip);
+  }
+
+  function heli(S,f){
+    const p=S.pal;
+    /* Tail boom in a few blocks, not 40 one-cell columns: at a fractional
+       scale each column rounds independently and the taper combs. */
+    const BOOM=[[6,31,10,6],[16,30,10,7],[26,29,10,9],[36,28,8,11]];
+    for(const [x,y,w,h] of BOOM){ px(x,y,w,h,p.hullLo); px(x,y,w,2,p.hull); }
+    px(6,36,10,1,MG0); px(16,36,10,1,MG0); px(26,37,10,1,MG0);
+    px(2,13,8,22,p.trim); px(3,14,6,20,p.hullLo);        /* tail fin */
+    px(3,13,6,3,p.trim); px(2,31,4,6,p.trim);            /* fin cap + ventral */
+    px(0,32,16,3,p.hullLo); px(0,32,16,1,p.hull);        /* stabiliser */
+    px(0,30,3,7,p.trim); px(13,30,3,7,p.trim);           /* endplates */
+    tailRotor(f,p);
+
+    /* cabin */
+    px(CAB_X,CAB_Y+2,CAB_W-10,CAB_H-4,p.hull);
+    px(CAB_X,CAB_Y+2,CAB_W-10,4,p.hullHi);
+    px(CAB_X,CAB_Y+CAB_H-6,CAB_W-10,4,p.hullLo);
+    if(S.nose==='bubble'){                              /* stepped bubble, no fringe */
+      const N=CAB_X+CAB_W-10;
+      px(N,   CAB_Y+3, 6, CAB_H-4, p.hull);
+      px(N+6, CAB_Y+4, 5, CAB_H-6, p.hull);
+      px(N+11,CAB_Y+6, 4, CAB_H-10,p.hull);
+      px(N+15,CAB_Y+9, 2, CAB_H-16,p.hull);
+      px(N+1, CAB_Y+4, 6, CAB_H-8, GLS);
+      px(N+7, CAB_Y+5, 5, CAB_H-11,GLS);
+      px(N+12,CAB_Y+7, 3, CAB_H-15,GLS);
+      px(N+1, CAB_Y+4, 10,3, GLS2);
+    } else {                                            /* blocked nose, no fringe */
+      const N=CAB_X+CAB_W-10;
+      px(N,   CAB_Y+3, 5, CAB_H-5, p.hull);
+      px(N+5, CAB_Y+5, 5, CAB_H-9, p.hull);
+      px(N+10,CAB_Y+8, 4, CAB_H-14,p.hull);
+      px(N,   CAB_Y+3, 14,2, p.hullHi);
+      px(N,   CAB_Y+CAB_H-3, 5,2, p.hullLo);
+      px(CAB_X+CAB_W-8,CAB_Y+4,12,9,GLS); px(CAB_X+CAB_W-8,CAB_Y+4,12,3,GLS2);
+    }
+    px(CAB_X+8,CAB_Y+5,18,11,GLS); px(CAB_X+8,CAB_Y+5,18,3,GLS2);   /* door window */
+    px(CAB_X+7,CAB_Y+4,1,13,p.hullLo); px(CAB_X+26,CAB_Y+4,1,13,p.hullLo);
+    if(S.stripe) px(CAB_X,CAB_Y+13,CAB_W-4,3,p.trim);
+
+    px(HCX-5,MAST_Y,10,11,p.hullLo); px(HCX-3,MAST_Y,6,11,p.hull);  /* mast */
+    px(HCX-7,MAST_Y+9,14,3,p.hullLo);
+
+    if(S.gear==='skids'){
+      px(CAB_X+4,CAB_Y+CAB_H+7,60,3,MG1); px(CAB_X+4,CAB_Y+CAB_H+7,60,1,MG3);
+      px(CAB_X+12,CAB_Y+CAB_H,3,8,MG2); px(CAB_X+52,CAB_Y+CAB_H,3,8,MG2);
+    } else {                                                         /* sponsons */
+      px(CAB_X+6,CAB_Y+CAB_H-2,26,7,p.hullLo); px(CAB_X+6,CAB_Y+CAB_H-2,26,2,p.hull);
+      px(CAB_X+40,CAB_Y+CAB_H-2,24,7,p.hullLo);
+      px(CAB_X+16,CAB_Y+CAB_H+5,4,5,MG1); px(CAB_X+50,CAB_Y+CAB_H+5,4,5,MG1);
+    }
+    if(S.extra) S.extra(p);
+    rotor(f,p);
+  }
+
+  const PAL=(hull,hullHi,hullLo,trim)=>({hull,hullHi,hullLo,trim,
+    disc0:'#222933', disc1:'#4A5460', blade:'#AEB8C4', bladeHi:'#EAF0F8',
+    tip:'#E4353F'});
+
+  const HELIS=[
+   ['News','bubble canopy, camera ball, slimmest',
+    {nose:'bubble', gear:'skids', stripe:1,
+     pal:PAL('#D8DEE6','#F4F8FC','#8D97A6','#D6453C'),
+     extra:p=>{ px(CAB_X+CAB_W+2,CAB_Y+16,9,8,MG1); px(CAB_X+CAB_W+3,CAB_Y+17,7,6,MG2);
+                px(CAB_X+CAB_W+4,CAB_Y+19,3,3,GLS3); }}],
+   ['Police','boxy, sponsons, searchlight',
+    {nose:'flat', gear:'sponsons', stripe:1,
+     pal:PAL('#2E4C7E','#4A6FA8','#16294A','#F2C14E'),
+     extra:p=>{ px(CAB_X+8,CAB_Y+CAB_H+4,10,7,MG1); px(CAB_X+9,CAB_Y+CAB_H+9,8,3,'#F6F0C0');
+                px(HCX-2,MAST_Y-3,4,3,'#E4353F'); }}],
+   ['Rescue','winch boom over an open door',
+    {nose:'flat', gear:'skids', stripe:1,
+     pal:PAL('#E8752A','#F8A05A','#A84A12','#F6E3C0'),
+     extra:p=>{ px(CAB_X+4,CAB_Y+2,4,CAB_H-4,'#3A2A18');
+                px(CAB_X+2,CAB_Y-2,26,3,MG2); px(CAB_X+24,CAB_Y-2,3,10,MG1);
+                px(CAB_X+24,CAB_Y+8,3,5,MG3); }}],
+   ['Observation','tiny bubble, exposed lattice tail',
+    {nose:'bubble', gear:'skids',
+     pal:PAL('#C8CED8','#EEF2F8','#828C9A','#3E7AA6'),
+     extra:p=>{ for(let i=0;i<34;i++){ const x=6+i;
+                  if(i%6<3) px(x,26+Math.round(i*0.12),1,7,'#0F1118'); }
+                px(CAB_X,CAB_Y+2,10,CAB_H-4,'#0F1118'); }}],
+   ['Utility','stub wings, heaviest airframe',
+    {nose:'flat', gear:'sponsons', stripe:1,
+     pal:PAL('#5E6B52','#7E8C6E','#3A4432','#C8A23A'),
+     extra:p=>{ px(CAB_X+18,CAB_Y+CAB_H-6,40,5,p.hullLo);
+                px(CAB_X+22,CAB_Y+CAB_H-1,8,6,MG1); px(CAB_X+46,CAB_Y+CAB_H-1,8,6,MG1); }}],
+   ['Cargo','slung load - widens the hitbox downward',
+    {nose:'flat', gear:'skids',
+     pal:PAL('#8A6A3A','#B08E56','#56401E','#E8C24E'),
+     extra:p=>{ px(HCX-1,CAB_Y+CAB_H+10,2,10,MG2);
+                px(HCX-14,CAB_Y+CAB_H+20,28,2,'#7A2418');
+                px(HCX-14,CAB_Y+CAB_H+22,28,12,'#C4452F');
+                for(let i=0;i<3;i++) px(HCX-10+i*9,CAB_Y+CAB_H+23,3,10,'rgba(0,0,0,.3)'); }}],
+  ];
+
+  /* ---- aircraft, side profile -----------------------------------------
+     Planes travel purely horizontally (o.x += o.vx*dt, 125-215 px/s) and
+     enter from off-screen left or right, so they cross side-on. A profile
+     is the only view that matches the motion.
+     1 cell = 1 world px. Sprite 232x78, nose to the RIGHT; the game
+     mirrors on dir<0.                                                    */
+  const PW=232, PH=78;
+  const FY=36, FH=26;                       /* fuselage band, y 36..61 */
+
+  const A0='#161C24', A1='#4C5866', A2='#7E8C9C', A3='#B4C0CE', A4='#E6EDF4', A5='#FFFFFF';
+  const WIN='#2F4A68', WIN2='#5A7C9E';
+  const NAVR='#FF3B30', NAVR0='#5A1E1B', NAVG='#39FF88', NAVG0='#16442A';
+
+  function blocks(list,col,hi,lo){
+    for(const [x,y,w,h] of list){
+      px(x,y,w,h,col);
+      if(hi) px(x,y,w,2,hi);
+      if(lo) px(x,y+h-2,w,2,lo);
+    }
+  }
+  /* A fin is one swept triangle, filled by row. Stacking highlighted
+     blocks banded it into loose bars. */
+  function finShape(tipX,tipY,rootBack,rootFwd,col,hi,lo){
+    const H=FY-tipY;
+    for(let y=tipY;y<FY+2;y++){
+      const t=Math.min(1,(y-tipY)/H);
+      const a=Math.round(tipX-t*6), b=Math.round(tipX+12+t*(rootBack-tipX+rootFwd));
+      px(a,y,b-a,1, y<tipY+3?hi : (y>FY-4?lo:col));
+    }
+  }
+  /* Wing, swept back and down in stepped blocks - a per-column taper
+     combs at any non-integer scale. */
+  function wingShape(rootX,wy,col,hi,lo){
+    const S=[[0,0,17,12],[-16,2,17,11],[-32,4,17,10],[-48,6,17,9],[-64,8,17,8],[-78,9,16,7]];
+    for(const [dx,dy,w,h] of S){
+      px(rootX+dx,wy+dy,w,h,col);
+      px(rootX+dx,wy+dy,w,2,hi);
+      px(rootX+dx,wy+dy+h-2,w,2,lo);
+    }
+  }
+
+  /* prop disc, edge-on at the front of a nacelle - same read as the
+     helicopter rotor, stood on end */
+  function propDisc(x,cy,R,f){
+    px(x-3,cy-R,7,R*2,'#262D38'); px(x-2,cy-R,2,R*2,'#4C5866');
+    const c=[6,2,-6,-2][f];
+    for(let i=-R;i<=R;i++){
+      const t=Math.abs(i)/R;
+      px(x+Math.round(c*t*t)-1,cy+i,3,1,A3);
+    }
+    px(x-4,cy-3,9,7,A1); px(x-3,cy-2,7,5,A3);
+  }
+
+  function plane(S,f,lit){
+    const p=S.pal;
+    const wy=S.highWing ? FY-4 : FY+FH-2;
+
+    wingShape(150, wy, p.wing, A4, A1);
+    blocks([[0,30,34,6],[28,31,14,5]], p.wing, A4, A1);       /* tailplane */
+    finShape(14, S.finTop, 38, 0, p.fin, p.finHi, A1);
+    if(S.tail==='T') blocks([[2,S.finTop-5,46,7]], p.wing, A4, A1);
+
+    /* fuselage */
+    px(14,FY,188,FH,p.hull);
+    px(14,FY,188,5,p.hullHi); px(16,FY-2,182,2,p.hullHi);
+    px(14,FY+FH-6,188,6,p.hullLo); px(16,FY+FH,182,2,A0);
+    blocks([[2,FY-2,14,20]], p.hull, p.hullHi, p.hullLo);        /* tail cone */
+    blocks([[202,FY+2,12,20],[212,FY+5,9,14],[220,FY+8,6,8]], p.hull, p.hullHi, p.hullLo);
+    px(206,FY+4,6,5,WIN); px(206,FY+4,6,2,WIN2);                 /* cockpit */
+    for(let i=0;i<S.winRows;i++) px(28+i*11,FY+9,6,6,i%2?WIN:WIN2);
+    if(S.stripe){ px(14,FY+16,188,4,p.fin); px(14,FY+16,188,1,p.finHi); }
+
+    /* engines */
+    if(S.props){
+      blocks([[112,wy-13,40,15],[150,wy-11,10,11]], A2, A3, A1);
+      propDisc(166, wy-6, 22, f);
+      blocks([[62,wy-11,30,13]], A2, A3, A1);
+      propDisc(98, wy-5, 18, f);
+    } else if(S.rearEng){
+      blocks([[26,FY-12,44,16]], A2, A3, A1);
+      px(26,FY-12,4,16,A0); px(66,FY-10,6,12,A1);
+    } else {
+      blocks([[108,wy+7,52,17]], A2, A3, A1);
+      px(154,wy+8,7,15,A1); px(108,wy+9,5,13,A0);
+      if(S.engines===4){
+        blocks([[70,wy+11,40,14]], A2, A3, A1);
+        px(104,wy+12,6,12,A1); px(70,wy+13,4,10,A0);
+      }
+    }
+    /* nav lights: green on the starboard wingtip, red on the fin */
+    px(72,wy+9,6,5, lit?NAVG:NAVG0);
+    px(15, S.finTop+1, 6,5, lit?NAVR:NAVR0);
+    if(S.contrail) for(let i=0;i<7;i++)
+      px(-8-i*9, FY+9, 7, 4, 'rgba(255,255,255,'+(0.26-i*0.035)+')');
+  }
+
+  const PPAL=(hull,hullHi,hullLo,wing,fin,finHi)=>({hull,hullHi,hullLo,wing,fin,finHi});
+
+  const PLANES=[
+   ['Airliner','twin underwing engines, swept fin',
+    {finTop:8, winRows:14, engines:2, stripe:1, contrail:1,
+     pal:PPAL('#F0F4F8',A5,'#C2CCD8','#C9D3DE','#3A6EA8','#6E9ED0')}],
+   ['Widebody','four engines, longest body',
+    {finTop:4, winRows:15, engines:4, stripe:1, contrail:1,
+     pal:PPAL('#E8EEF6',A5,'#B6C2D0','#BCC8D6','#C4452F','#E2705C')}],
+   ['Regional jet','T-tail, engine on the rear fuselage',
+    {finTop:6, winRows:11, tail:'T', rearEng:1, stripe:1,
+     pal:PPAL('#DDE4EC',A5,'#AAB6C4','#C4CEDA','#2E7A4A','#54A874')}],
+   ['Turboprop','high wing, props at the nacelle fronts',
+    {finTop:10, winRows:10, props:1, highWing:1,
+     pal:PPAL('#E4EAF2',A5,'#B2BECC','#C6D0DC','#C8921E','#F0C44E')}],
+   ['Private jet','shortest body, T-tail, rear engine',
+    {finTop:10, winRows:7, tail:'T', rearEng:1,
+     pal:PPAL('#F4F7FB',A5,'#C6D0DA','#D0D8E2','#1E2A3A','#4A5A72')}],
+   ['Freighter','high wing, upswept tail, no windows',
+    {finTop:4, winRows:0, engines:4, highWing:1,
+     pal:PPAL('#9AA6A0',A3,'#6E7A74','#8E9A94','#4A5A52','#7E8E86')}],
+  ];
+
+  /* ---- light aircraft, side profile -----------------------------------
+     Drawn at TRUE relative scale against the 232-long airliner, because
+     the only question is how small they read next to it. Nose right.    */
+  const LT0='#161C24', LT1='#4C5866', LT2='#7E8C9C', LT3='#B4C0CE', LT4='#E6EDF4', LT5='#FFFFFF';
+  const SWIN='#2F4A68', SWIN2='#5A7C9E';
+  const SNR='#FF3B30', SNR0='#5A1E1B', SNG='#39FF88', SNG0='#16442A';
+
+  function blk(list,col,hi,lo){
+    for(const [x,y,w,h] of list){
+      px(x,y,w,h,col);
+      if(hi) px(x,y,w,2,hi);
+      if(lo) px(x,y+h-2,w,2,lo);
+    }
+  }
+  function finTri(tipX,tipY,baseY,back,col,hi){
+    const H=baseY-tipY;
+    for(let y=tipY;y<=baseY;y++){
+      const t=(y-tipY)/H;
+      const a=Math.round(tipX-t*4), b=Math.round(tipX+8+t*back);
+      px(a,y,b-a,1, y<tipY+2?hi:col);
+    }
+  }
+  function disc(x,cy,R,f,col){
+    px(x-4,cy-R,9,R*2,'#262D38');                  /* swept disc, wide enough to read */
+    px(x-3,cy-R,2,R*2,'#4C5866');
+    const c=[5,2,-5,-2][f];
+    for(let i=-R;i<=R;i++){
+      const t=Math.abs(i)/R;
+      px(x+Math.round(c*t*t)-1,cy+i,3,1,col);
+    }
+    px(x-3,cy-2,7,5,LT1); px(x-2,cy-1,5,3,LT3);
+  }
+  function gear(x1,x2,y){
+    px(x1,y,2,7,LT1); px(x1-2,y+6,6,4,LT0);
+    px(x2,y,2,7,LT1); px(x2-2,y+6,6,4,LT0);
+  }
+
+  const SMALL=[];
+
+  SMALL.push(['Bizjet','156 long · T-tail, twin rear engines', 156, (p,f,lit)=>{
+    blk([[0,4,48,5]], p.wing, LT4, LT1);                       /* T tailplane */
+    finTri(10,8,30,30,p.fin,p.finHi);
+    blk([[78,46,20,9],[60,49,20,8],[44,51,18,7]], p.wing, LT4, LT1);   /* wing */
+    blk([[26,20,38,13]], LT2, LT3, LT1);                        /* rear engines */
+    px(62,21,5,11,LT1); px(26,22,4,9,LT0);
+    px(8,28,132,20,p.hull); px(8,28,132,4,p.hullHi); px(8,44,132,4,p.hullLo);
+    blk([[138,30,10,16],[147,33,7,10]], p.hull, p.hullHi, p.hullLo);
+    px(140,31,5,4,SWIN);
+    for(let i=0;i<6;i++) px(34+i*13,34,5,5,SWIN2);
+    px(11,9,5,4, lit?SNR:SNR0); px(46,51,5,4, lit?SNG:SNG0);
+  }]);
+
+  SMALL.push(['Light twin','132 long · high wing, two props', 132, (p,f,lit)=>{
+    finTri(6,8,26,24,p.fin,p.finHi);
+    blk([[0,22,32,5]], p.wing, LT4, LT1);
+    blk([[16,20,96,7]], p.wing, LT4, LT1);                     /* high wing */
+    px(8,26,98,18,p.hull); px(8,26,98,4,p.hullHi); px(8,40,98,4,p.hullLo);
+    blk([[104,28,10,14],[112,31,6,8]], p.hull, p.hullHi, p.hullLo);
+    px(106,29,5,4,SWIN);
+    for(let i=0;i<5;i++) px(20+i*12,31,5,5,SWIN2);
+    blk([[52,24,30,11]], LT2, LT3, LT1); disc(86,29,11,f,LT3);   /* nacelle + prop */
+    gear(34,78,44);
+    px(7,9,5,4, lit?SNR:SNR0); px(18,21,5,4, lit?SNG:SNG0);
+  }]);
+
+  SMALL.push(['Single prop','108 long · one nose prop, fixed gear', 108, (p,f,lit)=>{
+    finTri(4,6,24,20,p.fin,p.finHi);
+    blk([[0,20,28,5]], p.wing, LT4, LT1);
+    blk([[14,17,62,7]], p.wing, LT4, LT1);
+    px(6,23,76,16,p.hull); px(6,23,76,4,p.hullHi); px(6,35,76,4,p.hullLo);
+    blk([[80,25,12,12],[90,27,6,8]], p.hull, p.hullHi, p.hullLo);
+    px(72,25,8,6,SWIN); px(60,25,9,6,SWIN2);
+    disc(98,31,13,f,LT3);
+    gear(26,62,39);
+    px(5,7,5,4, lit?SNR:SNR0); px(16,18,5,4, lit?SNG:SNG0);
+  }]);
+
+  SMALL.push(['Glider','140 long · no engine, very slim', 140, (p,f,lit)=>{
+    finTri(4,4,22,18,p.fin,p.finHi);
+    blk([[0,18,26,4]], p.wing, LT4, LT1);
+    blk([[22,19,94,5]], p.wing, LT4, LT1);
+    px(6,22,112,11,p.hull); px(6,22,112,3,p.hullHi); px(6,30,112,3,p.hullLo);
+    blk([[116,23,12,9],[126,24,8,6]], p.hull, p.hullHi, p.hullLo);
+    px(104,24,12,5,SWIN); px(104,24,12,2,SWIN2);
+    px(5,5,5,4, lit?SNR:SNR0); px(24,18,5,4, lit?SNG:SNG0);
+  }]);
+
+  SMALL.push(['Aerobatic','96 long · stubby, low wing, big prop', 96, (p,f,lit)=>{
+    finTri(4,4,22,22,p.fin,p.finHi);
+    blk([[0,19,26,5]], p.wing, LT4, LT1);
+    px(6,21,64,17,p.hull); px(6,21,64,4,p.hullHi); px(6,34,64,4,p.hullLo);
+    blk([[52,36,30,7],[38,38,20,6]], p.wing, LT4, LT1);        /* low wing */
+    blk([[68,23,12,13],[78,26,6,8]], p.hull, p.hullHi, p.hullLo);
+    px(56,23,10,6,SWIN); px(56,23,10,2,SWIN2);
+    disc(86,30,15,f,LT3);
+    px(5,5,5,4, lit?SNR:SNR0); px(40,38,5,4, lit?SNG:SNG0);
+  }]);
+
+  const SPAL={hull:'#F4F7FB',hullHi:LT5,hullLo:'#C6D0DA',wing:'#D0D8E2',
+              fin:'#1E2A3A',finHi:'#4A5A72'};
+  const SPALS=[
+    {...SPAL, fin:'#1E2A3A', finHi:'#4A5A72'},
+    {...SPAL, hull:'#EDF2F8', fin:'#B03A2E', finHi:'#D4614F'},
+    {...SPAL, hull:'#F2F6FA', fin:'#C8921E', finHi:'#F0C44E'},
+    {...SPAL, hull:'#F6F8FC', fin:'#3A6EA8', finHi:'#6E9ED0'},
+    {...SPAL, hull:'#F8F4F0', fin:'#2E7A4A', finHi:'#54A874'},
+  ];
+
+
+  /* ---- baking ---------------------------------------------------- */
+  function surface(w, h, ox, oy, draw){
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    _g = cv.getContext('2d'); P = 1; OX = ox; OY = oy;
+    draw();
+    return cv;
+  }
+  function boomChevron(t){
+    boom(t);
+    px(t, CTOP-2, 9, CH+4, Y0); px(t+1, CTOP-1, 7, CH+2, Y4);
+    for (let i = 0; i < CH; i += 8) px(t+1, CTOP+i, 7, 4, Y0);
+  }
+
+  const RIDER_PICK  = [0,1,2,3,4,5,6,7,8,9];
+  const BIRD_PICK   = [0,2,3];              /* pigeon, crow, sparrow      */
+  const DEBRIS_PICK = [0,3,6];              /* brick, rubble, cinder      */
+  const HELI_PICK   = [0,2,5];              /* news, rescue, cargo        */
+
+  const cache = { car:[], bird:[], debris:[], heli:[], plane:[], boom:new Map() };
+  let stats = null;
+
+  function bake(){
+    const t0 = performance.now();
+    cache.car = RIDER_PICK.map(i =>
+      surface(76, 106, 0, 2, () => { cabin(); RIDERS[i][1](); panelBox(); }));
+    cache.bird = BIRD_PICK.map(i =>
+      [0,1,2].map(f => surface(48, 34, 5, 6, () => drawBird(BIRDS[i][2], f))));
+    cache.debris = DEBRIS_PICK.map(i =>
+      surface(DEBRIS[i][2]+4, DEBRIS[i][3]+4, 2, 2, DEBRIS[i][4]));
+    /* Sized per type, not to the largest case: a shared 240x84 surface
+       for every aircraft wasted more memory than the sprites used. */
+    const HELI_BOX = [[HW+10,66],[HW+10,66],[HW+10,88]];
+    cache.heli = HELI_PICK.map((i,k) =>
+      [0,1,2,3].map(f => surface(HELI_BOX[k][0], HELI_BOX[k][1], 5, 2,
+                                 () => heli(HELIS[i][2], f))));
+    const BIG  = [PLANES[0][2], PLANES[3][2]];
+    const LITE = [[SMALL[0][3], SPALS[0]], [SMALL[1][3], SPALS[1]]];
+    /* the airliner's contrail runs 62px behind the tail */
+    const PLANE_BOX = [[310,94,70,2],[242,84,3,2],[164,66,4,3],[142,60,4,3]];
+    cache.plane = [0,1,2,3].map(n => [0,1].map(lit =>
+      (n === 1 || n === 3 ? [0,1,2,3] : [0]).map(f => {
+        const B = PLANE_BOX[n];
+        return surface(B[0], B[1], B[2], B[3], () => {
+          if (n < 2) plane(BIG[n], f, !!lit);
+          else LITE[n-2][0](LITE[n-2][1], f, !!lit);
+        });
+      })));
+    let n = cache.car.length + cache.debris.length;
+    cache.bird.forEach(a => n += a.length);
+    cache.heli.forEach(a => n += a.length);
+    cache.plane.forEach(a => a.forEach(b => n += b.length));
+    /* A sprite touching its surface edge has been clipped - the surface
+       was sized too small. Cheap to check once at boot, invisible to
+       find by eye later. */
+    let clipped = 0;
+    function edgeTouched(cv){
+      const c = cv.getContext('2d'), W2 = cv.width, H2 = cv.height;
+      const rows = [c.getImageData(0,0,W2,1).data, c.getImageData(0,H2-1,W2,1).data];
+      const cols = [c.getImageData(0,0,1,H2).data, c.getImageData(W2-1,0,1,H2).data];
+      for (const d of rows.concat(cols))
+        for (let k = 3; k < d.length; k += 4) if (d[k] > 8) return true;
+      return false;
+    }
+    let bytes = 0;
+    const where = {};
+    const add = tag => cv => { bytes += cv.width * cv.height * 4;
+      if (edgeTouched(cv)){ clipped++; where[tag] = (where[tag]||0)+1; } };
+    cache.car.forEach(add('car')); cache.debris.forEach(add('debris'));
+    cache.bird.forEach((a,i) => a.forEach(add('bird'+i)));
+    cache.heli.forEach((a,i) => a.forEach(add('heli'+i)));
+    cache.plane.forEach((a,i) => a.forEach(b => b.forEach(add('plane'+i))));
+    stats = { ms: +(performance.now()-t0).toFixed(2), sprites: n,
+              kb: Math.round(bytes/1024), clipped, where };
+    return stats;
+  }
+
+  /* Booms vary in reach, so they are cached on demand rather than baked
+     up front - there are only a handful of distinct reaches per run. */
+  function boomFor(reach){
+    const key = reach | 0;
+    let cv = cache.boom.get(key);
+    if (!cv){
+      cv = surface(key + 22, 76, 4, 8, () => boomChevron(key));
+      cache.boom.set(key, cv);
+    }
+    return cv;
+  }
+
+  return {
+    bake, stats: () => stats,
+    car:    i        => cache.car[i],
+    bird:   (k,f)    => cache.bird[k][f],
+    debris: k        => cache.debris[k],
+    heli:   (k,f)    => cache.heli[k][f],
+    plane:  (k,f,on) => { const a = cache.plane[k][on?1:0]; return a[f % a.length]; },
+    boom:   boomFor,
+    riders: () => RIDERS.map(r => r[0]),
+    counts: () => ({ car:cache.car.length, bird:cache.bird.length,
+                     debris:cache.debris.length, heli:cache.heli.length,
+                     plane:cache.plane.length })
+  };
+})();
+
+/* ================================================================
    13. Rendering
    ================================================================ */
 function drawSky(){
@@ -2651,6 +3711,9 @@ function frame(t){
    ================================================================ */
 resize();
 buildSkyline();
+const _spr = SPR.bake();
+console.log('[sprites] ' + _spr.sprites + ' baked in ' + _spr.ms + 'ms, ' +
+            _spr.kb + ' KB, ' + _spr.clipped + ' clipped ' + JSON.stringify(_spr.where));
 document.getElementById('titleBest').textContent = commas(best) + ' FT';
 requestAnimationFrame(frame);
 })();
