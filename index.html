@@ -717,7 +717,6 @@ let shake     = 0;
 let flash     = 0;
 let nextSpawnPx = 0;
 let lastBlockerPx = -1e9;  // px-travel stamp of the last full-width hazard
-let lastGapX  = W/2;
 let nextMilestone = 1000;
 let recordBeaten = false;
 
@@ -919,7 +918,8 @@ function start(){
   player.shield = false; player.mercy = 0; player.boost = 0; player.bubble = 0;
   carY = PLAYER_Y; nextShield = SHIELD_AT; nextF1 = F1_AT;
   nextVms3 = VMS3_AT; vms3Taken = false; player.vms3 = false;
-  nextSpawnPx = 420; lastBlockerPx = -1e9; lastGapX = W/2;
+  nextSpawnPx = 420; lastBlockerPx = -1e9;
+  corridor = [[HALF_CAR, W - HALF_CAR]]; lastSpawnPx = 0; lastCrane = null;
   nextMilestone = 1000; recordBeaten = false;
   player.x = W/2; player.vx = 0; player.tilt = 0;
   player.crashT = 0; player.crashRot = 0; player.crashSpin = 0; player.crashVy = 0;
@@ -1003,13 +1003,10 @@ function rotBox(o, m){
 function rectsOf(o){
   if (o.t === 'crane'){
     const top = o.y - o.h/2;
-    const rs = [
-      { x: -40,              y: top, w: o.gapX + 40,              h: o.h },
-      { x: o.gapX + o.gapW,  y: top, w: W - o.gapX - o.gapW + 40, h: o.h }
-    ];
-    /* the hanging crate is painted, so it has to be solid too */
-    if (o.load) rs.push({ x: o.loadX - 30, y: top + o.h + o.loadDrop, w: 60, h: 44 });
-    return rs;
+    const edge = o.reach + CRANE_TIP;
+    return [ o.side === 'L'
+      ? { x: -40,      y: top, w: edge + 40, h: o.h }
+      : { x: W - edge, y: top, w: edge + 40, h: o.h } ];
   }
   if (o.t === 'plane')
     return SPR.rectsFor(SPR.hitKey('plane', KIX['plane:'+o.kind]), o.x, o.y, o.dir);
@@ -1055,21 +1052,117 @@ function spawnBird(){
   o.base = o.x;
   obstacles.push(o);
 }
+/* ---- the corridor ---------------------------------------------------
+   Forward reachability over the set of x positions the car could still
+   hold: dilate it by how far the car can travel between hazards, then
+   subtract whatever the new hazard blocks. If it ever empties, the run
+   became unwinnable and no amount of skill would have saved it.
+
+   Tuning alone does not get there - 3000 generated runs gave 133 forced
+   game-overs with every spacing guard switched on, and 0 once the
+   spawner checked before committing. See docs/SPAWNER.md.
+   ------------------------------------------------------------------ */
+const CORRIDOR_MIN = 40;         // px of freedom the car's centre keeps
+const HALF_CAR = PLAYER_W / 2;
+let corridor = [[HALF_CAR, W - HALF_CAR]];
+let lastSpawnPx = 0;
+
+function travelIn(t){
+  const ta = PLAYER_MAXV / PLAYER_ACCEL, da = 0.5 * PLAYER_ACCEL * ta * ta;
+  return t <= ta ? 0.5 * PLAYER_ACCEL * t * t : da + (t - ta) * PLAYER_MAXV;
+}
+/* Dilation makes neighbouring intervals overlap. Without merging them
+   back one subtraction can split several at once and the set doubles per
+   hazard - it reached 128 intervals in testing before the merge. */
+function mergeIv(iv){
+  if (iv.length < 2) return iv;
+  const a = iv.slice().sort((p,q) => p[0]-q[0]), out = [a[0].slice()];
+  for (let i=1;i<a.length;i++){
+    const last = out[out.length-1];
+    if (a[i][0] <= last[1]) last[1] = Math.max(last[1], a[i][1]);
+    else out.push(a[i].slice());
+  }
+  return out;
+}
+const dilateIv = (iv,d) => mergeIv(iv.map(([a,b]) =>
+  [Math.max(HALF_CAR, a-d), Math.min(W-HALF_CAR, b+d)]));
+function subIv(iv, s, e){
+  const out = [];
+  for (const [a,b] of iv){
+    if (e <= a || s >= b){ out.push([a,b]); continue; }
+    if (s > a) out.push([a, Math.min(b,s)]);
+    if (e < b) out.push([Math.max(a,e), b]);
+  }
+  return out.filter(([a,b]) => b - a > 0.5);
+}
+function widestSeg(iv){
+  let best = null;
+  for (const seg of iv) if (!best || seg[1]-seg[0] > best[1]-best[0]) best = seg;
+  return best;
+}
+const widestIv = iv => { const s = widestSeg(iv); return s ? s[1]-s[0] : 0; };
+
+/* what a hazard takes away, in car-centre space */
+function blockOf(o){
+  if (o.t === 'crane')
+    return o.side === 'L' ? [0, o.reach + CRANE_TIP + HALF_CAR]
+                          : [W - o.reach - CRANE_TIP - HALF_CAR, W];
+  const drift = Math.abs(o.vx || 0) * (o.h / Math.max(1, speed));
+  return [o.x - o.w/2 - HALF_CAR - drift, o.x + o.w/2 + HALF_CAR + drift];
+}
+/* Test before committing: shrink a boom or slide a mover until a path
+   survives, and drop the hazard outright rather than seal the screen. */
+function placeSafely(o){
+  const dp = Math.max(0, px - lastSpawnPx);
+  const grown = dilateIv(corridor, travelIn(dp / Math.max(1, speed)));
+  for (let attempt = 0; attempt < 6; attempt++){
+    const b = blockOf(o);
+    const test = subIv(grown, b[0], b[1]);
+    if (widestIv(test) >= CORRIDOR_MIN){
+      corridor = test; lastSpawnPx = px; return true;
+    }
+    if (o.t === 'crane'){
+      if (o.reach <= 130) break;
+      o.reach = Math.max(130, o.reach - 34);
+    } else {
+      const seg = widestSeg(grown);
+      if (!seg || attempt > 1) break;
+      o.x = clamp((seg[0]+seg[1])/2, o.w/2 + 8, W - o.w/2 - 8);
+      if (o.base !== undefined) o.base = o.x;
+    }
+  }
+  obstacles.pop();
+  return false;
+}
+
+/* One boom reaching in from a single edge - not a wall with a hole in
+   it. Difficulty is how far it reaches, so the player has exactly one
+   edge to judge instead of two. */
+const CRANE_REACH_CAP = 390;
+/* The chevron post is painted from the tip outward, so the solid edge is
+   9px past o.reach. Measured, not guessed: without this the cap that
+   marks the edge is the one part of the boom you can fly through. */
+const CRANE_TIP = 9;
+let lastCrane = null;
 function spawnCrane(){
-  const gapW = lerp(224, 156, hazDiff) * rnd(0.94, 1.08);
-  /* keep consecutive gaps reachable: never more than a short dash apart */
-  const lo = clamp(lastGapX - 250, 12, W - gapW - 12);
-  const hi = clamp(lastGapX + 250, 12, W - gapW - 12);
-  const gapX = clamp(rnd(lo, hi), 12, W - gapW - 12);
-  lastGapX = gapX + gapW/2;
+  const target = Math.min(lerp(200, 380, hazDiff), CRANE_REACH_CAP);
+  const reach  = Math.round(clamp(target * rnd(0.82, 1.18), 150, CRANE_REACH_CAP));
+  let side;
+  if (!lastCrane) side = Math.random() < 0.5 ? 'L' : 'R';
+  else {
+    /* never more than three from one side: a run of same-side booms is
+       free to dodge, and buys back the room a switch costs */
+    const mustSwitch = lastCrane.run >= 2;
+    side = (mustSwitch || Math.random() < lerp(0.80, 0.45, hazDiff))
+           ? (lastCrane.side === 'L' ? 'R' : 'L')
+           : lastCrane.side;
+  }
   lastBlockerPx = px;
-  obstacles.push({ t:'crane', x: W/2, y: -70, w: W, h: 46,
-                   gapX, gapW, vx:0, vy:0, passed:false,
-                   towerRight: gapX < W/2, load: Math.random() < 0.65,
-                   loadDrop: rnd(60, 130),
-                   /* computed once so the drawing and the hitbox cannot drift */
-                   loadX: gapX > 120 ? gapX * 0.5
-                                     : gapX + gapW + (W - gapX - gapW) * 0.5 });
+  const o = { t:'crane', side, reach, x: W/2, y: -70, w: W, h: 52,
+              vx:0, vy:0, passed:false,
+              run: (lastCrane && lastCrane.side === side) ? lastCrane.run + 1 : 0 };
+  lastCrane = o;
+  obstacles.push(o);
 }
 function spawnDebris(){
   const kind = pick(KIND.debris), d = SPR.dims('debris', KIX['debris:'+kind]);
@@ -1158,6 +1251,8 @@ function spawnOne(){
     chosen = mix.length > 1 ? (mix.find(m => m[0] !== 'crane') || mix[0])[0] : 'bird';
   }
   (SPAWNERS[chosen] || spawnBird)();
+  const o = obstacles[obstacles.length - 1];
+  if (o) placeSafely(o);
 }
 
 /* ================================================================
@@ -2956,48 +3051,20 @@ function lattice(x, y, w, h){
 }
 
 function drawCrane(o){
-  const top = o.y - o.h/2;
+  const img = SPR.boom(o.reach), top = o.y - o.h/2;
   ctx.save();
-  /* scaffold planks behind the beam */
-  ctx.fillStyle = 'rgba(150,110,60,.9)';
-  if (o.gapX > 8)             ctx.fillRect(0, top + o.h, o.gapX, 9);
-  if (o.gapX + o.gapW < W-8)  ctx.fillRect(o.gapX + o.gapW, top + o.h, W - o.gapX - o.gapW, 9);
-
-  if (o.gapX > 4) lattice(-30, top, o.gapX + 30, o.h);
-  if (o.gapX + o.gapW < W - 4) lattice(o.gapX + o.gapW, top, W - (o.gapX + o.gapW) + 30, o.h);
-
-  /* tower mast climbing off the top of the frame */
-  const mx = o.towerRight ? W - 54 : 14;
-  if ((o.towerRight && o.gapX + o.gapW < W - 60) || (!o.towerRight && o.gapX > 60)){
-    lattice(mx, top - 260, 40, 260);
-  }
-
-  /* hanging load, always over solid deck */
-  if (o.load){
-    const lx = o.loadX;
-    ctx.strokeStyle = '#4A5464';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(lx, top + o.h);
-    ctx.lineTo(lx, top + o.h + o.loadDrop);
-    ctx.stroke();
-    ctx.fillStyle = '#C4452F';
-    ctx.fillRect(lx - 34, top + o.h + o.loadDrop, 68, 44);
-    ctx.fillStyle = 'rgba(0,0,0,.28)';
-    for (let i = 0; i < 4; i++) ctx.fillRect(lx - 30 + i*17, top + o.h + o.loadDrop + 4, 6, 36);
-    ctx.strokeStyle = '#2A3240';
-    ctx.lineWidth = 2.5;
-    ctx.strokeRect(lx - 34, top + o.h + o.loadDrop, 68, 44);
-  }
-
-  /* warning light on the gap edge */
-  const blink = (Math.sin(runTime * 6) > 0);
-  ctx.fillStyle = blink ? '#FF4D3D' : '#5A2620';
-  ctx.beginPath(); ctx.arc(o.gapX - 8, top + o.h/2, 6, 0, 6.2832); ctx.fill();
-  ctx.beginPath(); ctx.arc(o.gapX + o.gapW + 8, top + o.h/2, 6, 0, 6.2832); ctx.fill();
+  ctx.imageSmoothingEnabled = false;
+  if (o.side === 'R'){ ctx.translate(W, 0); ctx.scale(-1, 1); }
+  /* the baked boom is padded by 4,8 and its beam starts at sprite y 6 */
+  ctx.drawImage(img, -4, Math.round(top - 14));
   ctx.restore();
+  /* beacon on the tip, blinking - drawn live so it is not 2x the sprites */
+  const lit = Math.sin(runTime * 6) > 0;
+  const bx  = o.side === 'L' ? o.reach : W - o.reach - 9;
+  ctx.fillStyle = '#3A424E'; ctx.fillRect(bx - 1, top - 14, 11, 11);
+  ctx.fillStyle = lit ? '#E4353F' : '#5A1A18'; ctx.fillRect(bx, top - 13, 9, 9);
+  if (lit){ ctx.fillStyle = '#FFB0A0'; ctx.fillRect(bx + 2, top - 11, 3, 3); }
 }
-
 function drawDebris(o){
   ctx.save();
   ctx.translate(o.x, o.y);
@@ -3843,7 +3910,28 @@ window.DBG = {
   live: () => obstacles.map(o => o.t + (o.kind ? ':'+o.kind : '')),
   boxes: () => obstacles.map(o => ({ t:o.t, k:o.kind, n:rectsOf(o).length })),
   feet: () => Math.floor(feet),
-  spawn: t => SPAWNERS[t]()
+  spawn: t => SPAWNERS[t](),
+  corridor: () => ({ w: +widestIv(corridor).toFixed(1), segs: corridor.length }),
+  jump: ft => { feet = ft; px = ft / FEET_PER_PX; },
+  /* Drive the REAL spawn path over a simulated climb: spawnOne is where
+     the corridor check lives, so calling a spawner directly skips it. */
+  sim: (ft, n) => {
+    feet = ft; px = ft / FEET_PER_PX;
+    diff    = Math.pow(clamp(feet / RAMP_FEET, 0, 1), 0.85);
+    hazDiff = Math.pow(clamp(feet / RAMP_FEET, 0, 1), 0.58);
+    speed   = lerp(SPEED_MIN, SPEED_MAX, diff);
+    corridor = [[HALF_CAR, W - HALF_CAR]]; lastSpawnPx = px; lastCrane = null;
+    obstacles.length = 0;
+    const seen = [];
+    for (let i = 0; i < n; i++){
+      px += lerp(SPAWN_GAP_EASY, SPAWN_GAP_HARD, hazDiff) * rnd(0.82, 1.28);
+      const before = obstacles.length;
+      spawnOne();
+      seen.push({ w: +widestIv(corridor).toFixed(1), segs: corridor.length,
+                  kept: obstacles.length > before });
+    }
+    return seen;
+  }
 };
 }
 console.log('[sprites] ' + _spr.sprites + ' baked in ' + _spr.ms + 'ms, ' +
