@@ -464,6 +464,10 @@ const RAMP_FEET     = 9000;   // altitude at which difficulty maxes out
 const SPEED_MIN     = 240;    // px/s of climb at launch
 const SPEED_MAX     = 620;    // px/s of climb once fully ramped
 const PLAYER_Y      = H * 0.70;
+/* The near skyline stands on H*0.94, so that is the street. The pad sits
+   on it and the car rests on the pad. */
+const GROUND_Y      = H * 0.94;
+const PAD_Y         = GROUND_Y - 10;
 const PLAYER_W      = 84, PLAYER_H = 118;
 /* Hazard spacing is a DISTANCE, not a delay: the vertical gap between
    one hazard and the next has to hold whatever the climb speed is, or
@@ -684,7 +688,16 @@ function saveBest(v){
 /* ================================================================
    7. Game state
    ================================================================ */
-const S = { MENU:0, PLAY:1, CRASH:2, OVER:3, PAUSE:4, RESCUE:5, RESUMING:6 };
+const S = { MENU:0, PLAY:1, CRASH:2, OVER:3, PAUSE:4, RESCUE:5, RESUMING:6, INTRO:7 };
+/* The opening, in seconds. Street level: the car is standing on its pad
+   with the doors open, someone walks in, the doors shut and it goes.
+   Every beat is a hard boundary so a tap can skip to the launch. */
+const I_WALK = 1.9,    /* the rider reaches the doorway   */
+      I_BOARD= 2.4,    /* steps inside                    */
+      I_SHUT = 3.2,    /* doors closed                    */
+      I_SPOOL= 3.9,    /* jets lit, the car on its haunches */
+      I_GO   = 5.7;    /* clear of the pad, over to play  */
+let introT = 0, introShut = false, introLit = false;
 /* VMS3 rescue beats, in seconds: the call rings, it is picked up, the
    passenger speaks, the agent answers, the ticket closes green, 3-2-1. */
 const R_RING = 1.3, R_PASS = 2.5, R_AGENT = 4.1, R_OK = 4.9,
@@ -748,6 +761,9 @@ const keys = { left:false, right:false };
 let pointerOn = false, pointerX = W/2;
 
 function primary(){
+  /* Skipping takes you to the launch, not past it: the trip is two
+     seconds and it is the half worth watching. */
+  if (state === S.INTRO){ introT = Math.max(introT, I_SPOOL - 0.01); return; }
   if (state === S.MENU) start();
   else if (state === S.OVER) start();
   else if (state === S.PAUSE) resume();
@@ -917,11 +933,11 @@ function start(){
   pointerOn = false;
   buildSkyline();
   shownZone = '';
-  state = S.PLAY;
+  state = S.INTRO; introT = 0; introShut = false; introLit = false; speed = 0;
+  carY = PAD_Y - PLAYER_H/2;
   el.title.hidden = true; el.over.hidden = true; el.pause.hidden = true;
   el.hud.classList.add('on');
   syncHUD();
-  Sound.launch();
 }
 
 function pauseGame(){
@@ -1571,6 +1587,35 @@ function update(dt){
       nextSpawnPx = px + lerp(SPAWN_GAP_EASY, SPAWN_GAP_HARD, hazDiff) * rnd(0.82, 1.28);
     }
     syncHUD();
+  } else if (state === S.INTRO){
+    introT += dt;
+    const rest = PAD_Y - PLAYER_H/2;
+    if (introT < I_SPOOL){
+      /* Standing. Once the doors are shut the jets light and the whole
+         car trembles against the pad - that shiver is what tells you it
+         is about to leave. */
+      speed = 0;
+      carY = rest + (introT >= I_SHUT ? Math.sin(introT * 52) * 1.8 : 0);
+      if (introT >= I_SHUT && Math.random() < 0.55) thrust();
+      if (introT >= I_SHUT && !introShut){ introShut = true; Sound.ding(); }
+      if (introT >= I_SPOOL - 0.01 && !introLit){ introLit = true; Sound.launch(); }
+    } else {
+      /* Away. The car climbs the frame while the world starts to move,
+         so the launch is read twice over. */
+      const t = clamp((introT - I_SPOOL) / (I_GO - I_SPOOL), 0, 1);
+      if (!introLit){ introLit = true; Sound.launch(); }
+      carY  = lerp(rest, PLAYER_Y, t * t * (3 - 2*t));
+      speed = SPEED_MIN * t * t;
+      px   += speed * dt;
+      feet  = px * FEET_PER_PX;
+      thrust();
+      if (introT >= I_GO){
+        state = S.PLAY;
+        carY = PLAYER_Y; speed = SPEED_MIN;
+      }
+    }
+    syncHUD();
+
   } else if (state === S.RESUMING){
     resumeT -= dt;
     const n = Math.max(1, Math.ceil(resumeT));
@@ -1629,8 +1674,10 @@ function update(dt){
     player.crashRot += player.crashSpin * dt;
     if (player.crashT > 1.15) gameOver();
   } else if (state === S.MENU){
-    speed = 90;                 /* the car idles on its jets over the city */
-    if (Math.random() < 0.35) thrust();
+    /* Waiting at street level with the doors open. Nothing scrolls, so
+       pressing start does not cut from a flying car to a parked one. */
+    speed = 0;
+    carY = PAD_Y - PLAYER_H/2;
   } else if (state === S.OVER){
     speed = 70;                 /* wreckage and clouds keep drifting past */
   }
@@ -4500,8 +4547,9 @@ function drawFlames(x, y, strength){
 
 function drawElevator(x, y, rot, broken){
   const hw = PLAYER_W/2, hh = PLAYER_H/2;
-  const thrusting = (state === S.PLAY || state === S.MENU || state === S.PAUSE ||
+  const thrusting = (state === S.PLAY || state === S.PAUSE ||
                      state === S.RESUMING ||
+                     (state === S.INTRO && introT >= I_SHUT) ||
                      (state === S.RESCUE && rescueT >= R_GO - 1.0));
 
   if (thrusting) drawFlames(x, y + hh - 2, 1 + (speed - SPEED_MIN) / (SPEED_MAX - SPEED_MIN) * 0.8);
@@ -4531,9 +4579,12 @@ function drawElevator(x, y, rot, broken){
   roundRect(ctx, -hw, -hh, PLAYER_W, PLAYER_H, 10); ctx.clip();
   ctx.fillStyle = 'rgba(24,34,52,.35)';
   ctx.fillRect(-hw, hh - 26, PLAYER_W, 26);
-  /* passenger silhouette, leaning into the turn */
+  /* passenger silhouette, leaning into the turn - and not there at all
+     until somebody has walked in */
   const lean = clamp(-player.tilt * 1.6, -0.4, 0.4);
   ctx.save();
+  if (state === S.MENU) ctx.globalAlpha = 0;
+  else if (state === S.INTRO) ctx.globalAlpha = clamp((introT - I_BOARD) / 0.3, 0, 1);
   ctx.translate(6, 10);
   ctx.rotate(lean);
   ctx.fillStyle = '#1B2436';
@@ -4642,6 +4693,91 @@ function drawPopups(){
   ctx.globalAlpha = 1;
 }
 
+/* ---- the opening ----------------------------------------------
+   Three pieces that only exist while the car is still on the ground:
+   the pad it stands on, the person who gets in, and the doors. */
+
+/* The pad sinks with the near skyline once the car is away, so it reads
+   as ground being left behind rather than as a sprite being deleted. */
+function drawPad(){
+  const y = PAD_Y + px * 0.028;
+  if (y > H + 30) return;
+  const x = W/2, w = 158;
+  ctx.fillStyle = '#141A24'; ctx.fillRect(x - w/2, y, w, 20);
+  ctx.fillStyle = '#39465C'; ctx.fillRect(x - w/2, y, w, 4);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x - w/2, y + 4, w, 8); ctx.clip();
+  ctx.fillStyle = 'rgba(244,195,74,.85)';
+  for (let i = -w/2 - 16; i < w/2 + 16; i += 16){
+    ctx.beginPath();
+    ctx.moveTo(x + i, y + 12); ctx.lineTo(x + i + 8, y + 4);
+    ctx.lineTo(x + i + 16, y + 4); ctx.lineTo(x + i + 8, y + 12);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+  ctx.fillStyle = '#0E131C'; ctx.fillRect(x - w/2, y + 12, w, 8);
+  ctx.fillStyle = 'rgba(244,195,74,' + (0.35 + 0.35*Math.sin(runTime*7)) + ')';
+  ctx.fillRect(x - w/2 + 6, y + 15, 10, 3);
+  ctx.fillRect(x + w/2 - 16, y + 15, 10, 3);
+}
+
+/* The rider. Same silhouette language as the figure inside the cabin,
+   with a four-frame walk: legs swing, the body bobs on the off beats,
+   one arm counter-swings. */
+function drawWalker(x, y, phase, alpha){
+  const f = Math.floor(phase) & 3;
+  const swing = [0.40, 0, -0.40, 0][f];
+  const bob   = [0, -2, 0, -2][f];
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(x, y + bob);
+  ctx.fillStyle = '#1B2436';
+  ctx.save(); ctx.translate(0, -22);
+  for (const sg of [swing, -swing]){
+    ctx.save(); ctx.rotate(sg); ctx.fillRect(-4, 0, 8, 24); ctx.restore();
+  }
+  ctx.restore();
+  ctx.beginPath();
+  ctx.moveTo(-11, -18); ctx.lineTo(-8, -48); ctx.lineTo(8, -48); ctx.lineTo(11, -18);
+  ctx.closePath(); ctx.fill();
+  ctx.save(); ctx.translate(3.5, -43); ctx.rotate(-swing * 0.85);
+  ctx.fillRect(-3, 0, 6, 21); ctx.restore();
+  ctx.beginPath(); ctx.arc(0, -58, 9.5, 0, 6.2832); ctx.fill();
+  ctx.fillStyle = '#E8EEF6';
+  ctx.fillRect(-4.5, -49, 9, 10);
+  ctx.restore();
+}
+
+/* Doors. Not two panels sliding across the glass - the panels retract
+   INTO the side walls, so what changes is how much of each one you can
+   see, and the gap between them is the cabin interior. */
+function drawDoors(x, y, shut, alpha){
+  if (alpha <= 0.01) return;
+  const hw = PLAYER_W/2, hh = PLAYER_H/2;
+  const gap = 22 * (1 - shut), top = -hh + 13, dh = PLAYER_H - 32;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(x, y);
+  if (gap > 0.5){
+    ctx.fillStyle = 'rgba(16,24,38,.62)';
+    ctx.fillRect(-gap, top, gap*2, dh);
+    ctx.fillStyle = 'rgba(255,214,120,.16)';
+    ctx.fillRect(-gap, top + dh - 8, gap*2, 8);
+  }
+  for (const sd of [-1, 1]){
+    const inner = sd * gap, outer = sd * (hw - 3);
+    const x0 = Math.min(inner, outer), w = Math.abs(outer - inner);
+    if (w < 1) continue;
+    const gg = ctx.createLinearGradient(x0, 0, x0 + w, 0);
+    gg.addColorStop(0, 'rgba(206,240,255,.52)');
+    gg.addColorStop(1, 'rgba(150,205,235,.30)');
+    ctx.fillStyle = gg; ctx.fillRect(x0, top, w, dh);
+    ctx.fillStyle = 'rgba(244,195,74,.95)';
+    ctx.fillRect(sd < 0 ? inner - 3 : inner, top, 3, dh);
+  }
+  ctx.restore();
+}
+
 /* ---- frame ---------------------------------------------------- */
 function draw(){
   drawSky();
@@ -4651,6 +4787,7 @@ function draw(){
   drawStars();
   drawEarthLimb();
   drawCity();
+  if (state === S.INTRO || state === S.MENU) drawPad();
   const benv = boostEnv();
   drawClouds(false, benv);
   drawSpeedLines();
@@ -4667,11 +4804,26 @@ function draw(){
     const wob = rescueT < R_GO - 1 ? Math.sin(rescueT * 9) * 0.045 : 0;
     drawElevator(player.x, carY, wob, false);
   } else if (state !== S.OVER){
-    const bob = state === S.MENU ? Math.sin(runTime * 2.2) * 5 : 0;
+    const bob = 0;
     const env = benv;
     if (env > 0.01) drawBoostWake(player.x, carY + bob, env);
     const blink = player.mercy > 0 && Math.floor(player.mercy * 12) % 2 === 0;
     if (!blink) drawElevator(player.x, carY + bob, player.tilt, false);
+    if (state === S.MENU) drawDoors(player.x, carY, 0, 1);
+    if (state === S.INTRO){
+      /* the doors fade out as the car leaves, so by the time it is flying
+         it looks exactly like the car that flies the rest of the run */
+      const shut = clamp((introT - I_BOARD) / (I_SHUT - I_BOARD), 0, 1);
+      drawDoors(player.x, carY, shut, 1 - clamp((introT - I_SHUT) / 0.7, 0, 1));
+      if (introT < I_BOARD + 0.1){
+        const w = clamp(introT / I_WALK, 0, 1);
+        const b = clamp((introT - I_WALK) / (I_BOARD - I_WALK), 0, 1);
+        /* the cycle stops the moment they arrive, then they step in and
+           the silhouette inside the cabin takes over */
+        drawWalker(lerp(player.x - 168, player.x - 14, w) + b * 12, PAD_Y,
+                   w < 1 ? introT * 7.5 : 1, 1 - b);
+      }
+    }
     if (player.shield || player.bubble > 0) drawBubble(player.x, carY + bob);
   }
 
@@ -4723,6 +4875,7 @@ window.DBG = {
   city: i => { cityIx = i % CITY.count(); CITY.build(cityIx); return CITY.names()[cityIx]; },
   cities: () => CITY.names(),
   clear: () => { obstacles.length = 0; },
+  introAt: () => +introT.toFixed(2),
   /* raise the dome and clear the sky, so it can be looked at */
   dome: () => { player.shield = true; player.bubble = 1;
                 player.mercy = 0; obstacles.length = 0; setLabels(); },
