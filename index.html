@@ -104,8 +104,8 @@
     animation:chipPulse 1.6s ease-in-out infinite;
   }
   .chip svg{width:calc(var(--u)*21);height:calc(var(--u)*21);display:block}
-  .chip.shield{color:#FF6A55;background:rgba(112,16,10,.86)}
-  .chip.vms{color:#4FD98A;background:rgba(10,72,44,.86)}
+  .chip.shield{color:#36BEDC;background:rgba(11,58,74,.86)}
+  .chip.vms{color:#36C06A;background:rgba(14,58,36,.86)}
   .chip[hidden]{display:none}
   @keyframes chipPulse{0%,100%{opacity:1}50%{opacity:.62}}
   @media (prefers-reduced-motion:reduce){ .chip{animation:none} }
@@ -2613,6 +2613,199 @@ const SPR = (function(){
   ];
 
 
+  /* ---- power-up badges, 68x68 -----------------------------------------
+     The badge IS the hitbox: 68x68 centred on the pickup, nothing
+     painted outside it, so what the player aims at is what they hit.
+
+     A plasma globe - dark glass with filaments running out of the icon
+     to the rim. The three hues are the only saturated ones no hazard
+     uses: brass-yellow is the crane, red-brown the brick, grey the
+     concrete and aircraft, dark blue-brown the birds, white the
+     planes. That leaves cyan, green and magenta.                     */
+  const PKC = 34, PK_INK = '#0A0E16';
+  const PK_PAL = [
+    ['#0B3A4A','#1E7C96','#36BEDC','#8AEBFA','#DFFBFF'],   /* shield */
+    ['#0E3A24','#1E7A46','#36C06A','#8AF0A8','#DFFFE8'],   /* vms3   */
+    ['#3A0E36','#8A1E7A','#D036C0','#F08AE4','#FFDFF8']    /* f1     */
+  ];
+
+  function pkDisc(cx, cy, r, col){
+    for (let y = -r; y <= r; y++){
+      const w = Math.round(Math.sqrt(Math.max(0, r*r - y*y)));
+      px(cx - w, cy + y, w*2 + 1, 1, col);
+    }
+  }
+  function pkRing(cx, cy, r, t, col){
+    const ir = r - t;
+    for (let y = -r; y <= r; y++){
+      const o = Math.round(Math.sqrt(Math.max(0, r*r - y*y)));
+      const i = Math.abs(y) <= ir ? Math.round(Math.sqrt(Math.max(0, ir*ir - y*y))) : -1;
+      if (i < 0) px(cx - o, cy + y, o*2 + 1, 1, col);
+      else { px(cx - o, cy + y, o - i, 1, col); px(cx + i + 1, cy + y, o - i, 1, col); }
+    }
+  }
+
+  /* An ordered dither between neighbouring palette entries, so the
+     sphere ramps the way the hardware these sprites imitate would have
+     done it rather than in three hard bands. */
+  const PK_BAYER = [[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
+  function pkShade(x, y, t, pal){
+    const n = pal.length - 1;
+    const u = Math.max(0, Math.min(0.9999, t)) * n, i = Math.floor(u);
+    return u - i > (PK_BAYER[y & 3][x & 3] + 0.5) / 16 ? pal[i + 1] : pal[i];
+  }
+  function pkHash(i){ const s = Math.sin(i * 12.9898) * 43758.5453; return s - Math.floor(s); }
+
+  /* A lit sphere: surface normal against a light vector, with the
+     highlight concentrated by a power curve so most of the ball stays
+     dark enough for the icon to read against it. */
+  function pkSphere(r, pal, amb, gain){
+    const lx = -0.52, ly = -0.60, lz = 0.61;
+    for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++){
+      const d2 = x*x + y*y; if (d2 > r*r) continue;
+      const nz = Math.sqrt(r*r - d2) / r;
+      const nl = Math.max(0, (x/r)*lx + (y/r)*ly + nz*lz);
+      px(PKC + x, PKC + y, 1, 1,
+         pkShade(PKC + x, PKC + y, amb + gain * Math.pow(nl, 2.2), pal));
+    }
+  }
+
+  /* Icons rasterised from reference vector geometry onto the pixel grid
+     rather than drawn by eye: the shield and the handset are the
+     Material Symbols shapes, the chevron is fast_forward stood upright
+     and rebuilt to an even staircase so its two halves match. */
+  const PK_IC = {
+      shield: [
+        '..........##..........',
+        '........######........',
+        '......##########......',
+        '....##############....',
+        '.####################.',
+        '######################',
+        '######################',
+        '######################',
+        '######################',
+        '######################',
+        '######################',
+        '######################',
+        '######################',
+        '######################',
+        '######################',
+        '######################',
+        '######################',
+        '######################',
+        '.####################.',
+        '.####################.',
+        '..##################..',
+        '..##################..',
+        '...################...',
+        '....##############....',
+        '.....############.....',
+        '......##########......',
+        '........######........',
+        '..........##..........' ],
+      phone: [
+        '.#######..................',
+        '########..................',
+        '########..................',
+        '########..................',
+        '#########.................',
+        '.########.................',
+        '.########.................',
+        '.########.................',
+        '.#######..................',
+        '..#####...................',
+        '..####....................',
+        '..#####...................',
+        '...####...................',
+        '...#####..................',
+        '....#####.................',
+        '.....#####................',
+        '.....######...............',
+        '......######......####....',
+        '.......######....#########',
+        '........#######.##########',
+        '.........#################',
+        '...........###############',
+        '............##############',
+        '..............############',
+        '.................#########',
+        '.....................####.' ],
+      arrow: [
+        '........##........',
+        '.......####.......',
+        '.......####.......',
+        '......######......',
+        '.....########.....',
+        '.....########.....',
+        '....##########....',
+        '...############...',
+        '...############...',
+        '..##############..',
+        '.################.',
+        '.################.',
+        '##################',
+        '..................',
+        '..................',
+        '........##........',
+        '.......####.......',
+        '.......####.......',
+        '......######......',
+        '.....########.....',
+        '.....########.....',
+        '....##########....',
+        '...############...',
+        '...############...',
+        '..##############..',
+        '.################.',
+        '.################.',
+        '##################' ]
+  };
+  /* run-encoded once, so stamping an icon is a dozen fillRects */
+  const PK_ICR = {};
+  for (const k in PK_IC){
+    const g = PK_IC[k], runs = [];
+    g.forEach((row, y) => { let run = 0;
+      for (let x = 0; x <= row.length; x++){
+        if (row[x] === '#') run++;
+        else { if (run) runs.push([x - run, y, run]); run = 0; }
+      }});
+    PK_ICR[k] = { runs, w: g[0].length, h: g.length };
+  }
+  /* A full outline, not a drop shadow. On a lit sphere the icon has to
+     survive both the highlight and the terminator, and one pixel below
+     it only covers one of those. */
+  const PK_OFF = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
+  function pkIcon(name, col){
+    const I = PK_ICR[name], ox = PKC - (I.w >> 1), oy = PKC - (I.h >> 1);
+    for (const o of PK_OFF)
+      for (const r of I.runs) px(ox + r[0] + o[0], oy + r[1] + o[1], r[2], 1, PK_INK);
+    for (const r of I.runs) px(ox + r[0], oy + r[1], r[2], 1, col);
+  }
+
+  /* The filaments writhe rather than crawl outward: their wiggle is
+     driven by a phase that wraps over PK_FRAMES, so the loop is
+     seamless and six surfaces per kind cover the whole animation. */
+  const PK_FRAMES = 6;
+  const PK_ICON = ['shield','phone','arrow'];
+  function pickup(k, f){
+    const P = PK_PAL[k], ph = f / PK_FRAMES * Math.PI * 2;
+    pkDisc(PKC, PKC, 33, PK_INK);
+    pkSphere(32, P, 0.02, 0.34);
+    for (let i = 0; i < 9; i++){
+      const base = pkHash(i) * Math.PI * 2;
+      for (let d = 9; d <= 31; d++){
+        const a = base + Math.sin(d*0.34 + i*2.1 + ph) * 0.22;
+        const x = Math.round(Math.cos(a)*d), y = Math.round(Math.sin(a)*d);
+        px(PKC + x, PKC + y, 1, 1, d > 26 ? P[4] : P[3]);
+        if (d % 3 === 0) px(PKC + x, PKC + y + 1, 1, 1, P[2]);
+      }
+    }
+    pkRing(PKC, PKC, 32, 2, P[1]);
+    pkRing(PKC, PKC, 32, 1, P[3]);
+    pkIcon(PK_ICON[k], P[4]);
+  }
+
   /* ---- baking ---------------------------------------------------- */
   function surface(w, h, ox, oy, draw){
     const cv = document.createElement('canvas');
@@ -2632,7 +2825,8 @@ const SPR = (function(){
   const DEBRIS_PICK = [0,3,6];              /* brick, rubble, cinder      */
   const HELI_PICK   = [0,2,5];              /* news, rescue, cargo        */
 
-  const cache = { car:[], bird:[], debris:[], heli:[], plane:[], boom:new Map() };
+  const cache = { car:[], bird:[], debris:[], heli:[], plane:[], pickup:[],
+                  boom:new Map() };
   let stats = null;
 
   function bake(){
@@ -2661,10 +2855,14 @@ const SPR = (function(){
           else LITE[n-2][0](LITE[n-2][1], f, !!lit);
         });
       })));
+    cache.pickup = [0,1,2].map(k =>
+      Array.from({ length: PK_FRAMES },
+                 (_, f) => surface(70, 70, 1, 1, () => pickup(k, f))));
     let n = cache.car.length + cache.debris.length;
     cache.bird.forEach(a => n += a.length);
     cache.heli.forEach(a => n += a.length);
     cache.plane.forEach(a => a.forEach(b => n += b.length));
+    cache.pickup.forEach(a => n += a.length);
     /* A sprite touching its surface edge has been clipped - the surface
        was sized too small. Cheap to check once at boot, invisible to
        find by eye later. */
@@ -2685,6 +2883,7 @@ const SPR = (function(){
     cache.bird.forEach((a,i) => a.forEach(add('bird'+i)));
     cache.heli.forEach((a,i) => a.forEach(add('heli'+i)));
     cache.plane.forEach((a,i) => a.forEach(b => b.forEach(add('plane'+i))));
+    cache.pickup.forEach((a,i) => a.forEach(add('pickup'+i)));
     index();
     stats = { ms: +(performance.now()-t0).toFixed(2), sprites: n,
               kb: Math.round(bytes/1024), clipped, where };
@@ -2786,11 +2985,17 @@ const SPR = (function(){
     drawHeli:   (ctx,k,f,x,y,dir)   => put(ctx, cache.heli[k][f], anchors.heli[k], x, y, dir, 0),
     drawPlane:  (ctx,k,f,on,x,y,dir)=> { const a = cache.plane[k][on?1:0];
                                          put(ctx, a[f % a.length], anchors.plane[k], x, y, dir, 0); },
+    /* 35,35 is the badge's centre inside its 70x70 surface: 34 plus the
+       one pixel of margin the surface carries. */
+    drawPickup: (ctx,k,f,x,y)       => put(ctx, cache.pickup[k][f % PK_FRAMES],
+                                           [35,35], x, y, 1, 0),
+    pickupFrames: () => PK_FRAMES,
     car:    i        => cache.car[i],
     bird:   (k,f)    => cache.bird[k][f],
     debris: k        => cache.debris[k],
     heli:   (k,f)    => cache.heli[k][f],
     plane:  (k,f,on) => { const a = cache.plane[k][on?1:0]; return a[f % a.length]; },
+    pickup: (k,f)    => cache.pickup[k][f % PK_FRAMES],
     boom:   boomFor,
     riders: () => RIDERS.map(r => r[0]),
     /* content bounds within each baked surface, so the game can centre a
@@ -2804,7 +3009,7 @@ const SPR = (function(){
       return { x:x0, y:y0, w:x1-x0+1, h:y1-y0+1 }; },
     counts: () => ({ car:cache.car.length, bird:cache.bird.length,
                      debris:cache.debris.length, heli:cache.heli.length,
-                     plane:cache.plane.length })
+                     plane:cache.plane.length, pickup:cache.pickup.length })
   };
 })();
 
@@ -3463,100 +3668,29 @@ function drawSatFrag(o){
   ctx.restore();
 }
 
-/* ---- power-ups ------------------------------------------------ */
-function drawShieldPk(o){
+/* ---- power-ups ------------------------------------------------
+   The badge itself is baked - see the pickup library above - so all
+   that is left to draw live is the halo, which has to stay live
+   because it breathes on runTime rather than on the frame index. */
+const PK_GLOW = [
+  ['rgba(90,215,245,',  'rgba(54,190,220,0)'],   /* shield */
+  ['rgba(112,242,168,', 'rgba(60,200,130,0)'],   /* vms3   */
+  ['rgba(240,138,228,', 'rgba(208,54,192,0)']    /* f1     */
+];
+/* Six frames at 11Hz: a little over half a second a loop, which reads
+   as writhing rather than as a cycle. o.phase keeps two badges on
+   screen at once from moving in lockstep. */
+function drawPickup(o, k){
   const pulse = 0.5 + 0.5 * Math.sin(runTime * 4 + o.phase);
   ctx.save();
   ctx.translate(o.x, o.y);
-  const g = ctx.createRadialGradient(0, 0, 4, 0, 0, 46);
-  g.addColorStop(0, 'rgba(255,150,130,' + (0.42 + 0.20*pulse) + ')');
-  g.addColorStop(1, 'rgba(255,90,70,0)');
+  const g = ctx.createRadialGradient(0, 0, 6, 0, 0, 50);
+  g.addColorStop(0, PK_GLOW[k][0] + (0.26 + 0.18*pulse) + ')');
+  g.addColorStop(1, PK_GLOW[k][1]);
   ctx.fillStyle = g;
-  ctx.beginPath(); ctx.arc(0, 0, 46, 0, 6.2832); ctx.fill();
-
-  const bg = ctx.createLinearGradient(-22, -22, 18, 22);
-  bg.addColorStop(0, 'rgba(255,230,220,.92)');
-  bg.addColorStop(0.45, 'rgba(255,110,92,.72)');
-  bg.addColorStop(1, 'rgba(176,32,22,.80)');
-  ctx.fillStyle = bg;
-  ctx.beginPath(); ctx.arc(0, 0, 25, 0, 6.2832); ctx.fill();
-  ctx.strokeStyle = 'rgba(255,238,220,.95)'; ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.arc(0, 0, 25, 0, 6.2832); ctx.stroke();
-  ctx.fillStyle = 'rgba(255,255,255,.85)';
-  ctx.beginPath(); ctx.ellipse(-8, -10, 8, 5, -0.6, 0, 6.2832); ctx.fill();
-
-  ctx.fillStyle = '#FFF1DC';
-  ctx.font = '700 15px ui-sans-serif, system-ui, sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('SHLD', 0, 1);
+  ctx.beginPath(); ctx.arc(0, 0, 50, 0, 6.2832); ctx.fill();
   ctx.restore();
-}
-/* VMS3: a monitoring call badge. Green, so it never reads as a hazard
-   and never gets confused with the red shield or the gold rocket. */
-function drawVms3(o){
-  const pulse = 0.5 + 0.5 * Math.sin(runTime * 4 + o.phase);
-  ctx.save();
-  ctx.translate(o.x, o.y);
-  const g = ctx.createRadialGradient(0, 0, 4, 0, 0, 46);
-  g.addColorStop(0, 'rgba(112,242,168,' + (0.40 + 0.20*pulse) + ')');
-  g.addColorStop(1, 'rgba(60,200,130,0)');
-  ctx.fillStyle = g;
-  ctx.beginPath(); ctx.arc(0, 0, 46, 0, 6.2832); ctx.fill();
-
-  const bg = ctx.createLinearGradient(-20, -22, 16, 22);
-  bg.addColorStop(0, '#DFFFEE');
-  bg.addColorStop(0.45, '#3FC98A');
-  bg.addColorStop(1, '#0C6440');
-  ctx.fillStyle = bg;
-  ctx.beginPath(); ctx.arc(0, 0, 25, 0, 6.2832); ctx.fill();
-  ctx.strokeStyle = 'rgba(232,255,242,.95)'; ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.arc(0, 0, 25, 0, 6.2832); ctx.stroke();
-
-  /* handset */
-  ctx.strokeStyle = '#08301F'; ctx.lineWidth = 4.6;
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  ctx.beginPath();
-  ctx.moveTo(-8.5, -9.5);
-  ctx.lineTo(-4.5, -3.5);
-  ctx.lineTo(-7, -0.5);
-  ctx.bezierCurveTo(-3.5, 5.5, 0.5, 9, 5.5, 11);
-  ctx.lineTo(8, 8);
-  ctx.lineTo(13, 11.5);
-  ctx.stroke();
-  ctx.lineCap = 'butt';
-
-  /* the ring, pulsing outward */
-  ctx.strokeStyle = 'rgba(224,255,238,' + (0.75 - 0.5*pulse) + ')';
-  ctx.lineWidth = 2.4;
-  ctx.beginPath(); ctx.arc(0, 0, 29 + pulse * 9, 0, 6.2832); ctx.stroke();
-  ctx.restore();
-}
-function drawF1(o){
-  const pulse = 0.5 + 0.5 * Math.sin(runTime * 5 + o.phase);
-  ctx.save();
-  ctx.translate(o.x, o.y);
-  const g = ctx.createRadialGradient(0, 0, 4, 0, 0, 48);
-  g.addColorStop(0, 'rgba(255,214,120,' + (0.44 + 0.20*pulse) + ')');
-  g.addColorStop(1, 'rgba(255,170,40,0)');
-  ctx.fillStyle = g;
-  ctx.beginPath(); ctx.arc(0, 0, 48, 0, 6.2832); ctx.fill();
-
-  ctx.rotate(Math.sin(o.spin) * 0.12);
-  const bg = ctx.createLinearGradient(0, -26, 0, 26);
-  bg.addColorStop(0, '#FFF3CE');
-  bg.addColorStop(0.5, '#F4C34A');
-  bg.addColorStop(1, '#A9700C');
-  ctx.fillStyle = bg;
-  /* a chevron pointing up the shaft - it only ever means "go" */
-  ctx.beginPath();
-  ctx.moveTo(0, -25); ctx.lineTo(21, 2); ctx.lineTo(10, 2);
-  ctx.lineTo(10, 24); ctx.lineTo(-10, 24); ctx.lineTo(-10, 2);
-  ctx.lineTo(-21, 2);
-  ctx.closePath(); ctx.fill();
-  ctx.strokeStyle = 'rgba(94,58,4,.75)'; ctx.lineWidth = 2.5; ctx.stroke();
-  ctx.fillStyle = 'rgba(255,255,255,.7)';
-  ctx.fillRect(-6, -8, 12, 4);
-  ctx.restore();
+  SPR.drawPickup(ctx, k, Math.floor(runTime * 11 + o.phase * 2), o.x, o.y);
 }
 
 /* VMS3 shell: a translucent dome so the car still reads through it, and
@@ -3671,9 +3805,9 @@ function paintObstacle(o){
     case 'meteor':   drawMeteor(o);   break;
     case 'asteroid': drawAsteroid(o); break;
     case 'satfrag':  drawSatFrag(o);  break;
-    case 'shield':   drawShieldPk(o); break;
-    case 'vms3':     drawVms3(o);     break;
-    case 'f1':       drawF1(o);       break;
+    case 'shield':   drawPickup(o, 0); break;
+    case 'vms3':     drawPickup(o, 1); break;
+    case 'f1':       drawPickup(o, 2); break;
   }
 }
 
@@ -3911,6 +4045,12 @@ window.DBG = {
   boxes: () => obstacles.map(o => ({ t:o.t, k:o.kind, n:rectsOf(o).length })),
   feet: () => Math.floor(feet),
   spawn: t => SPAWNERS[t](),
+  /* park the three badges where they can be looked at */
+  pk: () => { obstacles.length = 0;
+    [['shield',130,300],['vms3',270,470],['f1',410,640]].forEach(a => {
+      spawnPickup(a[0]); const o = obstacles[obstacles.length - 1];
+      o.x = a[1]; o.y = a[2]; o.vy = 0; }); },
+  play: () => { if (state !== S.PLAY) start(); },
   corridor: () => ({ w: +widestIv(corridor).toFixed(1), segs: corridor.length }),
   jump: ft => { feet = ft; px = ft / FEET_PER_PX; },
   /* Drive the REAL spawn path over a simulated climb: spawnOne is where
