@@ -117,15 +117,15 @@
   .pwr{
     font-size:calc(var(--u)*15);font-weight:800;line-height:1;
     letter-spacing:calc(var(--u)*2);text-transform:uppercase;
-    color:#FFF4E2;background:rgba(112,16,10,.94);
+    color:#FFEFFB;background:rgba(58,14,54,.94);
     text-shadow:0 calc(var(--u)*1) 0 rgba(0,0,0,.55);
-    border:calc(var(--u)*2) solid #FF6A55;
+    border:calc(var(--u)*2) solid #D036C0;
     border-radius:calc(var(--u)*4);
     padding:calc(var(--u)*8) calc(var(--u)*13);
-    box-shadow:0 0 calc(var(--u)*18) rgba(255,59,48,.45);
+    box-shadow:0 0 calc(var(--u)*18) rgba(208,54,192,.45);
     animation:pwrPulse 1s ease-in-out infinite;
   }
-  .pwr.vms{background:rgba(10,72,44,.94);border-color:#4FD98A;color:#E6FFF0}
+  .pwr.vms{background:rgba(14,58,36,.94);border-color:#36C06A;color:#E6FFF0}
   .pwr[hidden]{display:none}
   @keyframes pwrPulse{0%,100%{opacity:1}50%{opacity:.55}}
   @media (prefers-reduced-motion:reduce){ .pwr{animation:none} }
@@ -1417,17 +1417,17 @@ function updateObstacles(dt, scroll){
         if (overlap(pr, r)){
           if (o.t === 'shield'){
             player.shield = true; player.bubble = 1;
-            setLabels(); popup('SHIELD', '#FF8A7A');
+            setLabels(); popup('SHIELD', '#8AEBFA');
             burst(o.x, o.y, 22, ['#FF6F60','#FFD8A0','#FFFFFF'], 320);
             Sound.shield(); obstacles.splice(i, 1);
           } else if (o.t === 'vms3'){
             player.vms3 = true; vms3Taken = true;
-            setLabels(); popup('VMS3 ON CALL', '#7CE8A8');
+            setLabels(); popup('VMS3 ON CALL', '#8AF0A8');
             burst(o.x, o.y, 24, ['#7CE8A8','#D8FFE8','#FFFFFF'], 340);
             Sound.shield(); obstacles.splice(i, 1);
           } else if (o.t === 'f1'){
             player.boost = F1_TIME;
-            setLabels(); popup('F1 SYSTEM SPEED', '#FFD05A');
+            setLabels(); popup('F1 SYSTEM SPEED', '#F08AE4');
             burst(o.x, o.y, 26, ['#FFE9A8','#FFB13B','#FFFFFF'], 420);
             Sound.boost(); obstacles.splice(i, 1);
           } else {
@@ -3700,14 +3700,15 @@ function drawBubble(x, y){
   const pop = player.bubble;
   ctx.save();
   ctx.translate(x, y);
+  /* the shield badge's own ramp: DFFBFF / 36BEDC / 1E7C96 */
   const g = ctx.createRadialGradient(-16, -20, 8, 0, 0, r);
-  g.addColorStop(0,    'rgba(255,236,226,' + (0.16 + pop*0.42) + ')');
-  g.addColorStop(0.62, 'rgba(255,128,104,' + (0.13 + pop*0.30) + ')');
-  g.addColorStop(1,    'rgba(214,52,34,'  + (0.30 + pop*0.45) + ')');
+  g.addColorStop(0,    'rgba(223,251,255,' + (0.16 + pop*0.42) + ')');
+  g.addColorStop(0.62, 'rgba(54,190,220,'  + (0.13 + pop*0.30) + ')');
+  g.addColorStop(1,    'rgba(30,124,150,'  + (0.30 + pop*0.45) + ')');
   ctx.fillStyle = g;
   ctx.beginPath(); ctx.arc(0, 0, r, 0, 6.2832); ctx.fill();
-  ctx.strokeStyle = pop > 0.05 ? 'rgba(255,248,240,.95)'
-                               : 'rgba(255,140,116,.85)';
+  ctx.strokeStyle = pop > 0.05 ? 'rgba(240,253,255,.95)'
+                               : 'rgba(138,235,250,.85)';
   ctx.lineWidth = 3 + pop * 4;
   ctx.beginPath(); ctx.arc(0, 0, r, 0, 6.2832); ctx.stroke();
   ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 3;
@@ -4051,6 +4052,9 @@ window.DBG = {
       spawnPickup(a[0]); const o = obstacles[obstacles.length - 1];
       o.x = a[1]; o.y = a[2]; o.vy = 0; }); },
   play: () => { if (state !== S.PLAY) start(); },
+  /* raise the dome and clear the sky, so it can be looked at */
+  dome: () => { player.shield = true; player.bubble = 1;
+                player.mercy = 0; obstacles.length = 0; setLabels(); },
   corridor: () => ({ w: +widestIv(corridor).toFixed(1), segs: corridor.length }),
   jump: ft => { feet = ft; px = ft / FEET_PER_PX; },
   /* Drive the REAL spawn path over a simulated climb: spawnOne is where
