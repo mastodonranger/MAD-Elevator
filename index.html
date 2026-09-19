@@ -3025,7 +3025,7 @@ const CITY = (function(){
   const px  = (x,y,w,h,col) => { _g.fillStyle = col; _g.fillRect(OX+x, OY+y, w, h); };
   const dot = (x,y,col)     => px(x,y,1,1,col);
 
-  const SKY_W = 540, SKY_H = 500, GND = 500;
+  const SKY_W = 540, SKY_H = 640, GND = 640;
 
   /* generic curtain-wall grey, the filler between landmarks */
   const N_D='#1B2432', N_M='#2B3648', N_L='#3C4A5E';
@@ -3061,38 +3061,41 @@ const CITY = (function(){
      CN Tower on the left, the bank towers on the right.              */
   const TO_CONC_D='#2E3844', TO_CONC='#4A5464', TO_CONC_L='#68727F';
 
-  function cnTower(cx){
-    const H = 470, g = GND;
+  function cnTower(cx, H){
+    const g = GND, k = H / 470, R = v => Math.round(v * k);
     /* shaft: three stacked tapers, not one per-column cone - a per-column
        taper combs the moment the sprite is drawn at a fractional scale */
     const SEG = [[0, 176, 30, 20], [176, 118, 20, 15], [294, 94, 15, 11]];
     for (const [y0, hh, w0, w1] of SEG){
-      for (let i = 0; i < hh; i += 4){
-        const t = (i + 2) / hh, w = Math.round(w0 + (w1 - w0) * t);
-        px(cx - (w>>1), g - y0 - i - 4, w, 4, TO_CONC);
-        px(cx - (w>>1), g - y0 - i - 4, 3, 4, TO_CONC_L);
-        px(cx + (w>>1) - 3, g - y0 - i - 4, 3, 4, TO_CONC_D);
+      const Y0 = R(y0), HH = R(hh), W0 = R(w0), W1 = R(w1);
+      for (let i = 0; i < HH; i += 4){
+        const t = (i + 2) / HH, w = Math.round(W0 + (W1 - W0) * t);
+        px(cx - (w>>1), g - Y0 - i - 4, w, 4, TO_CONC);
+        px(cx - (w>>1), g - Y0 - i - 4, 3, 4, TO_CONC_L);
+        px(cx + (w>>1) - 3, g - Y0 - i - 4, 3, 4, TO_CONC_D);
       }
     }
     /* main pod at 342-351m: the restaurant ring, sloped underneath */
-    const py = g - Math.round(H * 342/553.3);
-    for (let i = 0; i < 9; i++)
-      px(cx - 10 - i*2, py + 12 - i, 20 + i*4, 2, TO_CONC_D);
-    px(cx - 27, py - 2, 54, 14, TO_CONC);
-    px(cx - 27, py - 2, 54, 4,  TO_CONC_L);
-    px(cx - 27, py + 8, 54, 4,  TO_CONC_D);
-    for (let c = 0; c < 9; c++) px(cx - 23 + c*6, py + 2, 3, 4, WIN);
-    px(cx - 20, py - 8, 40, 6, TO_CONC); px(cx - 20, py - 8, 40, 2, TO_CONC_L);
+    const py = g - Math.round(H * 342/553.3), pw = R(27);
+    for (let i = 0; i < R(9); i++)
+      px(cx - R(10) - i*2, py + R(12) - i, R(20) + i*4, 2, TO_CONC_D);
+    px(cx - pw, py - R(2), pw*2, R(14), TO_CONC);
+    px(cx - pw, py - R(2), pw*2, R(4),  TO_CONC_L);
+    px(cx - pw, py + R(8), pw*2, R(4),  TO_CONC_D);
+    const nw = Math.max(5, Math.round(pw*2/9));
+    for (let c = 0; c < 9; c++) px(cx - pw + 3 + c*nw, py + R(2), Math.max(3, nw-3), R(4), WIN);
+    px(cx - R(20), py - R(8), R(40), R(6), TO_CONC);
+    px(cx - R(20), py - R(8), R(40), R(2), TO_CONC_L);
     /* SkyPod at 447m */
-    const sy = g - Math.round(H * 447/553.3);
-    px(cx - 10, sy, 20, 11, TO_CONC); px(cx - 10, sy, 20, 3, TO_CONC_L);
-    for (let c = 0; c < 4; c++) px(cx - 7 + c*5, sy + 4, 3, 4, WIN);
-    /* antenna, 457m to the top */
-    px(cx - 2, g - H + 34, 4, Math.round(H * (457-0)/553.3) - (H - 34) + 0, TO_CONC);
-    px(cx - 2, g - H + 34, 4, 40, TO_CONC);
-    px(cx - 3, g - Math.round(H*457/553.3), 6, 10, TO_CONC_L);
-    px(cx - 1, g - H, 2, 36, TO_CONC_L);
-    px(cx - 2, g - H - 4, 4, 5, '#E4353F');
+    const sy = g - Math.round(H * 447/553.3), sw = R(10);
+    px(cx - sw, sy, sw*2, R(11), TO_CONC); px(cx - sw, sy, sw*2, R(3), TO_CONC_L);
+    for (let c = 0; c < 4; c++) px(cx - sw + 2 + c*Math.round(sw/2), sy + R(4), 3, R(4), WIN);
+    /* antenna, 457m to the tip */
+    const ay = g - Math.round(H * 457/553.3), aw = Math.max(3, R(4));
+    px(cx - (aw>>1), g - H, aw, ay - (g - H), TO_CONC);
+    px(cx - (aw>>1), g - H, Math.max(2, aw>>1), ay - (g - H), TO_CONC_L);
+    px(cx - aw, ay - R(4), aw*2, R(10), TO_CONC_L);
+    px(cx - (aw>>1), g - H - 5, aw, 6, '#E4353F');
   }
   function rogersCentre(cx, w, h){
     const g = GND, r = w >> 1;
@@ -3150,8 +3153,8 @@ const CITY = (function(){
      Scale 470px / 472.4m = 0.995 px/m - near enough 1px per metre.  */
   const NY_D='#3A4150', NY_M='#5A6272', NY_L='#7A8290';
 
-  function empireState(cx){
-    const g = GND, S = 0.995;
+  function empireState(cx, S){
+    const g = GND;
     const px_ = (m) => Math.round(m * S);
     /* five-storey base, then the shaft, then the deco setbacks */
     px(cx - 52, g - px_(60), 104, px_(60), NY_M);
@@ -3173,8 +3176,8 @@ const CITY = (function(){
     px(cx - 1, g - px_(443), 2, px_(12), '#C6D2DE');
     px(cx - 2, g - px_(445), 4, 4, '#E4353F');
   }
-  function chrysler(cx){
-    const g = GND, S = 0.995, px_ = m => Math.round(m * S);
+  function chrysler(cx, S){
+    const g = GND, px_ = m => Math.round(m * S);
     px(cx - 27, g - px_(180), 54, px_(180), NY_M);
     px(cx - 27, g - px_(180), 14, px_(180), NY_L);
     px(cx + 19, g - px_(180), 8,  px_(180), NY_D);
@@ -3313,80 +3316,80 @@ const CITY = (function(){
     let s = seed;
     const rr = () => (s = (s*1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
     for (let x = -30; x < SKY_W + 30; ){
-      const w = Math.round(34 + rr()*56), h = Math.round(lo + rr()*(hi-lo));
+      const w = Math.round(45 + rr()*74), h = Math.round(lo + rr()*(hi-lo));
       const y = GND - h;
       px(x, y, w, h, F_M);
       px(x, y, Math.max(2, w>>2), h, F_L);
       px(x + w - 4, y, 4, h, F_D);
       wins(x, y, w, h, rr()*20, WINF);
-      x += w + Math.round(4 + rr()*18);
+      x += w + Math.round(5 + rr()*24);
     }
   }
 
   const CITIES = [];
 
+  /* 620px to the tallest structure. The frame is 960 and the near ground
+     line sits at 902, so a 620 tower tops out a third of the way down -
+     which is what a skyline is meant to do to a portrait frame. */
   CITIES.push({
-    name: 'Toronto', tag: 'from the Islands \u00b7 553.3m to the CN Tower tip',
-    far: () => farRow(3, 110, 270),
+    name: 'Toronto', tag: '553.3m to the CN Tower tip',
+    far: () => farRow(3, 145, 356),
     near(){
-      slab(2, 38, 152, N_D, N_M, N_L, 1.7);
-      rogersCentre(96, 176, 74);
-      cnTower(170);
-      slab(206, 40, 228, N_D, N_M, N_L, 5.9);
-      slab(252, 36, 299, '#232C3C', '#38445C', '#4E5C78', 4.4);   /* SkyTower */
-      slab(294, 34, 196, N_D, N_M, N_L, 8.3);
-      fcp(344, 44, 253);
-      scotiaPlaza(394, 40, 234);
-      rbp(440, 32, 153);
-      tdTower(478, 30, 189);
-      slab(514, 30, 203, '#4A5260', '#6E7686', '#8E96A6', 9.3);   /* Commerce Court */
+      slab(0, 40, 190, N_D, N_M, N_L, 1.7);
+      rogersCentre(118, 230, 98);
+      cnTower(208, 620);
+      slab(246, 46, 395, '#232C3C', '#38445C', '#4E5C78', 4.4);   /* SkyTower */
+      slab(296, 46, 268, '#4A5260', '#6E7686', '#8E96A6', 9.3);   /* Commerce Court */
+      fcp(348, 56, 334);
+      scotiaPlaza(408, 50, 309);
+      rbp(462, 40, 202);
+      tdTower(506, 38, 249);
     }
   });
 
   CITIES.push({
-    name: 'New York', tag: 'midtown, north from the Hudson \u00b7 472.4m to the top',
-    far: () => farRow(11, 130, 300),
+    name: 'New York', tag: '472.4m to the top of Central Park Tower',
+    far: () => farRow(11, 171, 396),
     near(){
-      slab(-6, 44, 210, N_D, N_M, N_L, 2.1);
-      empireState(58);
-      chrysler(146);
-      slab(178, 36, 196, N_D, N_M, N_L, 5.2);
-      slab(218, 42, 300, N_D, N_M, N_L, 7.4);
-      slab(264, 40, 232, N_D, N_M, N_L, 3.6);
-      slab(308, 34, 270, N_D, N_M, N_L, 6.3);
-      vanderbilt(348, 48, 425);
-      park432(402, 26, 424);
-      steinway(434, 18, 434);
-      centralParkTower(458, 54, 470);
-      slab(518, 30, 228, N_D, N_M, N_L, 8.1);
+      slab(-10, 56, 276, N_D, N_M, N_L, 2.1);
+      empireState(74, 1.3124);
+      chrysler(186, 1.3124);
+      slab(228, 44, 258, N_D, N_M, N_L, 7.4);
+      vanderbilt(278, 62, 560);
+      park432(348, 34, 558);
+      steinway(390, 24, 571);
+      centralParkTower(422, 70, 620);
+      slab(498, 44, 330, N_D, N_M, N_L, 8.1);
     }
   });
 
+  /* The Arch is as wide as it is tall - 630ft each way - so its width is
+     what caps St Louis. At 540 across it just fills the world, which puts
+     its crown at 540 rather than 620. St Louis is genuinely the shorter
+     skyline; this is the one place that shows. */
   CITIES.push({
-    name: 'St Louis', tag: 'from the Illinois bank \u00b7 192m to the crown of the Arch',
-    far: () => farRow(23, 90, 210),
+    name: 'St Louis', tag: '192m to the crown of the Arch',
+    far: () => farRow(23, 118, 276),
     near(){
-      slab(2, 40, 250, SL_D, SL_M, SL_L, 1.3);
-      metSquare(48, 50, 443);
-      slab(104, 54, 438, '#2E3644', '#445062', '#5C6A80', 4.9);   /* 909 Chestnut */
-      eagleton(164, 42, 416);
-      slab(212, 38, 300, SL_D, SL_M, SL_L, 8.2);
-      slab(256, 40, 278, SL_D, SL_M, SL_L, 2.9);
-      slab(302, 38, 330, SL_D, SL_M, SL_L, 6.7);
-      slab(346, 36, 246, SL_D, SL_M, SL_L, 3.4);
-      slab(388, 34, 208, SL_D, SL_M, SL_L, 9.8);
-      slab(428, 38, 268, SL_D, SL_M, SL_L, 5.1);
-      slab(472, 30, 190, SL_D, SL_M, SL_L, 7.2);
-      slab(508, 34, 226, SL_D, SL_M, SL_L, 2.4);
+      slab(0, 46, 287, SL_D, SL_M, SL_L, 1.3);
+      metSquare(50, 58, 508);
+      slab(114, 62, 503, '#2E3644', '#445062', '#5C6A80', 4.9);   /* 909 Chestnut */
+      eagleton(182, 50, 478);
+      slab(238, 44, 345, SL_D, SL_M, SL_L, 8.2);
+      slab(288, 46, 319, SL_D, SL_M, SL_L, 2.9);
+      slab(340, 44, 379, SL_D, SL_M, SL_L, 6.7);
+      slab(390, 42, 283, SL_D, SL_M, SL_L, 3.4);
+      slab(438, 40, 239, SL_D, SL_M, SL_L, 9.8);
+      slab(484, 46, 308, SL_D, SL_M, SL_L, 5.1);
+      slab(536, 34, 218, SL_D, SL_M, SL_L, 2.4);
     },
     front(){
-      oldCourthouse(270, 96, 142);
-      gatewayArch(270, 470, 470);
+      oldCourthouse(270, 112, 163);
+      gatewayArch(270, 540, 540);
     }
   });
 
-
-  const FAR_H = 320, NEAR_H = 500;
+  const FAR_H = 410, NEAR_H = 640;
   function surf(h, draw){
     const cv = document.createElement('canvas');
     cv.width = SKY_W; cv.height = h;
