@@ -3027,306 +3027,606 @@ const CITY = (function(){
 
   const SKY_W = 540, SKY_H = 1240, GND = 1240;
 
-  /* generic curtain-wall grey, the filler between landmarks */
+  /* ---- facade helpers --------------------------------------------------
+     A flat fill with random dots reads as "a building" and nothing more.
+     What identifies a tower at this distance is the GRAIN of its face:
+     vertical mullions on everything built after 1960, horizontal ribbons
+     on the deco towers, punched square openings on 432 Park. These four
+     helpers carry that, and each building picks the one it actually has. */
+
+  /* vertical mullions - the dominant read on a curtain wall */
+  function mull(x, y, w, h, pitch, col){
+    for (let i = 1; i < w - 1; i += pitch) px(x + i, y, Math.max(1, pitch >> 2), h, col);
+  }
+  /* lit windows between mullions; thins out with height, as offices do */
+  function litV(x, y, w, h, pitch, rowH, gap, seed, col){
+    let s = seed * 1000;
+    const rr = () => (s = (s*1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    for (let ry = y + 5; ry < y + h - 4; ry += rowH + gap)
+      for (let i = 1; i < w - pitch; i += pitch)
+        if (rr() < 0.34) px(x + i + 1, ry, Math.max(1, pitch - 3), rowH, col);
+  }
+  /* horizontal ribbon: deco towers band, they do not stripe */
+  function litH(x, y, w, h, rowH, gap, seed, col){
+    let s = seed * 1000;
+    const rr = () => (s = (s*1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    for (let ry = y + 5; ry < y + h - 4; ry += rowH + gap){
+      let run = 0;
+      for (let i = 3; i < w - 3; i += 5){
+        if (rr() < 0.42){ run += 5; continue; }
+        if (run) px(x + i - run, ry, run - 1, rowH, col);
+        run = 0;
+      }
+      if (run) px(x + w - 3 - run, ry, run - 1, rowH, col);
+    }
+  }
+  /* a box with a lit left face and a shaded right one */
+  function body(x, y, w, h, d, m, l){
+    px(x, y, w, h, m);
+    px(x, y, Math.max(2, w>>3), h, l);
+    px(x + w - Math.max(2, w>>4), y, Math.max(2, w>>4), h, d);
+  }
+  const WIN  = 'rgba(255,214,130,.62)';
+  const WINF = 'rgba(255,214,130,.20)';
+
   const N_D='#1B2432', N_M='#2B3648', N_L='#3C4A5E';
   const F_D='#435E80', F_M='#56749B', F_L='#6A8CB4';
 
-  function wins(x, y, w, h, seed, col, cw, chh, gapx, gapy){
-    cw = cw||3; chh = chh||4; gapx = gapx||4; gapy = gapy||6;
-    for (let r = 0; y + 5 + r*(chh+gapy) < y + h - 4; r++){
-      for (let c = 0; x + 3 + c*(cw+gapx) < x + w - 3; c++){
-        const n = Math.sin((r*12.9898 + c*78.233 + seed*43.7) * 43758.5453);
-        if (n - Math.floor(n) > 0.52) continue;
-        px(x + 3 + c*(cw+gapx), y + 5 + r*(chh+gapy), cw, chh, col);
-      }
-    }
-  }
-  /* a box with a lit left face and a shaded right one, which is the whole
-     of the modelling at this size */
-  function body(x, y, w, h, d, m, l){
-    px(x, y, w, h, m);
-    px(x, y, Math.max(2, w>>2), h, l);
-    px(x + w - Math.max(2, w>>3), y, Math.max(2, w>>3), h, d);
-  }
-  const WIN = 'rgba(255,214,130,.55)';
-  const WINF= 'rgba(255,214,130,.20)';
-
-  /* ====================================================================
-     TORONTO
-     CN Tower 553.3m, Rogers Centre 86m, First Canadian Place 298m,
-     Scotia Plaza 275m, TD Bank Tower 223m, Commerce Court West 239m,
-     Royal Bank Plaza 180m / 112m, SkyTower at Pinnacle One Yonge 351.8m.
-     Scale 470px / 553.3m = 0.849 px/m.
-     Arranged as it reads from the Toronto Islands: Rogers Centre and the
-     CN Tower on the left, the bank towers on the right.              */
-  const TO_CONC_D='#2E3844', TO_CONC='#4A5464', TO_CONC_L='#68727F';
-
-  function cnTower(cx, H){
-    const g = GND, k = H / 470, R = v => Math.round(v * k);
-    /* shaft: three stacked tapers, not one per-column cone - a per-column
-       taper combs the moment the sprite is drawn at a fractional scale */
-    const SEG = [[0, 176, 30, 20], [176, 118, 20, 15], [294, 94, 15, 11]];
-    for (const [y0, hh, w0, w1] of SEG){
-      const Y0 = R(y0), HH = R(hh), W0 = R(w0), W1 = R(w1);
-      for (let i = 0; i < HH; i += 4){
-        const t = (i + 2) / HH, w = Math.round(W0 + (W1 - W0) * t);
-        px(cx - (w>>1), g - Y0 - i - 4, w, 4, TO_CONC);
-        px(cx - (w>>1), g - Y0 - i - 4, 3, 4, TO_CONC_L);
-        px(cx + (w>>1) - 3, g - Y0 - i - 4, 3, 4, TO_CONC_D);
-      }
-    }
-    /* main pod at 342-351m: the restaurant ring, sloped underneath */
-    const py = g - Math.round(H * 342/553.3), pw = R(27);
-    for (let i = 0; i < R(9); i++)
-      px(cx - R(10) - i*2, py + R(12) - i, R(20) + i*4, 2, TO_CONC_D);
-    px(cx - pw, py - R(2), pw*2, R(14), TO_CONC);
-    px(cx - pw, py - R(2), pw*2, R(4),  TO_CONC_L);
-    px(cx - pw, py + R(8), pw*2, R(4),  TO_CONC_D);
-    const nw = Math.max(5, Math.round(pw*2/9));
-    for (let c = 0; c < 9; c++) px(cx - pw + 3 + c*nw, py + R(2), Math.max(3, nw-3), R(4), WIN);
-    px(cx - R(20), py - R(8), R(40), R(6), TO_CONC);
-    px(cx - R(20), py - R(8), R(40), R(2), TO_CONC_L);
-    /* SkyPod at 447m */
-    const sy = g - Math.round(H * 447/553.3), sw = R(10);
-    px(cx - sw, sy, sw*2, R(11), TO_CONC); px(cx - sw, sy, sw*2, R(3), TO_CONC_L);
-    for (let c = 0; c < 4; c++) px(cx - sw + 2 + c*Math.round(sw/2), sy + R(4), 3, R(4), WIN);
-    /* antenna, 457m to the tip */
-    const ay = g - Math.round(H * 457/553.3), aw = Math.max(3, R(4));
-    px(cx - (aw>>1), g - H, aw, ay - (g - H), TO_CONC);
-    px(cx - (aw>>1), g - H, Math.max(2, aw>>1), ay - (g - H), TO_CONC_L);
-    px(cx - aw, ay - R(4), aw*2, R(10), TO_CONC_L);
-    px(cx - (aw>>1), g - H - 5, aw, 6, '#E4353F');
-  }
-  function rogersCentre(cx, w, h){
-    const g = GND, r = w >> 1;
-    /* the retractable roof: a shallow dome, four panel seams */
-    for (let y = 0; y < h; y++){
-      const t = y / h, hw = Math.round(r * Math.sqrt(Math.max(0, 1 - (1-t)*(1-t))));
-      px(cx - hw, g - h + y, hw*2, 1, y < h*0.28 ? '#6E7A8A' : '#4E5A6C');
-    }
-    px(cx - r, g - 24, w, 24, '#3A4456'); px(cx - r, g - 24, w, 3, '#586478');
-    for (const o of [-0.46, -0.16, 0.16, 0.46]){
-      const sx = Math.round(cx + r*o);
-      px(sx, g - h + 6, 2, h - 30, '#333D4C');
-    }
-    for (let c = 0; c < 16; c++) px(cx - r + 8 + c*((w-16)/16), g - 17, 4, 5, WIN);
-  }
-  function scotiaPlaza(x, w, h){                    /* Napoleon red granite */
-    const g = GND, y = g - h;
-    body(x, y, w, h, '#4E1E24', '#7A3038', '#A04048');
-    wins(x, y, w, h, 3.1, WIN);
-    /* the sculpted recess at the crown - the one silhouette detail that
-       makes this tower unmistakable from the lake */
-    px(x + w - 14, y, 14, 26, '#0F1520');
-    px(x + w - 14, y + 26, 14, 4, '#4E1E24');
-    px(x, y, w - 14, 3, '#C25460');
-  }
-  function fcp(x, w, h){                            /* white, flat, plain */
-    const g = GND, y = g - h;
-    body(x, y, w, h, '#8E96A6', '#C8CEDA', '#E2E8F0');
-    wins(x, y, w, h, 7.7, 'rgba(255,214,130,.40)');
-    px(x, y, w, 3, '#F2F6FA');
-  }
-  function tdTower(x, w, h){                        /* Mies, obsidian, flat */
-    const g = GND, y = g - h;
-    body(x, y, w, h, '#0B0F16', '#161C26', '#242C38');
-    wins(x, y, w, h, 11.3, 'rgba(255,214,130,.34)');
-    px(x, y, w, 2, '#39445A');
-  }
-  function rbp(x, w, h){                            /* gold reflective glass */
-    const g = GND, y = g - h;
-    body(x, y, w, h, '#5E4514', '#8A6A22', '#C8A03A');
-    wins(x, y, w, h, 5.5, 'rgba(255,236,170,.50)');
-    px(x, y, w, 3, '#E8C868');
-  }
+  /* generic infill, for the blocks between landmarks */
   function slab(x, w, h, d, m, l, seed, wc){
-    const y = GND - h;
+    const y = GND - h, p = Math.max(5, Math.round(w/9));
     body(x, y, w, h, d, m, l);
-    wins(x, y, w, h, seed, wc || WIN);
+    mull(x, y, w, h, p, d);
+    litV(x, y, w, h, p, Math.max(3, Math.round(h/90)), Math.max(5, Math.round(h/56)), seed, wc || WIN);
   }
-
-  /* ====================================================================
-     NEW YORK  - midtown, the view north from the Hudson.
-     Central Park Tower 472.4m, Empire State 443.2m to the antenna tip,
-     111 West 57th 435.3m, One Vanderbilt 427m, 432 Park 425.5m,
-     Bank of America Tower 365.8m, Chrysler 318.9m.
-     Scale 470px / 472.4m = 0.995 px/m - near enough 1px per metre.  */
-  const NY_D='#3A4150', NY_M='#5A6272', NY_L='#7A8290';
-
-  function empireState(cx, S){
-    const g = GND, V = m => Math.round(m * S), X = m => Math.round(m * S);
-    /* five-storey base, then the shaft, then the deco setbacks */
-    px(cx - X(52), g - V(60), X(104), V(60), NY_M);
-    px(cx - X(52), g - V(60), X(26),  V(60), NY_L);
-    px(cx + X(40), g - V(60), X(12),  V(60), NY_D);
-    wins(cx - X(52), g - V(60), X(104), V(60), 2.2, WIN, X(3), V(4), X(4), V(6));
-    const SH = [[60, 200, 34], [260, 60, 28], [320, 42, 22], [362, 19, 15]];
-    for (const [y0, hh, hw] of SH){
-      const W2 = X(hw);
-      px(cx - W2, g - V(y0 + hh), W2*2, V(hh), NY_M);
-      px(cx - W2, g - V(y0 + hh), Math.max(4, W2>>1), V(hh), NY_L);
-      px(cx + W2 - X(6), g - V(y0 + hh), X(6), V(hh), NY_D);
-      wins(cx - W2, g - V(y0 + hh), W2*2, V(hh), y0/7, WIN, X(3), V(4), X(4), V(6));
-      px(cx - W2 - 2, g - V(y0 + hh), W2*2 + 4, Math.max(2, X(3)), NY_L);
-    }
-    /* mooring mast and the broadcast antenna above it */
-    px(cx - X(7), g - V(393), X(14), V(12), NY_L);
-    px(cx - X(5), g - V(405), X(10), V(12), NY_M);
-    px(cx - X(3), g - V(443), X(6),  V(50), NY_L);
-    px(cx - Math.max(1,X(1)), g - V(443), Math.max(2,X(2)), V(12), '#C6D2DE');
-    px(cx - X(2), g - V(446), X(4), Math.max(4, X(4)), '#E4353F');
-  }
-  function chrysler(cx, S){
-    const g = GND, V = m => Math.round(m * S), X = m => Math.round(m * S);
-    px(cx - X(27), g - V(180), X(54), V(180), NY_M);
-    px(cx - X(27), g - V(180), X(14), V(180), NY_L);
-    px(cx + X(19), g - V(180), X(8),  V(180), NY_D);
-    wins(cx - X(27), g - V(180), X(54), V(180), 4.4, WIN, X(3), V(4), X(4), V(6));
-    px(cx - X(21), g - V(246), X(42), V(66), NY_M);
-    px(cx - X(21), g - V(246), X(11), V(66), NY_L);
-    wins(cx - X(21), g - V(246), X(42), V(66), 6.6, WIN, X(3), V(4), X(4), V(6));
-    /* the crown: seven diminishing arches in polished steel */
-    const CR = [[246, 20], [252, 17], [258, 14], [264, 11], [269, 8], [273, 6], [276, 4]];
-    for (const [y0, hw] of CR){
-      const W2 = X(hw);
-      px(cx - W2, g - V(y0 + 7), W2*2, V(7), '#8A93A2');
-      px(cx - W2, g - V(y0 + 7), W2*2, Math.max(2, X(2)), '#C6D2DE');
-      px(cx - W2 + X(2), g - V(y0 + 5), Math.max(2,X(2)), V(4), '#E8F0F8');
-      px(cx + W2 - X(4), g - V(y0 + 5), Math.max(2,X(2)), V(4), '#E8F0F8');
-    }
-    px(cx - X(2), g - V(319), X(4), V(36), '#C6D2DE');       /* the needle */
-    px(cx - Math.max(1,X(1)), g - V(319), Math.max(2,X(2)), V(38), '#E8F0F8');
-  }
-  function vanderbilt(x, w, h){                     /* tapered, faceted */
-    const g = GND;
-    const ST = [[0, 0.52, 1.0], [0.52, 0.78, 0.84], [0.78, 0.93, 0.66], [0.93, 1, 0.44]];
-    for (const [a, b, f] of ST){
-      const ww = Math.round(w * f), xx = x + ((w - ww) >> 1);
-      px(xx, g - Math.round(h*b), ww, Math.round(h*(b-a)), '#48566E');
-      px(xx, g - Math.round(h*b), Math.max(4, ww>>2), Math.round(h*(b-a)), '#66748C');
-      wins(xx, g - Math.round(h*b), ww, Math.round(h*(b-a)), a*13, WIN);
-    }
-    px(x + (w>>1) - 2, g - h - 14, 4, 16, '#8A93A2');
-  }
-  function park432(x, w, h){                        /* the square column */
-    const g = GND, y = g - h;
-    px(x, y, w, h, '#4A5260'); px(x, y, 5, h, '#6A7280'); px(x + w - 4, y, 4, h, '#2E3644');
-    /* six square openings a floor, on a strict grid - that grid is the
-       whole of this building's identity */
-    for (let r = 0; y + 6 + r*13 < g - 6; r++)
-      for (let c = 0; c < 3; c++){
-        const n = Math.sin((r*12.9 + c*78.2 + 9.1) * 43758.5453);
-        px(x + 4 + c*8, y + 6 + r*13, 5, 6, (n - Math.floor(n)) > 0.5 ? 'rgba(20,26,36,.9)' : WIN);
-      }
-  }
-  function steinway(x, w, h){                       /* 1:24, the skinniest */
-    const g = GND, y = g - h;
-    px(x, y, w, h, '#2E3644'); px(x, y, 4, h, '#485264');
-    /* the east face steps back in the top third */
-    for (let i = 0; i < 7; i++)
-      px(x + w - 3 - i, y + Math.round(h*0.34) + i*Math.round(h*0.09), 3 + i, Math.round(h*0.09), '#1A2130');
-    wins(x, y, w, h, 8.8, 'rgba(255,214,130,.42)', 3, 4, 3, 7);
-    px(x, y, w, 2, '#8A6A3A');                      /* bronze cap */
-  }
-  function centralParkTower(x, w, h){
-    const g = GND, y = g - h;
-    const nw = Math.round(w * 0.62);
-    px(x, y + Math.round(h*0.24), w, h - Math.round(h*0.24), '#525C6E');   /* cantilever */
-    px(x, y + Math.round(h*0.24), 6, h - Math.round(h*0.24), '#6E7A8C');
-    px(x + Math.round((w-nw)/2), y, nw, Math.round(h*0.26), '#525C6E');
-    wins(x, y + Math.round(h*0.24), w, h - Math.round(h*0.24), 12.1, WIN);
-    wins(x + Math.round((w-nw)/2), y, nw, Math.round(h*0.26), 3.3, WIN);
-    px(x, y + Math.round(h*0.24), w, 2, '#8A96A8');
-  }
-
-  /* ====================================================================
-     ST LOUIS - the view from the Illinois bank, the Arch in front.
-     Gateway Arch 192m, One Metropolitan Square 180.7m, 909 Chestnut
-     179m, Eagleton Courthouse 170m, Old Courthouse ~58m.
-     Scale 470px / 192m = 2.448 px/m.                                 */
-  const SL_D='#2A3442', SL_M='#3E4A5C', SL_L='#56647A';
-
-  /* A weighted catenary, solved per destination ROW rather than swept
-     along the centreline: sweeping leaves rows unclaimed near the crown
-     where the curve runs almost flat. */
-  function gatewayArch(cx, w, h){
-    const g = GND, C = 3.0, half = w/2;
-    const ch = Math.cosh(C);
-    const BASE = w * 0.086, TOP = w * 0.027;        /* 54ft at the foot, 17ft at the top */
-    for (let yy = 0; yy <= h; yy++){
-      const u = yy / h;                             /* 0 at the ground, 1 at the crown */
-      const arg = ch - u * (ch - 1);
-      if (arg < 1) continue;
-      const t = Math.acosh(arg) / C;                /* 1 at the foot, 0 at the crown */
-      const dx = t * half, th = Math.round(TOP + (BASE - TOP) * t);
-      const y = g - yy;
-      const inL = cx - dx + th/2, inR = cx + dx - th/2;
-      if (inL >= inR){                              /* the legs have met */
-        px(Math.round(cx - dx - th/2), y, Math.round(2*dx + th), 1, '#9EAAB8');
-        px(Math.round(cx - dx - th/2), y, Math.round(2*dx + th), 1, '#9EAAB8');
-      } else {
-        px(Math.round(cx - dx - th/2), y, th, 1, '#8A97A8');
-        px(Math.round(cx + dx - th/2), y, th, 1, '#8A97A8');
-        /* stainless steel: a hard lit edge on the inboard face of each leg */
-        px(Math.round(cx - dx - th/2), y, Math.max(1, th>>2), 1, '#C6D2DE');
-        px(Math.round(cx + dx + th/2) - Math.max(1, th>>2), y, Math.max(1, th>>2), 1, '#C6D2DE');
-      }
-    }
-  }
-  function oldCourthouse(cx, w, h){
-    const g = GND, y = g - h, bw = Math.round(w*0.86);
-    px(cx - (bw>>1), y + Math.round(h*0.46), bw, Math.round(h*0.54), '#8E949E');
-    px(cx - (bw>>1), y + Math.round(h*0.46), 6, Math.round(h*0.54), '#AAB0BA');
-    for (let c = 0; c < 7; c++)
-      px(cx - (bw>>1) + 5 + c*Math.round((bw-10)/7), y + Math.round(h*0.56), 3, Math.round(h*0.34), '#6E747E');
-    const dr = Math.round(w*0.19), dcy = y + Math.round(h*0.46);
-    for (let i = 0; i <= dr; i++){                  /* the green dome */
-      const hw = Math.round(dr * Math.sqrt(Math.max(0, 1 - (i/dr)*(i/dr))));
-      px(cx - hw, dcy - i, hw*2, 1, i > dr*0.55 ? '#4E8E74' : '#3E7A62');
-    }
-    px(cx - dr - 3, dcy, dr*2 + 6, 4, '#8E949E');
-    px(cx - 2, dcy - dr - 9, 4, 10, '#4E8E74');
-    px(cx - 1, dcy - dr - 13, 2, 5, '#C6D2DE');
-  }
-  function metSquare(x, w, h){                      /* stepped, pitched crown */
-    const g = GND, y = g - h;
-    body(x, y + 28, w, h - 28, '#2A3240', '#42506A', '#5E6E8C');
-    wins(x, y + 28, w, h - 28, 2.7, WIN);
-    const iw = Math.round(w*0.72), ix = x + ((w - iw) >> 1);
-    body(ix, y + 12, iw, 20, '#2A3240', '#42506A', '#5E6E8C');
-    for (let i = 0; i < 12; i++)                    /* the pitched cap */
-      px(ix + Math.round(i*iw/24), y + 12 - i, iw - Math.round(i*iw/12), 1,
-         i < 4 ? '#6E7E9C' : '#42506A');
-    px(x + (w>>1) - 1, y - 14, 2, 16, '#8A93A2');
-  }
-  function eagleton(x, w, h){                       /* the domed rotunda */
-    const g = GND, y = g - h;
-    body(x, y + 30, w, h - 30, '#333D4E', '#4A5668', '#66748A');
-    wins(x, y + 30, w, h - 30, 6.1, WIN);
-    const dr = Math.round(w*0.40), cx = x + (w>>1);
-    for (let i = 0; i <= dr; i++){
-      const hw = Math.round(dr * Math.sqrt(Math.max(0, 1 - (i/dr)*(i/dr))));
-      px(cx - hw, y + 30 - i, hw*2, 1, i > dr*0.6 ? '#7E8A9C' : '#5A6678');
-    }
-    px(cx - dr - 2, y + 28, dr*2 + 4, 4, '#66748A');
-    px(cx - 1, y + 28 - dr - 8, 2, 9, '#8A93A2');
-  }
-
-  /* ---- far layer: generic infill, hazed back -------------------------- */
   function farRow(seed, lo, hi){
     let s = seed;
     const rr = () => (s = (s*1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
     for (let x = -30; x < SKY_W + 30; ){
-      const w = Math.round(45 + rr()*74), h = Math.round(lo + rr()*(hi-lo));
-      const y = GND - h;
+      const w = Math.round(45 + rr()*74), h = Math.round(lo + rr()*(hi-lo)), y = GND - h;
       px(x, y, w, h, F_M);
-      px(x, y, Math.max(2, w>>2), h, F_L);
+      px(x, y, Math.max(2, w>>3), h, F_L);
       px(x + w - 4, y, 4, h, F_D);
-      wins(x, y, w, h, rr()*20, WINF);
+      mull(x, y, w, h, 8, F_D);
+      litV(x, y, w, h, 8, 3, 6, rr()*20, WINF);
       x += w + Math.round(5 + rr()*24);
     }
   }
 
+  /* ====================================================================
+     TORONTO
+     CN Tower 553.3m, Rogers Centre 86m, First Canadian Place 298m,
+     Scotia Plaza 275m, Commerce Court West 239m, TD Bank Tower 223m,
+     Royal Bank Plaza 180m.
+     Arranged as it reads from the Islands: Rogers Centre and the tower
+     on the left, the bank towers to the right.                       */
+  const TO_D='#2E3844', TO_M='#4A5464', TO_L='#68727F';
+
+  function cnTower(cx, H){
+    /* Built to the real section, in metres, then scaled.
+       0-553.33m overall. A hollow hexagonal core runs unbroken to the
+       SkyPod with three curved wings blended into it, which splay out
+       below the main level into the Y that stands on the ground - so the
+       bottom sixth flares, and the shaft above it is a slow taper, not a
+       cone. Main level is seven storeys at 342-353m: outdoor terrace at
+       342, indoor lookout at 346, the revolving restaurant at 351, all
+       sitting on a cone that flares out of the shaft. SkyPod is a much
+       smaller disc at 447. The antenna is 102m, so it starts at 451.  */
+    const g = GND, S = H / 553.33;
+    const Y = m => g - Math.round(m * S);
+    const X = m => Math.max(1, Math.round(m * S));
+
+    /* half-width of the concrete, in metres, at a given height */
+    const SHAFT = [[0, 17.5], [30, 12.5], [110, 9.6], [250, 8.0], [338, 7.2],
+                   [355, 6.6], [447, 5.4], [451, 5.0]];
+    function hw(m){
+      for (let i = 0; i < SHAFT.length - 1; i++){
+        const [a1, w1] = SHAFT[i], [a2, w2] = SHAFT[i+1];
+        if (m <= a2){
+          const t = (m - a1) / (a2 - a1);
+          /* the splay at the foot is concave, the taper above it linear */
+          return w1 + (w2 - w1) * (i === 0 ? 1 - Math.pow(1 - t, 2.1) : t);
+        }
+      }
+      return SHAFT[SHAFT.length-1][1];
+    }
+    /* the shaft, in 3px bands: a per-row cone combs at fractional scale */
+    const step = 3;
+    for (let yy = Y(451); yy < g; yy += step){
+      const m = (g - yy) / S, w = X(hw(m)) * 2, x0 = cx - (w >> 1);
+      px(x0, yy, w, step, TO_M);
+      px(x0, yy, Math.max(2, Math.round(w * 0.22)), step, TO_L);      /* lit wing */
+      px(x0 + Math.round(w * 0.34), yy, Math.max(1, w > 14 ? 2 : 1), step, TO_D);
+      px(x0 + w - Math.max(3, Math.round(w * 0.20)), yy,
+         Math.max(3, Math.round(w * 0.20)), step, TO_D);              /* shadowed wing */
+    }
+    /* The Y at the foot. Three legs at 120 degrees: from any angle one
+       points at you and two splay away, so the silhouette is a centre
+       column flanked by two curved legs with open sky between them. They
+       have merged into the hexagon by about 33m. */
+    const FLR = 33;
+    const out = t => 7.0 + 15.5 * Math.pow(1 - t, 1.7);
+    for (let m = 0; m < FLR; m++){
+      const t = m / FLR, o = out(t), yy = Y(m), hgt = Math.max(1, Math.round(S)) + 1;
+      px(cx - X(o), yy, X(o) * 2, hgt, TO_M);
+      px(cx - X(o), yy, Math.max(2, Math.round(X(o) * 0.30)), hgt, TO_L);
+      px(cx + X(o) - Math.max(2, Math.round(X(o) * 0.26)), yy,
+         Math.max(2, Math.round(X(o) * 0.26)), hgt, TO_D);
+      /* the two voids between the legs, closing as they merge */
+      const vi = 6.6, vo = o - 5.0;
+      if (vo > vi && m > 9){
+        px(cx - X(vo), yy, X(vo - vi), hgt, '#8FB6D4');
+        px(cx + X(vi), yy, X(vo - vi), hgt, '#8FB6D4');
+        px(cx - X(vo), yy, Math.max(1, X(0.8)), hgt, TO_D);
+        px(cx + X(vo) - Math.max(1, X(0.8)), yy, Math.max(1, X(0.8)), hgt, TO_D);
+      }
+    }
+    px(cx - X(23), Y(11), X(46), Y(0) - Y(11), TO_D);           /* base building */
+    px(cx - X(23), Y(11), X(46), Math.max(2, X(1.4)), TO_M);
+    for (let c = 0; c < 9; c++)
+      px(cx - X(21) + c * Math.round(X(42)/9), Y(7), Math.max(3, Math.round(X(42)/9) - 3),
+         Math.max(3, X(3)), WIN);
+
+    /* main level: cone, terrace, lookout, restaurant, roof */
+    const POD = X(15.6);
+    for (let m = 330; m < 342; m++){                                  /* the cone */
+      const t = (m - 330) / 12, w = X(hw(330) + (15.6 - hw(330)) * t * t);
+      px(cx - w, Y(m), w * 2, Math.max(1, Math.round(S)) + 1, TO_D);
+      px(cx - w, Y(m), Math.max(2, Math.round(w * 0.3)), Math.max(1, Math.round(S)) + 1, TO_M);
+    }
+    px(cx - POD, Y(345), POD * 2, Y(342) - Y(345), '#1B2430');        /* outdoor terrace */
+    px(cx - POD, Y(345), POD * 2, Math.max(1, X(0.8)), '#8A96A4');    /* its railing */
+    px(cx - POD, Y(349), POD * 2, Y(345) - Y(349), TO_M);             /* indoor lookout */
+    const nw = Math.max(3, Math.round(POD * 2 / 12));
+    for (let c = 0; c < 12; c++)
+      px(cx - POD + 2 + c * nw, Y(348), Math.max(2, nw - 2), Y(346) - Y(348), WIN);
+    px(cx - POD, Y(353), POD * 2, Y(349) - Y(353), TO_M);             /* 360 restaurant */
+    px(cx - POD, Y(353), POD * 2, Math.max(2, X(1.4)), TO_L);
+    for (let c = 0; c < 12; c++)
+      px(cx - POD + 2 + c * nw, Y(352), Math.max(2, nw - 2), Y(350) - Y(352), WIN);
+    const rw = X(13.5);                                               /* the roof cap */
+    px(cx - rw, Y(356), rw * 2, Y(353) - Y(356), '#8A94A2');
+    px(cx - rw, Y(356), rw * 2, Math.max(1, X(1)), '#B4BEC8');
+
+    /* SkyPod at 447 - small, and the detail people forget. A disc with a
+       sloped underside and a pale cap, like the main pod at a third the
+       size, not a band around the shaft. */
+    const SP = X(9.2);
+    for (let m = 440; m < 444; m++){
+      const t = (m - 440) / 4, w = X(hw(m) + (9.2 - hw(m)) * t * t);
+      px(cx - w, Y(m), w * 2, Math.max(1, Math.round(S)) + 1, TO_D);
+    }
+    px(cx - SP, Y(451), SP * 2, Y(444) - Y(451), TO_M);
+    px(cx - SP, Y(448), SP * 2, Math.max(2, X(2.2)), WIN);
+    px(cx - SP, Y(451), SP * 2, Math.max(1, X(1.2)), '#8A94A2');
+    px(cx - X(7.6), Y(453), X(15.2), Y(451) - Y(453), '#8A94A2');
+
+    /* antenna: 102m, stepped, with the aircraft light at the tip */
+    const AT = [[451, 505, 2.6], [505, 538, 1.7], [538, 553.33, 1.0]];
+    for (const [m0, m1, w] of AT){
+      const ww = Math.max(2, X(w));
+      px(cx - ww, Y(m1), ww * 2, Y(m0) - Y(m1), TO_M);
+      px(cx - ww, Y(m1), Math.max(1, ww >> 1), Y(m0) - Y(m1), TO_L);
+    }
+    px(cx - X(4), Y(509), X(8), Math.max(2, X(3)), TO_L);
+    px(cx - X(3), Y(542), X(6), Math.max(2, X(3)), TO_L);
+    px(cx - Math.max(2, X(2)), Y(553.33) - 2, Math.max(4, X(4)), Math.max(4, X(5)), '#E4353F');
+  }
+  function rogersCentre(cx, w, h){
+    /* Four roof panels that nest like a stack of plates - three slide,
+       one is fixed. Drawn as nested arcs, which is the shape you actually
+       see from the water. */
+    const g = GND, r = w >> 1;
+    for (let y = 0; y < h; y++){
+      const t = y / h, hw = Math.round(r * Math.sqrt(Math.max(0, 1 - (1-t)*(1-t))));
+      px(cx - hw, g - h + y, hw*2, 1, y < h*0.22 ? '#9AA6B4' : '#7E8A98');
+    }
+    for (const f of [0.52, 0.72, 0.88]){
+      const rr = Math.round(r * f);
+      for (let y = 0; y <= Math.round(h * f); y++){
+        const t = y / (h*f), hw = Math.round(rr * Math.sqrt(Math.max(0, 1 - (1-t)*(1-t))));
+        if (y === 0 || y === Math.round(h*f)) continue;
+        px(cx - hw, g - Math.round(h*f) + y, 3, 1, '#5E6A78');
+        px(cx + hw - 3, g - Math.round(h*f) + y, 3, 1, '#5E6A78');
+      }
+    }
+    const bh = Math.round(h * 0.34);
+    px(cx - r, g - bh, w, bh, '#6A7684');
+    px(cx - r, g - bh, w, Math.max(2, bh>>4), '#8E9AA8');
+    for (let i = 0; i < 26; i++)                       /* the concourse ring */
+      px(cx - r + 6 + i*((w-12)/26), g - Math.round(bh*0.42), Math.max(3, w/40), Math.max(4, bh>>4), WIN);
+    px(cx - r, g - Math.round(bh*0.62), w, 2, '#4E5A68');
+  }
+
+  function fcp(x, w, h){
+    /* White marble, re-clad in white glass. The face is one unbroken grid
+       of narrow vertical bays and the top is dead flat - no crown at all,
+       which is itself the identifying feature among Toronto's towers. */
+    const g = GND, y = g - h, p = Math.max(5, Math.round(w/13));
+    body(x, y, w, h, '#8E96A6', '#C8CEDA', '#E8EDF4');
+    mull(x, y, w, h, p, '#9AA2B2');
+    litV(x, y, w, h, p, Math.max(3, Math.round(h/110)), Math.max(5, Math.round(h/64)), 7.7,
+         'rgba(255,214,130,.34)');
+    px(x, y, w, 4, '#F2F6FA');
+    px(x, y + 4, w, 2, '#8E96A6');
+  }
+
+  function scotiaPlaza(x, w, h){
+    /* Napoleon red granite, and the sculpted recess at the crown: the
+       tower is notched back on one corner for its top several floors,
+       which is the one detail that names it from the lake. */
+    const g = GND, y = g - h, p = Math.max(5, Math.round(w/11)), notch = Math.round(w*0.3);
+    body(x, y, w, h, '#4E1E24', '#7A3038', '#A04048');
+    mull(x, y, w, h, p, '#5E2228');
+    litV(x, y, w, h, p, Math.max(3, Math.round(h/100)), Math.max(5, Math.round(h/60)), 3.1, WIN);
+    const nd = Math.round(h*0.10);
+    px(x + w - notch, y, notch, nd, '#0F1520');
+    px(x + w - notch, y + nd, notch, 3, '#4E1E24');
+    px(x + w - notch - 3, y, 3, nd, '#5E2228');
+    px(x, y, w - notch, 3, '#C25460');
+    px(x, y + nd, w, 2, '#C25460');
+  }
+
+  function tdTower(x, w, h){
+    /* Mies: matte black steel, bronze glass, the I-beam mullions standing
+       proud of the face so the whole tower reads as vertical line. */
+    const g = GND, y = g - h, p = Math.max(4, Math.round(w/12));
+    px(x, y, w, h, '#161C26');
+    px(x, y, Math.max(2, w>>3), h, '#242C38');
+    px(x + w - Math.max(2, w>>4), y, Math.max(2, w>>4), h, '#0B0F16');
+    for (let i = 1; i < w - 1; i += p){
+      px(x + i, y, Math.max(2, p>>1), h, '#30394A');
+      px(x + i, y, 1, h, '#4A566E');
+    }
+    litV(x, y, w, h, p, Math.max(3, Math.round(h/96)), Math.max(5, Math.round(h/58)), 11.3,
+         'rgba(255,196,110,.42)');
+    px(x, y, w, 3, '#39445A');
+  }
+
+  function rbp(x, w, h){
+    /* 2,500 ounces of gold in the glass, and a sawtooth plan: the windows
+       project in angular bays, so the face alternates lit and shadowed
+       strips rather than reading flat. */
+    const g = GND, y = g - h, p = Math.max(6, Math.round(w/8));
+    px(x, y, w, h, '#8A6A22');
+    for (let i = 0; i < w; i += p){
+      px(x + i, y, Math.round(p*0.55), h, '#C8A03A');
+      px(x + i + Math.round(p*0.55), y, Math.round(p*0.45), h, '#6E5218');
+    }
+    litV(x, y, w, h, p, Math.max(3, Math.round(h/86)), Math.max(5, Math.round(h/52)), 5.5,
+         'rgba(255,236,170,.55)');
+    px(x, y, w, 3, '#E8C868');
+    px(x + w - Math.max(3, w>>4), y, Math.max(3, w>>4), h, '#4E3A10');
+  }
+
+  function commerceCourt(x, w, h){
+    /* Stainless steel and dark glass, flat topped, wider bays than its
+       neighbours. */
+    const g = GND, y = g - h, p = Math.max(6, Math.round(w/8));
+    body(x, y, w, h, '#4A5260', '#6E7686', '#9AA2B2');
+    mull(x, y, w, h, p, '#3E4654');
+    litV(x, y, w, h, p, Math.max(3, Math.round(h/92)), Math.max(5, Math.round(h/56)), 9.3, WIN);
+    px(x, y, w, 3, '#B4BCC8');
+  }
+
+  /* ====================================================================
+     NEW YORK - midtown, north from the Hudson.
+     Central Park Tower 472.4m, Empire State 443.2m to the tip,
+     111 W 57th 435.3m, One Vanderbilt 427m, 432 Park 425.5m,
+     Chrysler 318.9m.                                                 */
+  const NY_D='#3A4150', NY_M='#5A6272', NY_L='#7A8290';
+
+  function empireState(cx, S){
+    /* Built to the real section, in metres. A five-storey base covering
+       the whole lot, a major setback at the 6th, then the mass steps in
+       twice more before the shaft runs unbroken to the 86th at 320m.
+       Above that the mooring mast: four tiers, then a cylindrical shaft
+       and a conical pinnacle, topping out at 381m. The broadcast antenna
+       takes it to 443.2m. The facade is limestone piers with the windows
+       recessed in continuous vertical channels, which is why the building
+       reads as vertical line rather than as stacked floors.            */
+    const g = GND, Y = m => g - Math.round(m * S), X = m => Math.max(1, Math.round(m * S));
+    const LS='#6E7382', LS_L='#8E94A2', LS_D='#4A5060', LS_E='#A8AEBC';
+
+    /* [bottom m, top m, half-width m] */
+    const TIER = [[0, 26, 56], [26, 92, 44], [92, 132, 36],
+                  [132, 286, 28], [286, 302, 23], [302, 312, 18], [312, 320, 14]];
+    for (const [m0, m1, w] of TIER){
+      const W2 = X(w), Yt = Y(m1), HH = Y(m0) - Y(m1), x0 = cx - W2;
+      px(x0, Yt, W2*2, HH, LS);
+      px(x0, Yt, Math.max(3, Math.round(W2*0.42)), HH, LS_L);
+      px(cx + W2 - Math.max(3, X(4)), Yt, Math.max(3, X(4)), HH, LS_D);
+      /* vertical window channels between limestone piers */
+      const pitch = Math.max(4, X(5.2));
+      for (let i = pitch; i < W2*2 - pitch*0.6; i += pitch)
+        px(x0 + i, Yt + 2, Math.max(1, X(2.6)), HH - 4, LS_D);
+      let sd = (m0 + 7) * 131;
+      const rr = () => (sd = (sd*1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+      for (let ry = Yt + Math.max(3, X(4)); ry < Yt + HH - X(3); ry += Math.max(5, X(7.4)))
+        for (let i = pitch; i < W2*2 - pitch*0.6; i += pitch)
+          if (rr() < 0.3) px(x0 + i, ry, Math.max(1, X(2.6)), Math.max(2, X(2.4)), WIN);
+      /* The shaft is not one slab: the corners step back, so the face
+         reads as a central mass with a narrower bay either side. Two deep
+         recesses carry that. */
+      if (m1 - m0 > 30){
+        for (const f of [0.26, 0.74]){
+          const rx = x0 + Math.round(W2*2*f);
+          px(rx, Yt + 2, Math.max(2, X(3.4)), HH - 4, LS_D);
+          px(rx + Math.max(2, X(3.4)), Yt + 2, Math.max(1, X(1.2)), HH - 4, LS_L);
+        }
+      }
+      /* the setback ledge catches the light - this is what makes the
+         wedding-cake profile read at a distance */
+      px(x0 - X(1.2), Yt, W2*2 + X(2.4), Math.max(2, X(1.2)), LS_E);
+      px(x0 - X(1.2), Yt + Math.max(2, X(1.2)), W2*2 + X(2.4), Math.max(1, X(0.8)), LS_D);
+    }
+    /* the 86th floor observation deck, set back with a parapet */
+    px(cx - X(15.5), Y(320), X(31), Math.max(2, X(1.6)), LS_E);
+
+    /* mooring mast: four tiers, cylinder, conical pinnacle */
+    const MAST = [[320, 338, 11], [338, 352, 8.6], [352, 364, 6.8], [364, 372, 5.4]];
+    for (const [m0, m1, w] of MAST){
+      const W2 = X(w), Yt = Y(m1), HH = Y(m0) - Y(m1);
+      px(cx - W2, Yt, W2*2, HH, LS);
+      px(cx - W2, Yt, Math.max(2, Math.round(W2*0.4)), HH, LS_L);
+      px(cx + W2 - Math.max(2, X(2)), Yt, Math.max(2, X(2)), HH, LS_D);
+      for (let i = Math.max(2, X(3)); i < W2*2 - 2; i += Math.max(3, X(3.6)))
+        px(cx - W2 + i, Yt + 1, Math.max(1, X(1.4)), HH - 2, LS_D);   /* fins */
+      px(cx - W2 - X(1), Yt, W2*2 + X(2), Math.max(2, X(1.4)), LS_E);
+    }
+    px(cx - X(9), Y(330), X(18), Math.max(2, X(2.6)), WIN);           /* 102nd floor */
+    px(cx - X(4.4), Y(378), X(8.8), Y(372) - Y(378), LS_L);           /* cylinder */
+    for (let i = 0; i < 5; i++)                                       /* conical pinnacle */
+      px(cx - X(4.4 - i*0.8), Y(378) - i, X(8.8 - i*1.6), 1, LS_E);
+
+    /* the antenna, 1950s, taking it from 381 to 443.2 */
+    px(cx - Math.max(2, X(2.4)), Y(424), Math.max(4, X(4.8)), Y(381) - Y(424), '#9AA2B0');
+    px(cx - Math.max(1, X(1.2)), Y(443.2), Math.max(2, X(2.4)), Y(424) - Y(443.2), '#C6D2DE');
+    px(cx - X(3.4), Y(428), X(6.8), Math.max(2, X(2)), '#9AA2B0');
+    px(cx - X(2), Y(443.2) - 2, X(4), Math.max(4, X(4)), '#E4353F');
+  }
+  function chrysler(cx, S){
+    /* The crown is seven diminishing arches of nirosta steel, each pierced
+       by a fan of triangular windows. That fan is the building - without
+       it a stepped cap is just a stepped cap. */
+    const g = GND, V = m => Math.round(m * S), X = m => Math.round(m * S);
+    const ST='#6A7282', ST_L='#8A92A2', ST_D='#4A5060';
+    const SH = [[0, 120, 27], [120, 60, 24], [180, 66, 21]];
+    for (const [y0, hh, hw] of SH){
+      const W2 = X(hw), Y = g - V(y0 + hh), HH = V(hh);
+      px(cx - W2, Y, W2*2, HH, ST);
+      px(cx - W2, Y, Math.max(3, W2>>2), HH, ST_L);
+      px(cx + W2 - X(6), Y, X(6), HH, ST_D);
+      for (let i = 1; i < W2*2 - 1; i += Math.max(4, X(5)))
+        px(cx - W2 + i, Y, Math.max(1, X(2)), HH, ST_D);
+      litH(cx - W2, Y, W2*2, HH, Math.max(3, V(4)), Math.max(4, V(6)), y0/5 + 2, WIN);
+      px(cx - W2 - 2, Y, W2*2 + 4, Math.max(2, V(3)), ST_L);
+    }
+    const CR = [[246, 20], [252, 17], [258, 14], [263, 11.5], [268, 9], [272, 6.5], [275, 4]];
+    CR.forEach(([y0, hw], n) => {
+      const W2 = X(hw), Y = g - V(y0 + 7), HH = V(7);
+      px(cx - W2, Y, W2*2, HH, '#9AA4B2');
+      px(cx - W2, Y, W2*2, Math.max(2, V(2)), '#D6E2EE');
+      /* the sunburst: triangular lights fanning out from the centreline */
+      const n2 = 5 - Math.floor(n*0.6);
+      for (let i = 0; i < n2; i++){
+        const o = Math.round((i + 0.5) * W2 / n2);
+        px(cx + o - Math.max(1, X(1)), Y + Math.max(1, V(2)), Math.max(1, X(2)), V(4), '#2E3A4A');
+        px(cx - o - Math.max(1, X(1)), Y + Math.max(1, V(2)), Math.max(1, X(2)), V(4), '#2E3A4A');
+      }
+    });
+    px(cx - X(2), g - V(319), X(4), V(36), '#C6D2DE');
+    px(cx - Math.max(1, X(1)), g - V(319), Math.max(2, X(2)), V(40), '#EEF4FA');
+  }
+
+  function vanderbilt(x, w, h){
+    /* Four angled volumes that step back as they rise, faceted glass,
+       a stub spire. */
+    const g = GND;
+    const ST = [[0, 0.50, 1.0], [0.50, 0.76, 0.82], [0.76, 0.92, 0.62], [0.92, 1, 0.40]];
+    for (const [a, b, f] of ST){
+      const ww = Math.round(w * f), xx = x + ((w - ww) >> 1);
+      const Y = g - Math.round(h*b), HH = Math.round(h*(b-a));
+      px(xx, Y, ww, HH, '#48566E');
+      px(xx, Y, Math.max(3, ww>>3), HH, '#6E7C96');
+      px(xx + ww - Math.max(2, ww>>5), Y, Math.max(2, ww>>5), HH, '#333E52');
+      mull(xx, Y, ww, HH, Math.max(5, Math.round(ww/9)), '#3A4658');
+      litV(xx, Y, ww, HH, Math.max(5, Math.round(ww/9)), 3, 6, a*13 + 1, WIN);
+      px(xx, Y, ww, 3, '#8A97AE');
+    }
+    px(x + (w>>1) - 2, g - h - 22, 4, 24, '#8A93A2');
+  }
+
+  function park432(x, w, h){
+    /* White Portland-cement concrete, an exoskeleton lattice, and six big
+       square windows an elevation with nothing at the corners. The grid
+       IS the building, so it is drawn to that count rather than filled
+       with random lights. */
+    const g = GND, y = g - h;
+    px(x, y, w, h, '#C2C6CC');
+    px(x, y, Math.max(3, w>>3), h, '#E0E4EA');
+    px(x + w - Math.max(2, w>>4), y, Math.max(2, w>>4), h, '#9AA0A8');
+    const cols = 3, gapX = Math.max(2, Math.round(w*0.09));
+    const cw = Math.round((w - gapX*(cols+1)) / cols);
+    const rowH = Math.max(4, Math.round(h/58)), rowG = Math.max(3, Math.round(h/86));
+    let s = 91;
+    const rr = () => (s = (s*1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    for (let ry = y + rowG*2; ry + rowH < g - rowG; ry += rowH + rowG)
+      for (let c = 0; c < cols; c++)
+        px(x + gapX + c*(cw + gapX), ry, cw, rowH, rr() < 0.42 ? WIN : '#2A3038');
+    px(x, y, w, 4, '#EEF2F6');
+  }
+
+  function steinway(x, w, h){
+    /* 1:24, the skinniest tower in the world. Bronze and terracotta, and
+       the east face feathers back in setbacks over the top third. */
+    const g = GND, y = g - h;
+    px(x, y, w, h, '#3A3038');
+    px(x, y, Math.max(3, w>>2), h, '#5A4A48');
+    for (let i = 1; i < w - 1; i += 4) px(x + i, y, 1, h, '#8A6A3A');
+    const steps = 9;
+    for (let i = 0; i < steps; i++)
+      px(x + w - 2 - i*Math.max(1, Math.round(w/steps)),
+         y + Math.round(h*0.30) + i*Math.round(h*0.075),
+         2 + i*Math.max(1, Math.round(w/steps)), Math.round(h*0.075), '#1E1A22');
+    litV(x, y, w, h, 4, Math.max(3, Math.round(h/110)), Math.max(4, Math.round(h/70)), 8.8,
+         'rgba(255,214,130,.46)');
+    px(x, y, w, 3, '#C89A52');
+  }
+
+  function centralParkTower(x, w, h){
+    /* Dark glass, and the cantilever: the tower steps OUT over its
+       neighbour on the east side about a fifth of the way up. */
+    const g = GND, y = g - h;
+    const nw = Math.round(w * 0.60), nx = x + Math.round(w*0.06);
+    const cy = y + Math.round(h*0.22);
+    px(x, cy, w, g - cy, '#3E4656');
+    px(x, cy, Math.max(3, w>>3), g - cy, '#5E687C');
+    px(x + w - Math.max(2, w>>4), cy, Math.max(2, w>>4), g - cy, '#2A3240');
+    px(x, cy, w, 3, '#7A86A0');
+    px(nx, y, nw, cy - y, '#3E4656');
+    px(nx, y, Math.max(3, nw>>3), cy - y, '#5E687C');
+    px(nx, y, nw, 3, '#8A96B0');
+    mull(x, cy, w, g - cy, Math.max(5, Math.round(w/11)), '#333B4A');
+    mull(nx, y, nw, cy - y, Math.max(5, Math.round(nw/8)), '#333B4A');
+    litV(x, cy, w, g - cy, Math.max(5, Math.round(w/11)), 3, 6, 12.1, WIN);
+    litV(nx, y, nw, cy - y, Math.max(5, Math.round(nw/8)), 3, 6, 3.3, WIN);
+  }
+
+  /* ====================================================================
+     ST LOUIS - from the Illinois bank, the Arch in front.
+     Gateway Arch 192m, One Metropolitan Square 180.7m, 909 Chestnut
+     179m, Eagleton Courthouse 170m, Old Courthouse ~58m.             */
+  const SL_D='#2A3442', SL_M='#3E4A5C', SL_L='#56647A';
+
+  function gatewayArch(cx, w, h){
+    /* A weighted catenary, solved per destination ROW rather than swept
+       along the centreline - sweeping leaves rows unclaimed near the crown
+       where the curve runs almost flat. Legs are equilateral triangles in
+       section, 54ft a side at the foot and 17ft at the top, so each one
+       shows a bright outer face and a shadowed inner one. */
+    const g = GND, C = 3.0, half = w/2, ch = Math.cosh(C);
+    const BASE = w * 0.086, TOP = w * 0.027;
+    for (let yy = 0; yy <= h; yy++){
+      const u = yy / h, arg = ch - u * (ch - 1);
+      if (arg < 1) continue;
+      const t = Math.acosh(arg) / C;
+      const dx = t * half, th = Math.max(2, Math.round(TOP + (BASE - TOP) * t));
+      const y = g - yy, lit = Math.max(1, th >> 2);
+      const inL = cx - dx + th/2, inR = cx + dx - th/2;
+      if (inL >= inR){
+        const x0 = Math.round(cx - dx - th/2), ww = Math.round(2*dx + th);
+        px(x0, y, ww, 1, '#98A5B4');
+        px(x0, y, Math.max(2, ww>>3), 1, '#C6D2DE');
+        px(x0 + ww - Math.max(2, ww>>3), y, Math.max(2, ww>>3), 1, '#6E7A8A');
+      } else {
+        const lx = Math.round(cx - dx - th/2), rx = Math.round(cx + dx - th/2);
+        px(lx, y, th, 1, '#8A97A8');
+        px(lx, y, lit, 1, '#C6D2DE');                 /* outboard face, lit */
+        px(lx + th - Math.max(1, lit>>1), y, Math.max(1, lit>>1), 1, '#5E6A78');
+        px(rx, y, th, 1, '#8A97A8');
+        px(rx + th - lit, y, lit, 1, '#C6D2DE');
+        px(rx, y, Math.max(1, lit>>1), 1, '#5E6A78');
+      }
+    }
+  }
+
+  function oldCourthouse(cx, w, h){
+    /* Greek Revival: a pedimented portico on a stone block, then a cast
+       iron drum ringed with windows, then the green copper dome and a
+       lantern. */
+    const g = GND, y = g - h, bw = Math.round(w*0.80);
+    const ST='#9AA0AA', ST_L='#B6BCC6', ST_D='#767C86';
+    const bh = Math.round(h*0.46), by = g - bh;
+    px(cx - (bw>>1), by, bw, bh, ST);
+    px(cx - (bw>>1), by, Math.max(3, bw>>4), bh, ST_L);
+    const nc = 8, cp = Math.round((bw - 10)/nc);
+    for (let c = 0; c < nc; c++){
+      px(cx - (bw>>1) + 5 + c*cp, by + Math.round(bh*0.18), Math.max(3, cp>>1), Math.round(bh*0.66), ST_L);
+      px(cx - (bw>>1) + 5 + c*cp + Math.max(3, cp>>1), by + Math.round(bh*0.18), 2, Math.round(bh*0.66), ST_D);
+    }
+    px(cx - (bw>>1), by, bw, Math.max(3, bh>>6), ST_L);
+    px(cx - (bw>>1) - 3, by + Math.round(bh*0.14), bw + 6, Math.max(3, bh>>7), ST_L);
+    const dw = Math.round(w*0.46), dy = by;
+    px(cx - (dw>>1), dy - Math.round(h*0.13), dw, Math.round(h*0.13), ST);
+    px(cx - (dw>>1), dy - Math.round(h*0.13), Math.max(2, dw>>5), Math.round(h*0.13), ST_L);
+    for (let c = 0; c < 6; c++)
+      px(cx - (dw>>1) + 3 + c*Math.round((dw-6)/6), dy - Math.round(h*0.10), 2, Math.round(h*0.06), WIN);
+    const dr = Math.round(w*0.22), dcy = dy - Math.round(h*0.13);
+    for (let i = 0; i <= dr; i++){
+      const hw = Math.round(dr * Math.sqrt(Math.max(0, 1 - (i/dr)*(i/dr))));
+      px(cx - hw, dcy - i, hw*2, 1, '#3E7A62');
+      px(cx - hw, dcy - i, Math.max(2, hw>>2), 1, '#56A484');
+    }
+    px(cx - dr - 3, dcy, dr*2 + 6, 4, ST_L);
+    px(cx - 3, dcy - dr - 11, 6, 12, '#3E7A62');
+    px(cx - 1, dcy - dr - 16, 2, 6, '#C6D2DE');
+  }
+
+  function metSquare(x, w, h){
+    /* Postmodern, 1989, HOK. Granite and marble, a shaft that steps in
+       twice, then a pitched gable cap and a mast. */
+    const g = GND, y = g - h;
+    const D='#2E3644', M='#4A5668', L='#6E7C94';
+    const capH = Math.round(h*0.07), midH = Math.round(h*0.06);
+    const iw = Math.round(w*0.70), ix = x + ((w - iw) >> 1);
+    const sy = y + capH + midH;
+    body(x, sy, w, g - sy, D, M, L);
+    mull(x, sy, w, g - sy, Math.max(5, Math.round(w/11)), D);
+    litV(x, sy, w, g - sy, Math.max(5, Math.round(w/11)), 3, 6, 2.7, WIN);
+    px(x, sy, w, 3, '#8A96AE');
+    body(ix, y + capH, iw, midH, D, M, L);
+    px(ix, y + capH, iw, 3, '#8A96AE');
+    for (let i = 0; i < capH; i++){                       /* the gable */
+      const t = i / capH, ww = Math.round(iw * (1 - t*0.92));
+      px(ix + ((iw - ww) >> 1), y + i, ww, 1, i < capH*0.3 ? L : M);
+    }
+    px(x + (w>>1) - 2, y - Math.round(h*0.05), 4, Math.round(h*0.05) + 4, '#8A93A2');
+    px(x + (w>>1) - 1, y - Math.round(h*0.06), 2, Math.round(h*0.012), '#E4353F');
+  }
+
+  function attCenter(x, w, h){
+    /* 909 Chestnut: a single blunt slab, the largest floorplate downtown,
+       with paired vertical piers and a flat top. */
+    const g = GND, y = g - h, p = Math.max(7, Math.round(w/8));
+    body(x, y, w, h, '#2E3644', '#445062', '#626F86');
+    for (let i = 1; i < w - 1; i += p){
+      px(x + i, y, Math.max(2, p>>2), h, '#2A323E');
+      px(x + i + Math.max(3, p>>1), y, Math.max(2, p>>2), h, '#2A323E');
+    }
+    litV(x, y, w, h, p, Math.max(3, Math.round(h/96)), Math.max(5, Math.round(h/58)), 4.9, WIN);
+    px(x, y, w, 4, '#7A8698');
+    px(x, y + 4, w, 2, '#2A323E');
+  }
+
+  function eagleton(x, w, h){
+    /* Granite over a classical tripartite: a colonnaded base, a plain
+       shaft, then a penthouse carrying an elliptical dome. */
+    const g = GND, y = g - h;
+    const D='#333D4E', M='#4A5668', L='#6E7C90', SN='#8E98A8';
+    const baseH = Math.round(h*0.16), domeH = Math.round(h*0.09);
+    const shY = y + domeH + Math.round(h*0.05);
+    body(x, shY, w, g - shY - baseH, D, M, L);
+    mull(x, shY, w, g - shY - baseH, Math.max(6, Math.round(w/9)), D);
+    litV(x, shY, w, g - shY - baseH, Math.max(6, Math.round(w/9)), 3, 6, 6.1, WIN);
+    body(x - 2, g - baseH, w + 4, baseH, D, SN, '#A8B2C0');       /* colonnade */
+    const nc = 7, cp = Math.round((w - 6)/nc);
+    for (let c = 0; c < nc; c++)
+      px(x + 3 + c*cp + Math.max(2, cp>>2), g - baseH + 4, Math.max(2, cp>>2), baseH - 8, D);
+    px(x - 3, g - baseH - 4, w + 6, 5, '#A8B2C0');
+    const pw = Math.round(w*0.66), pxx = x + ((w - pw) >> 1), py = y + domeH;
+    px(pxx, py, pw, Math.round(h*0.05) + 2, SN);
+    px(pxx, py, pw, 3, '#B4BECC');
+    const dr = Math.round(pw*0.42), cx = x + (w>>1);            /* elliptical dome */
+    for (let i = 0; i <= domeH; i++){
+      const t = i / domeH, hw = Math.round(dr * Math.sqrt(Math.max(0, 1 - t*t)));
+      px(cx - hw, py - i, hw*2, 1, i > domeH*0.55 ? '#A8B2C0' : '#7E8A9C');
+    }
+    px(cx - dr - 2, py - 1, dr*2 + 4, 4, SN);
+    px(cx - 2, py - domeH - 8, 4, 9, '#A8B2C0');
+  }
+
+  /* ==================================================================== */
   const CITIES = [];
 
   /* Two scales in one layer. The defining structures are drawn at roughly
@@ -3339,12 +3639,11 @@ const CITY = (function(){
     name: 'Toronto', tag: '553.3m to the CN Tower tip',
     far: () => farRow(3, 145, 356),
     near(){
-      slab(330, 56, 334, N_D, N_M, N_L, 1.1);
+      commerceCourt(292, 44, 268);
       fcp(348, 56, 334);
       scotiaPlaza(408, 50, 309);
       rbp(462, 40, 202);
       tdTower(506, 38, 249);
-      slab(292, 44, 268, '#4A5260', '#6E7686', '#8E96A6', 9.3);   /* Commerce Court */
       slab(246, 42, 395, '#232C3C', '#38445C', '#4E5C78', 4.4);   /* SkyTower */
       rogersCentre(90, 451, 187);
       cnTower(252, 1200);
@@ -3367,15 +3666,14 @@ const CITY = (function(){
   /* St Louis is the exception and it is geometry, not taste. The Arch is
      as wide as it is tall - 630 feet each way - so the frame's width is
      what caps it: past about 620 across, both feet leave the screen and
-     what is left reads as two pylons. Its towers stay in true proportion
-     to it, so this city is the shorter one. */
+     what is left reads as two pylons. */
   CITIES.push({
     name: 'St Louis', tag: '192m to the crown of the Arch',
     far: () => farRow(23, 118, 276),
     near(){
       slab(0, 52, 330, SL_D, SL_M, SL_L, 1.3);
       metSquare(56, 66, 583);
-      slab(130, 70, 578, '#2E3644', '#445062', '#5C6A80', 4.9);   /* 909 Chestnut */
+      attCenter(130, 70, 578);
       eagleton(208, 56, 549);
       slab(270, 50, 396, SL_D, SL_M, SL_L, 8.2);
       slab(326, 52, 366, SL_D, SL_M, SL_L, 2.9);
