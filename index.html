@@ -3167,7 +3167,7 @@ const CITY = (function(){
 
     /* pale poured concrete - it is a much lighter object than the glass
        towers behind it, and reading dark is most of what made it wrong */
-    const C_L = '#A2A9B3', C_M = '#7C838D', C_D = '#575D67', C_X = '#3E434A';
+    const C_L = '#C4C2C6', C_M = '#8E8890', C_D = '#665E66', C_X = '#403A44';
 
     const FLR = 92;                      /* the legs are merged by here */
     const CORE = [[FLR, 9.6], [250, 8.2], [338, 7.4], [355, 6.8],
@@ -3235,47 +3235,74 @@ const CITY = (function(){
       px(cx - X(24) + c * Math.round(X(48)/11), Y(8),
          Math.max(3, Math.round(X(48)/11) - 3), Math.max(3, X(3.4)), WIN);
 
-    /* main level: cone, terrace, lookout, restaurant, roof */
-    const POD = X(17.4);
-    for (let m = 328; m < 342; m++){
-      const t = (m - 328) / 14, w = X(core(328) + (17.4 - core(328)) * t * t);
-      px(cx - w, Y(m), w * 2, Math.max(1, Math.round(S)) + 1, C_D);
-      px(cx - w, Y(m), Math.max(2, Math.round(w * 0.34)), Math.max(1, Math.round(S)) + 1, C_M);
+    /* ---- the top ------------------------------------------------------
+       Every level of the pod is its own ring seen edge on, so its outline
+       is a lozenge: the extreme rows pull in at both ends. Stacked, the
+       widest and brightest disc sits at the BOTTOM - it is the soffit
+       under the terrace, catching light off the lake - and the stack
+       steps in as it rises to the gold band of the restaurant and a pale
+       cap. That order is what makes it read as the CN Tower rather than
+       as a bulb with stripes painted on it.                            */
+    function lozenge(m0, m1, hwm, kind){
+      const w = X(hwm), y1 = Y(m1), h = Math.max(3, Y(m0) - Y(m1));
+      const r = Math.max(1, Math.round(w * 0.17));
+      const SET = {
+        soffit: ['#DCDEE2', '#F4F6F8', '#A2A6AC'],
+        body:   ['#8A828A', '#B2AEB4', '#5E565E'],
+        dark:   ['#4A4450', '#635C6A', '#2E2A36'],
+        navy:   ['#242634', '#3A3C4C', '#16181F'],
+        gold:   ['#B8985C', '#E2C88A', '#7E6438'],
+        cap:    ['#C2C4CA', '#E8EAEE', '#8A8E96']
+      }[kind];
+      for (let i = 0; i < h; i++){
+        const ww = w - Math.round(r * (1 - Math.sin(Math.PI * (i + 0.5) / h)));
+        const col = i < Math.max(1, h * 0.22) ? SET[1]
+                  : i > h - 1 - Math.max(1, h * 0.26) ? SET[2] : SET[0];
+        px(cx - ww, y1 + i, ww * 2, 1, col);
+      }
+      if (kind === 'gold'){
+        const nw = Math.max(3, Math.round(w * 2 / 15));
+        for (let cI = 0; cI < 15; cI++)
+          px(cx - w + 3 + cI * nw, y1 + 1, Math.max(2, nw - 2), Math.max(2, h - 2), '#F2DCA6');
+      }
+      if (kind === 'dark' || kind === 'navy'){
+        for (let i = 3; i < w*2 - 3; i += Math.max(2, X(1.5)))
+          px(cx - w + i, y1 + 1, 1, Math.max(1, h - 2), kind === 'navy' ? '#3E4252' : '#6E6878');
+      }
     }
-    px(cx - POD, Y(346), POD * 2, Y(342) - Y(346), '#20252E');     /* outdoor terrace */
-    px(cx - POD, Y(346), POD * 2, Math.max(1, X(1)), '#C6CCD4');   /* its railing */
-    px(cx - POD, Y(351), POD * 2, Y(346) - Y(351), C_M);           /* indoor lookout */
-    const nw = Math.max(4, Math.round(POD * 2 / 13));
-    for (let c = 0; c < 13; c++)
-      px(cx - POD + 2 + c * nw, Y(350), Math.max(3, nw - 2), Y(347) - Y(350), WIN);
-    px(cx - POD, Y(357), POD * 2, Y(351) - Y(357), C_M);           /* 360 restaurant */
-    px(cx - POD, Y(357), POD * 2, Math.max(2, X(1.6)), C_L);
-    for (let c = 0; c < 13; c++)
-      px(cx - POD + 2 + c * nw, Y(355), Math.max(3, nw - 2), Y(352) - Y(355), WIN);
-    const rw = X(15.2);                                            /* the roof cap */
-    px(cx - rw, Y(361), rw * 2, Y(357) - Y(361), C_L);
-    px(cx - rw, Y(361), rw * 2, Math.max(1, X(1.2)), '#D2D8E0');
-
-    /* SkyPod at 447 - a third the size, with its own sloped underside */
-    const SP = X(6.4);
-    for (let m = 441; m < 445; m++){
-      const t = (m - 441) / 4, w = X(core(m) + (6.4 - core(m)) * t);
+    /* bottom, top, half-width, kind */
+    const POD = [
+      [334.0, 340.0, 18.2, 'soffit'],   /* widest and brightest, at the foot */
+      [340.0, 343.0, 16.2, 'navy'],     /* the recess above it */
+      [343.0, 348.0, 17.2, 'body'],     /* the deck */
+      [348.0, 352.5, 17.8, 'dark'],     /* the dark ring, the heaviest band */
+      [352.5, 356.5, 16.0, 'gold'],     /* the restaurant, lit */
+      [356.5, 360.0, 12.8, 'cap']
+    ];
+    for (let m = 320; m < 334; m++){                   /* the cone out of the shaft */
+      const t = (m - 320) / 14, w = X(core(320) + (18.2 - core(320)) * t * t);
       px(cx - w, Y(m), w * 2, Math.max(1, Math.round(S)) + 1, C_D);
+      px(cx - w, Y(m), Math.max(2, Math.round(w * 0.30)), Math.max(1, Math.round(S)) + 1, C_M);
     }
-    px(cx - SP, Y(452), SP * 2, Y(445) - Y(452), C_M);
-    px(cx - SP, Y(449), SP * 2, Math.max(2, X(2)), WIN);
-    px(cx - SP, Y(452), SP * 2, Math.max(1, X(1.2)), C_L);
+    for (const [m0, m1, hwm, kind] of POD) lozenge(m0, m1, hwm, kind);
 
-    /* antenna: 102m, fine, stepped twice */
-    const AT = [[451, 500, 2.1], [500, 534, 1.4], [534, 553.33, 0.8]];
+    /* SkyPod at 447: a small bead threaded on the mast, not a lump - a
+       dark collar under it, the pale capsule, a cap over. */
+    lozenge(443.5, 445.5, 7.0, 'dark');
+    lozenge(445.5, 450.0, 8.6, 'cap');
+    lozenge(450.0, 451.5, 6.8, 'body');
+
+    /* the antenna: 102m from 451, stepping twice, with a collar and a
+       dark segment near the top */
+    const AT = [[451.5, 497, 2.4], [502, 529, 1.7], [533, 553.33, 1.0]];
     for (const [m0, m1, w] of AT){
       const ww = Math.max(1, X(w));
-      px(cx - ww, Y(m1), ww * 2, Y(m0) - Y(m1), C_M);
-      px(cx - ww, Y(m1), Math.max(1, ww >> 1), Y(m0) - Y(m1), C_L);
+      px(cx - ww, Y(m1), ww * 2, Y(m0) - Y(m1), '#9A9299');
+      px(cx - ww, Y(m1), Math.max(1, ww >> 1), Y(m0) - Y(m1), '#C8C4C8');
     }
-    px(cx - X(3.4), Y(503), X(6.8), Math.max(2, X(2.6)), C_L);
-    px(cx - X(2.4), Y(537), X(4.8), Math.max(2, X(2.2)), C_L);
-    px(cx - Math.max(2, X(1.8)), Y(553.33) - 2, Math.max(4, X(3.6)), Math.max(4, X(4.5)), '#E4353F');
+    lozenge(497, 502, 3.6, 'cap');
+    px(cx - Math.max(1, X(1.7)), Y(533), Math.max(2, X(3.4)), Y(529) - Y(533), '#26262E');
+    px(cx - Math.max(2, X(1.6)), Y(553.33) - 2, Math.max(4, X(3.2)), Math.max(4, X(4)), '#E4353F');
   }
   function rogersCentre(cx, w, h){
     /* Four roof panels that nest like a stack of plates - three slide,
@@ -3710,8 +3737,8 @@ const CITY = (function(){
       rbp(462, 40, 202);
       tdTower(506, 38, 249);
       slab(246, 42, 395, '#232C3C', '#38445C', '#4E5C78', 4.4);   /* SkyTower */
-      rogersCentre(76, 451, 187);
-      cnTower(184, 1200);
+      rogersCentre(96, 451, 187);
+      cnTower(206, 1200);
     }
   });
 
