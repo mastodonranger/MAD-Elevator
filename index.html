@@ -3150,114 +3150,132 @@ const CITY = (function(){
   const TO_D='#2E3844', TO_M='#4A5464', TO_L='#68727F';
 
   function cnTower(cx, H){
-    /* Built to the real section, in metres, then scaled.
-       0-553.33m overall. A hollow hexagonal core runs unbroken to the
-       SkyPod with three curved wings blended into it, which splay out
-       below the main level into the Y that stands on the ground - so the
-       bottom sixth flares, and the shaft above it is a slow taper, not a
-       cone. Main level is seven storeys at 342-353m: outdoor terrace at
-       342, indoor lookout at 346, the revolving restaurant at 351, all
-       sitting on a cone that flares out of the shaft. SkyPod is a much
-       smaller disc at 447. The antenna is 102m, so it starts at 451.  */
+    /* Built to the real section, in metres, then scaled. 553.33m overall.
+       The base is 66.6m across - the tower stands on three curved legs
+       that splay that far and take about a sixth of the height to merge
+       into the hexagonal core, which is the single thing that separates
+       it from a chimney. Above that the core runs unbroken to the SkyPod
+       with the three wings blended in, so any view shows one broad lit
+       face between two narrower shadowed ones. Main level is seven
+       storeys at 342-360 on a cone flaring out of the shaft: glass floor
+       and outdoor terrace at 342, indoor lookout at 346, the revolving
+       restaurant at 351. SkyPod at 447 is a third the size. The antenna
+       is 102m, so it starts at 451.                                    */
     const g = GND, S = H / 553.33;
     const Y = m => g - Math.round(m * S);
     const X = m => Math.max(1, Math.round(m * S));
 
-    /* half-width of the concrete, in metres, at a given height */
-    const SHAFT = [[0, 17.5], [30, 12.5], [110, 9.6], [250, 8.0], [338, 7.2],
-                   [355, 6.6], [447, 5.4], [451, 5.0]];
-    function hw(m){
-      for (let i = 0; i < SHAFT.length - 1; i++){
-        const [a1, w1] = SHAFT[i], [a2, w2] = SHAFT[i+1];
-        if (m <= a2){
-          const t = (m - a1) / (a2 - a1);
-          /* the splay at the foot is concave, the taper above it linear */
-          return w1 + (w2 - w1) * (i === 0 ? 1 - Math.pow(1 - t, 2.1) : t);
-        }
+    /* pale poured concrete - it is a much lighter object than the glass
+       towers behind it, and reading dark is most of what made it wrong */
+    const C_L = '#A2A9B3', C_M = '#7C838D', C_D = '#575D67', C_X = '#3E434A';
+
+    const FLR = 92;                      /* the legs are merged by here */
+    const CORE = [[FLR, 9.6], [250, 8.2], [338, 7.4], [355, 6.8],
+                  [447, 5.6], [451, 5.2]];
+    function core(m){
+      if (m <= FLR) return 9.6;
+      for (let i = 0; i < CORE.length - 1; i++){
+        const [a1, w1] = CORE[i], [a2, w2] = CORE[i+1];
+        if (m <= a2) return w1 + (w2 - w1) * (m - a1) / (a2 - a1);
       }
-      return SHAFT[SHAFT.length-1][1];
+      return 5.2;
     }
-    /* the shaft, in 3px bands: a per-row cone combs at fractional scale */
+    /* one band of shaft: a broad lit face, a shadowed wing either side,
+       and the two seams where the wings meet the core */
+    function band(m, hwm, hgt){
+      const w = X(hwm) * 2, x0 = cx - (w >> 1), yy = Y(m);
+      px(x0, yy, w, hgt, C_M);
+      px(x0, yy, Math.max(2, Math.round(w * 0.24)), hgt, C_D);
+      px(x0 + Math.round(w * 0.24), yy, Math.max(2, Math.round(w * 0.50)), hgt, C_L);
+      px(x0 + w - Math.max(2, Math.round(w * 0.26)), yy, Math.max(2, Math.round(w * 0.26)), hgt, C_D);
+      px(x0 + Math.round(w * 0.24), yy, Math.max(1, w > 16 ? 2 : 1), hgt, C_X);
+      px(x0 + Math.round(w * 0.74), yy, Math.max(1, w > 16 ? 2 : 1), hgt, C_X);
+    }
     const step = 3;
-    for (let yy = Y(451); yy < g; yy += step){
-      const m = (g - yy) / S, w = X(hw(m)) * 2, x0 = cx - (w >> 1);
-      px(x0, yy, w, step, TO_M);
-      px(x0, yy, Math.max(2, Math.round(w * 0.22)), step, TO_L);      /* lit wing */
-      px(x0 + Math.round(w * 0.34), yy, Math.max(1, w > 14 ? 2 : 1), step, TO_D);
-      px(x0 + w - Math.max(3, Math.round(w * 0.20)), yy,
-         Math.max(3, Math.round(w * 0.20)), step, TO_D);              /* shadowed wing */
-    }
-    /* The Y at the foot. Three legs at 120 degrees: from any angle one
-       points at you and two splay away, so the silhouette is a centre
-       column flanked by two curved legs with open sky between them. They
-       have merged into the hexagon by about 33m. */
-    const FLR = 33;
-    const out = t => 7.0 + 15.5 * Math.pow(1 - t, 1.7);
+    for (let yy = Y(451); yy < Y(FLR); yy += step) band((g - yy) / S, core((g - yy) / S), step);
+
+    /* The Y. 33.3m half-width at the foot, curving in, with the two gaps
+       you see between the legs closing about a sixth of the way up. The
+       legs are painted as three separate shapes rather than a solid mass
+       with holes punched in it, so what shows through the gaps is
+       whatever stands behind the tower. */
+    const splay = t => 9.6 + 23.7 * Math.pow(1 - t, 1.2);
     for (let m = 0; m < FLR; m++){
-      const t = m / FLR, o = out(t), yy = Y(m), hgt = Math.max(1, Math.round(S)) + 1;
-      px(cx - X(o), yy, X(o) * 2, hgt, TO_M);
-      px(cx - X(o), yy, Math.max(2, Math.round(X(o) * 0.30)), hgt, TO_L);
-      px(cx + X(o) - Math.max(2, Math.round(X(o) * 0.26)), yy,
-         Math.max(2, Math.round(X(o) * 0.26)), hgt, TO_D);
-      /* the two voids between the legs, closing as they merge */
-      const vi = 6.6, vo = o - 5.0;
-      if (vo > vi && m > 9){
-        px(cx - X(vo), yy, X(vo - vi), hgt, '#8FB6D4');
-        px(cx + X(vi), yy, X(vo - vi), hgt, '#8FB6D4');
-        px(cx - X(vo), yy, Math.max(1, X(0.8)), hgt, TO_D);
-        px(cx + X(vo) - Math.max(1, X(0.8)), yy, Math.max(1, X(0.8)), hgt, TO_D);
+      const t = m / FLR, o = splay(t), c = 7.4, lt = 4.2 + 3.4 * (1 - t);
+      const yy = Y(m), hgt = Math.max(1, Math.round(S)) + 1;
+      const inner = o - lt;
+      if (inner <= c + 1.1){                       /* merged: one mass */
+        px(cx - X(o), yy, X(o) * 2, hgt, C_M);
+        px(cx - X(o), yy, Math.max(2, Math.round(X(o) * 0.26)), hgt, C_D);
+        px(cx - X(c), yy, X(c) * 2, hgt, C_L);
+        px(cx + X(o) - Math.max(2, Math.round(X(o) * 0.26)), yy,
+           Math.max(2, Math.round(X(o) * 0.26)), hgt, C_D);
+      } else {                                     /* the near leg, then two splayed */
+        px(cx - X(c), yy, X(c) * 2, hgt, C_L);
+        px(cx - X(c), yy, Math.max(1, X(1.2)), hgt, C_X);
+        px(cx + X(c) - Math.max(1, X(1.2)), yy, Math.max(1, X(1.2)), hgt, C_X);
+        const lw = Math.max(2, X(o) - X(inner));
+        px(cx - X(o), yy, lw, hgt, C_D);
+        px(cx - X(o), yy, Math.max(1, Math.round(lw * 0.4)), hgt, C_M);
+        px(cx + X(inner), yy, lw, hgt, C_D);
+        px(cx + X(o) - Math.max(1, Math.round(lw * 0.4)), yy,
+           Math.max(1, Math.round(lw * 0.4)), hgt, C_M);
       }
     }
-    px(cx - X(23), Y(11), X(46), Y(0) - Y(11), TO_D);           /* base building */
-    px(cx - X(23), Y(11), X(46), Math.max(2, X(1.4)), TO_M);
-    for (let c = 0; c < 9; c++)
-      px(cx - X(21) + c * Math.round(X(42)/9), Y(7), Math.max(3, Math.round(X(42)/9) - 3),
-         Math.max(3, X(3)), WIN);
+    /* the glass elevators run up one face of the core: two continuous
+       channels, not a dashed line */
+    for (let m = 12; m < 336; m += 2){
+      const c = m < FLR ? 7.4 : core(m), hgt = Math.max(2, Math.round(S * 2) + 1);
+      px(cx - X(c * 0.46), Y(m), Math.max(1, X(1.2)), hgt, C_D);
+      px(cx - X(c * 0.10), Y(m), Math.max(1, X(1.2)), hgt, C_D);
+    }
+    px(cx - X(26), Y(13), X(52), Y(0) - Y(13), C_D);            /* base building */
+    px(cx - X(26), Y(13), X(52), Math.max(2, X(1.6)), C_M);
+    for (let c = 0; c < 11; c++)
+      px(cx - X(24) + c * Math.round(X(48)/11), Y(8),
+         Math.max(3, Math.round(X(48)/11) - 3), Math.max(3, X(3.4)), WIN);
 
     /* main level: cone, terrace, lookout, restaurant, roof */
-    const POD = X(15.6);
-    for (let m = 330; m < 342; m++){                                  /* the cone */
-      const t = (m - 330) / 12, w = X(hw(330) + (15.6 - hw(330)) * t * t);
-      px(cx - w, Y(m), w * 2, Math.max(1, Math.round(S)) + 1, TO_D);
-      px(cx - w, Y(m), Math.max(2, Math.round(w * 0.3)), Math.max(1, Math.round(S)) + 1, TO_M);
+    const POD = X(17.4);
+    for (let m = 328; m < 342; m++){
+      const t = (m - 328) / 14, w = X(core(328) + (17.4 - core(328)) * t * t);
+      px(cx - w, Y(m), w * 2, Math.max(1, Math.round(S)) + 1, C_D);
+      px(cx - w, Y(m), Math.max(2, Math.round(w * 0.34)), Math.max(1, Math.round(S)) + 1, C_M);
     }
-    px(cx - POD, Y(345), POD * 2, Y(342) - Y(345), '#1B2430');        /* outdoor terrace */
-    px(cx - POD, Y(345), POD * 2, Math.max(1, X(0.8)), '#8A96A4');    /* its railing */
-    px(cx - POD, Y(349), POD * 2, Y(345) - Y(349), TO_M);             /* indoor lookout */
-    const nw = Math.max(3, Math.round(POD * 2 / 12));
-    for (let c = 0; c < 12; c++)
-      px(cx - POD + 2 + c * nw, Y(348), Math.max(2, nw - 2), Y(346) - Y(348), WIN);
-    px(cx - POD, Y(353), POD * 2, Y(349) - Y(353), TO_M);             /* 360 restaurant */
-    px(cx - POD, Y(353), POD * 2, Math.max(2, X(1.4)), TO_L);
-    for (let c = 0; c < 12; c++)
-      px(cx - POD + 2 + c * nw, Y(352), Math.max(2, nw - 2), Y(350) - Y(352), WIN);
-    const rw = X(13.5);                                               /* the roof cap */
-    px(cx - rw, Y(356), rw * 2, Y(353) - Y(356), '#8A94A2');
-    px(cx - rw, Y(356), rw * 2, Math.max(1, X(1)), '#B4BEC8');
+    px(cx - POD, Y(346), POD * 2, Y(342) - Y(346), '#20252E');     /* outdoor terrace */
+    px(cx - POD, Y(346), POD * 2, Math.max(1, X(1)), '#C6CCD4');   /* its railing */
+    px(cx - POD, Y(351), POD * 2, Y(346) - Y(351), C_M);           /* indoor lookout */
+    const nw = Math.max(4, Math.round(POD * 2 / 13));
+    for (let c = 0; c < 13; c++)
+      px(cx - POD + 2 + c * nw, Y(350), Math.max(3, nw - 2), Y(347) - Y(350), WIN);
+    px(cx - POD, Y(357), POD * 2, Y(351) - Y(357), C_M);           /* 360 restaurant */
+    px(cx - POD, Y(357), POD * 2, Math.max(2, X(1.6)), C_L);
+    for (let c = 0; c < 13; c++)
+      px(cx - POD + 2 + c * nw, Y(355), Math.max(3, nw - 2), Y(352) - Y(355), WIN);
+    const rw = X(15.2);                                            /* the roof cap */
+    px(cx - rw, Y(361), rw * 2, Y(357) - Y(361), C_L);
+    px(cx - rw, Y(361), rw * 2, Math.max(1, X(1.2)), '#D2D8E0');
 
-    /* SkyPod at 447 - small, and the detail people forget. A disc with a
-       sloped underside and a pale cap, like the main pod at a third the
-       size, not a band around the shaft. */
-    const SP = X(9.2);
-    for (let m = 440; m < 444; m++){
-      const t = (m - 440) / 4, w = X(hw(m) + (9.2 - hw(m)) * t * t);
-      px(cx - w, Y(m), w * 2, Math.max(1, Math.round(S)) + 1, TO_D);
+    /* SkyPod at 447 - a third the size, with its own sloped underside */
+    const SP = X(6.4);
+    for (let m = 441; m < 445; m++){
+      const t = (m - 441) / 4, w = X(core(m) + (6.4 - core(m)) * t);
+      px(cx - w, Y(m), w * 2, Math.max(1, Math.round(S)) + 1, C_D);
     }
-    px(cx - SP, Y(451), SP * 2, Y(444) - Y(451), TO_M);
-    px(cx - SP, Y(448), SP * 2, Math.max(2, X(2.2)), WIN);
-    px(cx - SP, Y(451), SP * 2, Math.max(1, X(1.2)), '#8A94A2');
-    px(cx - X(7.6), Y(453), X(15.2), Y(451) - Y(453), '#8A94A2');
+    px(cx - SP, Y(452), SP * 2, Y(445) - Y(452), C_M);
+    px(cx - SP, Y(449), SP * 2, Math.max(2, X(2)), WIN);
+    px(cx - SP, Y(452), SP * 2, Math.max(1, X(1.2)), C_L);
 
-    /* antenna: 102m, stepped, with the aircraft light at the tip */
-    const AT = [[451, 505, 2.6], [505, 538, 1.7], [538, 553.33, 1.0]];
+    /* antenna: 102m, fine, stepped twice */
+    const AT = [[451, 500, 2.1], [500, 534, 1.4], [534, 553.33, 0.8]];
     for (const [m0, m1, w] of AT){
-      const ww = Math.max(2, X(w));
-      px(cx - ww, Y(m1), ww * 2, Y(m0) - Y(m1), TO_M);
-      px(cx - ww, Y(m1), Math.max(1, ww >> 1), Y(m0) - Y(m1), TO_L);
+      const ww = Math.max(1, X(w));
+      px(cx - ww, Y(m1), ww * 2, Y(m0) - Y(m1), C_M);
+      px(cx - ww, Y(m1), Math.max(1, ww >> 1), Y(m0) - Y(m1), C_L);
     }
-    px(cx - X(4), Y(509), X(8), Math.max(2, X(3)), TO_L);
-    px(cx - X(3), Y(542), X(6), Math.max(2, X(3)), TO_L);
-    px(cx - Math.max(2, X(2)), Y(553.33) - 2, Math.max(4, X(4)), Math.max(4, X(5)), '#E4353F');
+    px(cx - X(3.4), Y(503), X(6.8), Math.max(2, X(2.6)), C_L);
+    px(cx - X(2.4), Y(537), X(4.8), Math.max(2, X(2.2)), C_L);
+    px(cx - Math.max(2, X(1.8)), Y(553.33) - 2, Math.max(4, X(3.6)), Math.max(4, X(4.5)), '#E4353F');
   }
   function rogersCentre(cx, w, h){
     /* Four roof panels that nest like a stack of plates - three slide,
@@ -3692,8 +3710,8 @@ const CITY = (function(){
       rbp(462, 40, 202);
       tdTower(506, 38, 249);
       slab(246, 42, 395, '#232C3C', '#38445C', '#4E5C78', 4.4);   /* SkyTower */
-      rogersCentre(90, 451, 187);
-      cnTower(252, 1200);
+      rogersCentre(76, 451, 187);
+      cnTower(184, 1200);
     }
   });
 
