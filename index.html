@@ -734,20 +734,11 @@ const stars = Array.from({length:190}, () => ({
   p: rnd(0.02, 0.12)
 }));
 
-/* city skyline, generated once per run */
-let skylineFar = [], skylineNear = [];
+/* the city this run starts over, picked fresh each time */
+let cityIx = 0;
 function buildSkyline(){
-  skylineFar = []; skylineNear = [];
-  for (let x = -60; x < W + 60; ){
-    const w = rnd(52, 104);
-    skylineFar.push({ x, w, h: rnd(150, 360), win: Math.random() });
-    x += w + rnd(6, 22);
-  }
-  for (let x = -80; x < W + 80; ){
-    const w = rnd(70, 130);
-    skylineNear.push({ x, w, h: rnd(210, 480), win: Math.random() });
-    x += w + rnd(10, 30);
-  }
+  cityIx = Math.floor(Math.random() * CITY.count());
+  CITY.build(cityIx);
 }
 
 /* ================================================================
@@ -3014,6 +3005,412 @@ const SPR = (function(){
 })();
 
 /* ================================================================
+   12c. City skylines
+
+   Three starting cities, one picked per run. Heights are the real
+   ones, scaled so each city's tallest structure reaches the same
+   line - the frame is a fixed height and a city that fills a third
+   of it reads as a mistake rather than as St Louis. Within a city
+   every height stays in true proportion to every other. Widths are
+   set by eye: at a truthful width scale a 45m frontage is 110px and
+   six towers overflow a 540px world, so width carries the read and
+   height carries the reference.
+
+   Baked to two surfaces per run and blitted, rather than redrawn
+   every frame: the old generator painted about 1,500 rectangles a
+   frame for windows alone.
+   ================================================================ */
+const CITY = (function(){
+  let _g = null, OX = 0, OY = 0;
+  const px  = (x,y,w,h,col) => { _g.fillStyle = col; _g.fillRect(OX+x, OY+y, w, h); };
+  const dot = (x,y,col)     => px(x,y,1,1,col);
+
+  const SKY_W = 540, SKY_H = 500, GND = 500;
+
+  /* generic curtain-wall grey, the filler between landmarks */
+  const N_D='#1B2432', N_M='#2B3648', N_L='#3C4A5E';
+  const F_D='#435E80', F_M='#56749B', F_L='#6A8CB4';
+
+  function wins(x, y, w, h, seed, col, cw, chh, gapx, gapy){
+    cw = cw||3; chh = chh||4; gapx = gapx||4; gapy = gapy||6;
+    for (let r = 0; y + 5 + r*(chh+gapy) < y + h - 4; r++){
+      for (let c = 0; x + 3 + c*(cw+gapx) < x + w - 3; c++){
+        const n = Math.sin((r*12.9898 + c*78.233 + seed*43.7) * 43758.5453);
+        if (n - Math.floor(n) > 0.52) continue;
+        px(x + 3 + c*(cw+gapx), y + 5 + r*(chh+gapy), cw, chh, col);
+      }
+    }
+  }
+  /* a box with a lit left face and a shaded right one, which is the whole
+     of the modelling at this size */
+  function body(x, y, w, h, d, m, l){
+    px(x, y, w, h, m);
+    px(x, y, Math.max(2, w>>2), h, l);
+    px(x + w - Math.max(2, w>>3), y, Math.max(2, w>>3), h, d);
+  }
+  const WIN = 'rgba(255,214,130,.55)';
+  const WINF= 'rgba(255,214,130,.20)';
+
+  /* ====================================================================
+     TORONTO
+     CN Tower 553.3m, Rogers Centre 86m, First Canadian Place 298m,
+     Scotia Plaza 275m, TD Bank Tower 223m, Commerce Court West 239m,
+     Royal Bank Plaza 180m / 112m, SkyTower at Pinnacle One Yonge 351.8m.
+     Scale 470px / 553.3m = 0.849 px/m.
+     Arranged as it reads from the Toronto Islands: Rogers Centre and the
+     CN Tower on the left, the bank towers on the right.              */
+  const TO_CONC_D='#2E3844', TO_CONC='#4A5464', TO_CONC_L='#68727F';
+
+  function cnTower(cx){
+    const H = 470, g = GND;
+    /* shaft: three stacked tapers, not one per-column cone - a per-column
+       taper combs the moment the sprite is drawn at a fractional scale */
+    const SEG = [[0, 176, 30, 20], [176, 118, 20, 15], [294, 94, 15, 11]];
+    for (const [y0, hh, w0, w1] of SEG){
+      for (let i = 0; i < hh; i += 4){
+        const t = (i + 2) / hh, w = Math.round(w0 + (w1 - w0) * t);
+        px(cx - (w>>1), g - y0 - i - 4, w, 4, TO_CONC);
+        px(cx - (w>>1), g - y0 - i - 4, 3, 4, TO_CONC_L);
+        px(cx + (w>>1) - 3, g - y0 - i - 4, 3, 4, TO_CONC_D);
+      }
+    }
+    /* main pod at 342-351m: the restaurant ring, sloped underneath */
+    const py = g - Math.round(H * 342/553.3);
+    for (let i = 0; i < 9; i++)
+      px(cx - 10 - i*2, py + 12 - i, 20 + i*4, 2, TO_CONC_D);
+    px(cx - 27, py - 2, 54, 14, TO_CONC);
+    px(cx - 27, py - 2, 54, 4,  TO_CONC_L);
+    px(cx - 27, py + 8, 54, 4,  TO_CONC_D);
+    for (let c = 0; c < 9; c++) px(cx - 23 + c*6, py + 2, 3, 4, WIN);
+    px(cx - 20, py - 8, 40, 6, TO_CONC); px(cx - 20, py - 8, 40, 2, TO_CONC_L);
+    /* SkyPod at 447m */
+    const sy = g - Math.round(H * 447/553.3);
+    px(cx - 10, sy, 20, 11, TO_CONC); px(cx - 10, sy, 20, 3, TO_CONC_L);
+    for (let c = 0; c < 4; c++) px(cx - 7 + c*5, sy + 4, 3, 4, WIN);
+    /* antenna, 457m to the top */
+    px(cx - 2, g - H + 34, 4, Math.round(H * (457-0)/553.3) - (H - 34) + 0, TO_CONC);
+    px(cx - 2, g - H + 34, 4, 40, TO_CONC);
+    px(cx - 3, g - Math.round(H*457/553.3), 6, 10, TO_CONC_L);
+    px(cx - 1, g - H, 2, 36, TO_CONC_L);
+    px(cx - 2, g - H - 4, 4, 5, '#E4353F');
+  }
+  function rogersCentre(cx, w, h){
+    const g = GND, r = w >> 1;
+    /* the retractable roof: a shallow dome, four panel seams */
+    for (let y = 0; y < h; y++){
+      const t = y / h, hw = Math.round(r * Math.sqrt(Math.max(0, 1 - (1-t)*(1-t))));
+      px(cx - hw, g - h + y, hw*2, 1, y < h*0.28 ? '#6E7A8A' : '#4E5A6C');
+    }
+    px(cx - r, g - 24, w, 24, '#3A4456'); px(cx - r, g - 24, w, 3, '#586478');
+    for (const o of [-0.46, -0.16, 0.16, 0.46]){
+      const sx = Math.round(cx + r*o);
+      px(sx, g - h + 6, 2, h - 30, '#333D4C');
+    }
+    for (let c = 0; c < 16; c++) px(cx - r + 8 + c*((w-16)/16), g - 17, 4, 5, WIN);
+  }
+  function scotiaPlaza(x, w, h){                    /* Napoleon red granite */
+    const g = GND, y = g - h;
+    body(x, y, w, h, '#4E1E24', '#7A3038', '#A04048');
+    wins(x, y, w, h, 3.1, WIN);
+    /* the sculpted recess at the crown - the one silhouette detail that
+       makes this tower unmistakable from the lake */
+    px(x + w - 14, y, 14, 26, '#0F1520');
+    px(x + w - 14, y + 26, 14, 4, '#4E1E24');
+    px(x, y, w - 14, 3, '#C25460');
+  }
+  function fcp(x, w, h){                            /* white, flat, plain */
+    const g = GND, y = g - h;
+    body(x, y, w, h, '#8E96A6', '#C8CEDA', '#E2E8F0');
+    wins(x, y, w, h, 7.7, 'rgba(255,214,130,.40)');
+    px(x, y, w, 3, '#F2F6FA');
+  }
+  function tdTower(x, w, h){                        /* Mies, obsidian, flat */
+    const g = GND, y = g - h;
+    body(x, y, w, h, '#0B0F16', '#161C26', '#242C38');
+    wins(x, y, w, h, 11.3, 'rgba(255,214,130,.34)');
+    px(x, y, w, 2, '#39445A');
+  }
+  function rbp(x, w, h){                            /* gold reflective glass */
+    const g = GND, y = g - h;
+    body(x, y, w, h, '#5E4514', '#8A6A22', '#C8A03A');
+    wins(x, y, w, h, 5.5, 'rgba(255,236,170,.50)');
+    px(x, y, w, 3, '#E8C868');
+  }
+  function slab(x, w, h, d, m, l, seed, wc){
+    const y = GND - h;
+    body(x, y, w, h, d, m, l);
+    wins(x, y, w, h, seed, wc || WIN);
+  }
+
+  /* ====================================================================
+     NEW YORK  - midtown, the view north from the Hudson.
+     Central Park Tower 472.4m, Empire State 443.2m to the antenna tip,
+     111 West 57th 435.3m, One Vanderbilt 427m, 432 Park 425.5m,
+     Bank of America Tower 365.8m, Chrysler 318.9m.
+     Scale 470px / 472.4m = 0.995 px/m - near enough 1px per metre.  */
+  const NY_D='#3A4150', NY_M='#5A6272', NY_L='#7A8290';
+
+  function empireState(cx){
+    const g = GND, S = 0.995;
+    const px_ = (m) => Math.round(m * S);
+    /* five-storey base, then the shaft, then the deco setbacks */
+    px(cx - 52, g - px_(60), 104, px_(60), NY_M);
+    px(cx - 52, g - px_(60), 26,  px_(60), NY_L);
+    px(cx + 40, g - px_(60), 12,  px_(60), NY_D);
+    wins(cx - 52, g - px_(60), 104, px_(60), 2.2, WIN);
+    const SH = [[60, 200, 34], [260, 60, 28], [320, 42, 22], [362, 19, 15]];
+    for (const [y0, hh, hw] of SH){
+      px(cx - hw, g - px_(y0 + hh), hw*2, px_(hh), NY_M);
+      px(cx - hw, g - px_(y0 + hh), Math.max(4, hw>>1), px_(hh), NY_L);
+      px(cx + hw - 6, g - px_(y0 + hh), 6, px_(hh), NY_D);
+      wins(cx - hw, g - px_(y0 + hh), hw*2, px_(hh), y0/7, WIN);
+      px(cx - hw - 2, g - px_(y0 + hh), hw*2 + 4, 3, NY_L);
+    }
+    /* mooring mast and the broadcast antenna above it */
+    px(cx - 7, g - px_(393), 14, px_(12), NY_L);
+    px(cx - 5, g - px_(405), 10, px_(12), NY_M);
+    px(cx - 3, g - px_(381 + 62), 6, px_(50), NY_L);
+    px(cx - 1, g - px_(443), 2, px_(12), '#C6D2DE');
+    px(cx - 2, g - px_(445), 4, 4, '#E4353F');
+  }
+  function chrysler(cx){
+    const g = GND, S = 0.995, px_ = m => Math.round(m * S);
+    px(cx - 27, g - px_(180), 54, px_(180), NY_M);
+    px(cx - 27, g - px_(180), 14, px_(180), NY_L);
+    px(cx + 19, g - px_(180), 8,  px_(180), NY_D);
+    wins(cx - 27, g - px_(180), 54, px_(180), 4.4, WIN);
+    px(cx - 21, g - px_(246), 42, px_(66), NY_M);
+    px(cx - 21, g - px_(246), 11, px_(66), NY_L);
+    wins(cx - 21, g - px_(246), 42, px_(66), 6.6, WIN);
+    /* the crown: seven diminishing arches in polished steel */
+    const CR = [[246, 20], [252, 17], [258, 14], [264, 11], [269, 8], [273, 6], [276, 4]];
+    for (const [y0, hw] of CR){
+      px(cx - hw, g - px_(y0 + 7), hw*2, px_(7), '#8A93A2');
+      px(cx - hw, g - px_(y0 + 7), hw*2, 2, '#C6D2DE');
+      px(cx - hw + 2, g - px_(y0 + 5), 2, px_(4), '#E8F0F8');
+      px(cx + hw - 4, g - px_(y0 + 5), 2, px_(4), '#E8F0F8');
+    }
+    px(cx - 2, g - px_(319), 4, px_(36), '#C6D2DE');       /* the needle */
+    px(cx - 1, g - px_(319), 2, px_(38), '#E8F0F8');
+  }
+  function vanderbilt(x, w, h){                     /* tapered, faceted */
+    const g = GND;
+    const ST = [[0, 0.52, 1.0], [0.52, 0.78, 0.84], [0.78, 0.93, 0.66], [0.93, 1, 0.44]];
+    for (const [a, b, f] of ST){
+      const ww = Math.round(w * f), xx = x + ((w - ww) >> 1);
+      px(xx, g - Math.round(h*b), ww, Math.round(h*(b-a)), '#48566E');
+      px(xx, g - Math.round(h*b), Math.max(4, ww>>2), Math.round(h*(b-a)), '#66748C');
+      wins(xx, g - Math.round(h*b), ww, Math.round(h*(b-a)), a*13, WIN);
+    }
+    px(x + (w>>1) - 2, g - h - 14, 4, 16, '#8A93A2');
+  }
+  function park432(x, w, h){                        /* the square column */
+    const g = GND, y = g - h;
+    px(x, y, w, h, '#4A5260'); px(x, y, 5, h, '#6A7280'); px(x + w - 4, y, 4, h, '#2E3644');
+    /* six square openings a floor, on a strict grid - that grid is the
+       whole of this building's identity */
+    for (let r = 0; y + 6 + r*13 < g - 6; r++)
+      for (let c = 0; c < 3; c++){
+        const n = Math.sin((r*12.9 + c*78.2 + 9.1) * 43758.5453);
+        px(x + 4 + c*8, y + 6 + r*13, 5, 6, (n - Math.floor(n)) > 0.5 ? 'rgba(20,26,36,.9)' : WIN);
+      }
+  }
+  function steinway(x, w, h){                       /* 1:24, the skinniest */
+    const g = GND, y = g - h;
+    px(x, y, w, h, '#2E3644'); px(x, y, 4, h, '#485264');
+    /* the east face steps back in the top third */
+    for (let i = 0; i < 7; i++)
+      px(x + w - 3 - i, y + Math.round(h*0.34) + i*Math.round(h*0.09), 3 + i, Math.round(h*0.09), '#1A2130');
+    wins(x, y, w, h, 8.8, 'rgba(255,214,130,.42)', 3, 4, 3, 7);
+    px(x, y, w, 2, '#8A6A3A');                      /* bronze cap */
+  }
+  function centralParkTower(x, w, h){
+    const g = GND, y = g - h;
+    const nw = Math.round(w * 0.62);
+    px(x, y + Math.round(h*0.24), w, h - Math.round(h*0.24), '#525C6E');   /* cantilever */
+    px(x, y + Math.round(h*0.24), 6, h - Math.round(h*0.24), '#6E7A8C');
+    px(x + Math.round((w-nw)/2), y, nw, Math.round(h*0.26), '#525C6E');
+    wins(x, y + Math.round(h*0.24), w, h - Math.round(h*0.24), 12.1, WIN);
+    wins(x + Math.round((w-nw)/2), y, nw, Math.round(h*0.26), 3.3, WIN);
+    px(x, y + Math.round(h*0.24), w, 2, '#8A96A8');
+  }
+
+  /* ====================================================================
+     ST LOUIS - the view from the Illinois bank, the Arch in front.
+     Gateway Arch 192m, One Metropolitan Square 180.7m, 909 Chestnut
+     179m, Eagleton Courthouse 170m, Old Courthouse ~58m.
+     Scale 470px / 192m = 2.448 px/m.                                 */
+  const SL_D='#2A3442', SL_M='#3E4A5C', SL_L='#56647A';
+
+  /* A weighted catenary, solved per destination ROW rather than swept
+     along the centreline: sweeping leaves rows unclaimed near the crown
+     where the curve runs almost flat. */
+  function gatewayArch(cx, w, h){
+    const g = GND, C = 3.0, half = w/2;
+    const ch = Math.cosh(C);
+    const BASE = w * 0.086, TOP = w * 0.027;        /* 54ft at the foot, 17ft at the top */
+    for (let yy = 0; yy <= h; yy++){
+      const u = yy / h;                             /* 0 at the ground, 1 at the crown */
+      const arg = ch - u * (ch - 1);
+      if (arg < 1) continue;
+      const t = Math.acosh(arg) / C;                /* 1 at the foot, 0 at the crown */
+      const dx = t * half, th = Math.round(TOP + (BASE - TOP) * t);
+      const y = g - yy;
+      const inL = cx - dx + th/2, inR = cx + dx - th/2;
+      if (inL >= inR){                              /* the legs have met */
+        px(Math.round(cx - dx - th/2), y, Math.round(2*dx + th), 1, '#9EAAB8');
+        px(Math.round(cx - dx - th/2), y, Math.round(2*dx + th), 1, '#9EAAB8');
+      } else {
+        px(Math.round(cx - dx - th/2), y, th, 1, '#8A97A8');
+        px(Math.round(cx + dx - th/2), y, th, 1, '#8A97A8');
+        /* stainless steel: a hard lit edge on the inboard face of each leg */
+        px(Math.round(cx - dx - th/2), y, Math.max(1, th>>2), 1, '#C6D2DE');
+        px(Math.round(cx + dx + th/2) - Math.max(1, th>>2), y, Math.max(1, th>>2), 1, '#C6D2DE');
+      }
+    }
+  }
+  function oldCourthouse(cx, w, h){
+    const g = GND, y = g - h, bw = Math.round(w*0.86);
+    px(cx - (bw>>1), y + Math.round(h*0.46), bw, Math.round(h*0.54), '#8E949E');
+    px(cx - (bw>>1), y + Math.round(h*0.46), 6, Math.round(h*0.54), '#AAB0BA');
+    for (let c = 0; c < 7; c++)
+      px(cx - (bw>>1) + 5 + c*Math.round((bw-10)/7), y + Math.round(h*0.56), 3, Math.round(h*0.34), '#6E747E');
+    const dr = Math.round(w*0.19), dcy = y + Math.round(h*0.46);
+    for (let i = 0; i <= dr; i++){                  /* the green dome */
+      const hw = Math.round(dr * Math.sqrt(Math.max(0, 1 - (i/dr)*(i/dr))));
+      px(cx - hw, dcy - i, hw*2, 1, i > dr*0.55 ? '#4E8E74' : '#3E7A62');
+    }
+    px(cx - dr - 3, dcy, dr*2 + 6, 4, '#8E949E');
+    px(cx - 2, dcy - dr - 9, 4, 10, '#4E8E74');
+    px(cx - 1, dcy - dr - 13, 2, 5, '#C6D2DE');
+  }
+  function metSquare(x, w, h){                      /* stepped, pitched crown */
+    const g = GND, y = g - h;
+    body(x, y + 28, w, h - 28, '#2A3240', '#42506A', '#5E6E8C');
+    wins(x, y + 28, w, h - 28, 2.7, WIN);
+    const iw = Math.round(w*0.72), ix = x + ((w - iw) >> 1);
+    body(ix, y + 12, iw, 20, '#2A3240', '#42506A', '#5E6E8C');
+    for (let i = 0; i < 12; i++)                    /* the pitched cap */
+      px(ix + Math.round(i*iw/24), y + 12 - i, iw - Math.round(i*iw/12), 1,
+         i < 4 ? '#6E7E9C' : '#42506A');
+    px(x + (w>>1) - 1, y - 14, 2, 16, '#8A93A2');
+  }
+  function eagleton(x, w, h){                       /* the domed rotunda */
+    const g = GND, y = g - h;
+    body(x, y + 30, w, h - 30, '#333D4E', '#4A5668', '#66748A');
+    wins(x, y + 30, w, h - 30, 6.1, WIN);
+    const dr = Math.round(w*0.40), cx = x + (w>>1);
+    for (let i = 0; i <= dr; i++){
+      const hw = Math.round(dr * Math.sqrt(Math.max(0, 1 - (i/dr)*(i/dr))));
+      px(cx - hw, y + 30 - i, hw*2, 1, i > dr*0.6 ? '#7E8A9C' : '#5A6678');
+    }
+    px(cx - dr - 2, y + 28, dr*2 + 4, 4, '#66748A');
+    px(cx - 1, y + 28 - dr - 8, 2, 9, '#8A93A2');
+  }
+
+  /* ---- far layer: generic infill, hazed back -------------------------- */
+  function farRow(seed, lo, hi){
+    let s = seed;
+    const rr = () => (s = (s*1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    for (let x = -30; x < SKY_W + 30; ){
+      const w = Math.round(34 + rr()*56), h = Math.round(lo + rr()*(hi-lo));
+      const y = GND - h;
+      px(x, y, w, h, F_M);
+      px(x, y, Math.max(2, w>>2), h, F_L);
+      px(x + w - 4, y, 4, h, F_D);
+      wins(x, y, w, h, rr()*20, WINF);
+      x += w + Math.round(4 + rr()*18);
+    }
+  }
+
+  const CITIES = [];
+
+  CITIES.push({
+    name: 'Toronto', tag: 'from the Islands \u00b7 553.3m to the CN Tower tip',
+    far: () => farRow(3, 110, 270),
+    near(){
+      slab(2, 38, 152, N_D, N_M, N_L, 1.7);
+      rogersCentre(96, 176, 74);
+      cnTower(170);
+      slab(206, 40, 228, N_D, N_M, N_L, 5.9);
+      slab(252, 36, 299, '#232C3C', '#38445C', '#4E5C78', 4.4);   /* SkyTower */
+      slab(294, 34, 196, N_D, N_M, N_L, 8.3);
+      fcp(344, 44, 253);
+      scotiaPlaza(394, 40, 234);
+      rbp(440, 32, 153);
+      tdTower(478, 30, 189);
+      slab(514, 30, 203, '#4A5260', '#6E7686', '#8E96A6', 9.3);   /* Commerce Court */
+    }
+  });
+
+  CITIES.push({
+    name: 'New York', tag: 'midtown, north from the Hudson \u00b7 472.4m to the top',
+    far: () => farRow(11, 130, 300),
+    near(){
+      slab(-6, 44, 210, N_D, N_M, N_L, 2.1);
+      empireState(58);
+      chrysler(146);
+      slab(178, 36, 196, N_D, N_M, N_L, 5.2);
+      slab(218, 42, 300, N_D, N_M, N_L, 7.4);
+      slab(264, 40, 232, N_D, N_M, N_L, 3.6);
+      slab(308, 34, 270, N_D, N_M, N_L, 6.3);
+      vanderbilt(348, 48, 425);
+      park432(402, 26, 424);
+      steinway(434, 18, 434);
+      centralParkTower(458, 54, 470);
+      slab(518, 30, 228, N_D, N_M, N_L, 8.1);
+    }
+  });
+
+  CITIES.push({
+    name: 'St Louis', tag: 'from the Illinois bank \u00b7 192m to the crown of the Arch',
+    far: () => farRow(23, 90, 210),
+    near(){
+      slab(2, 40, 250, SL_D, SL_M, SL_L, 1.3);
+      metSquare(48, 50, 443);
+      slab(104, 54, 438, '#2E3644', '#445062', '#5C6A80', 4.9);   /* 909 Chestnut */
+      eagleton(164, 42, 416);
+      slab(212, 38, 300, SL_D, SL_M, SL_L, 8.2);
+      slab(256, 40, 278, SL_D, SL_M, SL_L, 2.9);
+      slab(302, 38, 330, SL_D, SL_M, SL_L, 6.7);
+      slab(346, 36, 246, SL_D, SL_M, SL_L, 3.4);
+      slab(388, 34, 208, SL_D, SL_M, SL_L, 9.8);
+      slab(428, 38, 268, SL_D, SL_M, SL_L, 5.1);
+      slab(472, 30, 190, SL_D, SL_M, SL_L, 7.2);
+      slab(508, 34, 226, SL_D, SL_M, SL_L, 2.4);
+    },
+    front(){
+      oldCourthouse(270, 96, 142);
+      gatewayArch(270, 470, 470);
+    }
+  });
+
+
+  const FAR_H = 320, NEAR_H = 500;
+  function surf(h, draw){
+    const cv = document.createElement('canvas');
+    cv.width = SKY_W; cv.height = h;
+    _g = cv.getContext('2d'); OX = 0; OY = h - GND;
+    draw();
+    return cv;
+  }
+  let cache = null;
+  function build(i){
+    const c = CITIES[i];
+    cache = { name: c.name, i,
+              far:  surf(FAR_H,  c.far),
+              near: surf(NEAR_H, () => { c.near(); if (c.front) c.front(); }) };
+    return cache;
+  }
+  return {
+    build, count: () => CITIES.length,
+    names: () => CITIES.map(c => c.name),
+    current: () => cache,
+    FAR_H, NEAR_H
+  };
+})();
+
+/* ================================================================
    13. Rendering
    ================================================================ */
 function drawSky(){
@@ -3072,60 +3469,29 @@ function drawEarthLimb(){
   ctx.restore();
 }
 
-function building(b, groundY, fill, winAlpha){
-  const y = groundY - b.h;
-  if (y > H) return;
-  ctx.fillStyle = fill;
-  ctx.fillRect(b.x, y, b.w, b.h);
-  if (winAlpha > 0){
-    ctx.fillStyle = 'rgba(255,214,130,' + winAlpha + ')';
-    const cols = Math.max(1, Math.floor(b.w / 17));
-    const rows = Math.max(1, Math.floor(b.h / 22));
-    for (let r = 0; r < rows; r++){
-      for (let c = 0; c < cols; c++){
-        /* deterministic per-window "is the light on" */
-        const n = Math.sin((r*12.9898 + c*78.233 + b.win*43.7) * 43758.5453);
-        if (n - Math.floor(n) > 0.55) continue;
-        ctx.fillRect(b.x + 7 + c*17, y + 10 + r*22, 7, 11);
-      }
-    }
-  }
-}
-
 function drawCity(){
-  /* parallax is per pixel of climb, so these are set against the new
-     altitude scale: the skyline sinks away over the first 2,800ft and
-     is gone once we are above everything built */
+  /* parallax is per pixel of climb, set against the altitude scale: the
+     skyline sinks away over the first 2,800ft and is gone once we are
+     above everything built */
   const farY  = H * 0.88 + px * 0.016;
   const nearY = H * 0.94 + px * 0.028;
   if (farY - 520 > H) return;
   const haze = clamp(1 - feet / 3000, 0, 1);
+  const c = CITY.current();
+  if (!c) return;
   ctx.save();
   ctx.globalAlpha = haze;
+  ctx.imageSmoothingEnabled = false;
 
   ctx.fillStyle = 'rgba(120,150,185,.45)';
   ctx.fillRect(0, farY, W, H - farY + 40);
-  for (const b of skylineFar) building(b, farY, 'rgba(86,116,155,.75)', 0.16);
+  ctx.globalAlpha = haze * 0.55;
+  ctx.drawImage(c.far, 0, Math.round(farY - CITY.FAR_H));
 
-  for (const b of skylineNear) building(b, nearY, '#2B3648', 0.5);
+  ctx.globalAlpha = haze;
+  ctx.drawImage(c.near, 0, Math.round(nearY - CITY.NEAR_H));
   ctx.fillStyle = '#1D2532';
   ctx.fillRect(0, nearY, W, H - nearY + 60);
-
-  /* the shaft the car came out of, dead centre on the launch tower */
-  const towerX = W/2 - 70, towerTop = nearY - 620;
-  if (towerTop < H){
-    ctx.fillStyle = '#39465C';
-    ctx.fillRect(towerX, towerTop, 140, nearY - towerTop);
-    ctx.fillStyle = '#141A24';
-    ctx.fillRect(towerX + 46, towerTop - 6, 48, nearY - towerTop);
-    ctx.fillStyle = 'rgba(244,195,74,.85)';
-    ctx.fillRect(towerX + 46, towerTop - 10, 48, 8);
-    ctx.fillStyle = 'rgba(255,214,130,.55)';
-    for (let r = 0; r < 22; r++){
-      ctx.fillRect(towerX + 12, towerTop + 18 + r*26, 22, 12);
-      ctx.fillRect(towerX + 106, towerTop + 18 + r*26, 22, 12);
-    }
-  }
   ctx.restore();
 }
 
@@ -4052,6 +4418,10 @@ window.DBG = {
       spawnPickup(a[0]); const o = obstacles[obstacles.length - 1];
       o.x = a[1]; o.y = a[2]; o.vy = 0; }); },
   play: () => { if (state !== S.PLAY) start(); },
+  /* force a city, so all three can be looked at side by side */
+  city: i => { cityIx = i % CITY.count(); CITY.build(cityIx); return CITY.names()[cityIx]; },
+  cities: () => CITY.names(),
+  clear: () => { obstacles.length = 0; },
   /* raise the dome and clear the sky, so it can be looked at */
   dome: () => { player.shield = true; player.bubble = 1;
                 player.mercy = 0; obstacles.length = 0; setLabels(); },
