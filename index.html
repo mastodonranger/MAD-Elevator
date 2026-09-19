@@ -3167,29 +3167,29 @@ const CITY = (function(){
 
     /* pale poured concrete - it is a much lighter object than the glass
        towers behind it, and reading dark is most of what made it wrong */
-    const C_L = '#C4C2C6', C_M = '#8E8890', C_D = '#665E66', C_X = '#403A44';
+    const C_L = '#E2DEDC', C_M = '#A89EA0', C_D = '#7A6A6E', C_X = '#4E4246';
 
     const FLR = 92;                      /* the legs are merged by here */
-    const CORE = [[FLR, 9.6], [250, 8.2], [338, 7.4], [355, 6.8],
-                  [447, 5.6], [451, 5.2]];
+    const CORE = [[FLR, 10.4], [250, 8.9], [331, 7.7], [359.6, 4.6],
+                  [400, 4.2], [411, 4.0], [451, 2.7]];
     function core(m){
-      if (m <= FLR) return 9.6;
+      if (m <= FLR) return 10.4;
       for (let i = 0; i < CORE.length - 1; i++){
         const [a1, w1] = CORE[i], [a2, w2] = CORE[i+1];
         if (m <= a2) return w1 + (w2 - w1) * (m - a1) / (a2 - a1);
       }
-      return 5.2;
+      return 2.7;
     }
     /* one band of shaft: a broad lit face, a shadowed wing either side,
        and the two seams where the wings meet the core */
     function band(m, hwm, hgt){
       const w = X(hwm) * 2, x0 = cx - (w >> 1), yy = Y(m);
-      px(x0, yy, w, hgt, C_M);
-      px(x0, yy, Math.max(2, Math.round(w * 0.24)), hgt, C_D);
-      px(x0 + Math.round(w * 0.24), yy, Math.max(2, Math.round(w * 0.50)), hgt, C_L);
-      px(x0 + w - Math.max(2, Math.round(w * 0.26)), yy, Math.max(2, Math.round(w * 0.26)), hgt, C_D);
-      px(x0 + Math.round(w * 0.24), yy, Math.max(1, w > 16 ? 2 : 1), hgt, C_X);
-      px(x0 + Math.round(w * 0.74), yy, Math.max(1, w > 16 ? 2 : 1), hgt, C_X);
+      px(x0, yy, w, hgt, C_D);
+      px(x0, yy, Math.max(1, Math.round(w * 0.12)), hgt, C_M);
+      px(x0 + Math.round(w * 0.12), yy, Math.max(2, Math.round(w * 0.18)), hgt, C_L);
+      px(x0 + Math.round(w * 0.30), yy, Math.max(2, Math.round(w * 0.32)), hgt, C_M);
+      px(x0 + Math.round(w * 0.30), yy, Math.max(1, w > 18 ? 2 : 1), hgt, C_X);
+      px(x0 + Math.round(w * 0.62), yy, Math.max(1, w > 18 ? 2 : 1), hgt, C_X);
     }
     const step = 3;
     for (let yy = Y(451); yy < Y(FLR); yy += step) band((g - yy) / S, core((g - yy) / S), step);
@@ -3199,7 +3199,7 @@ const CITY = (function(){
        legs are painted as three separate shapes rather than a solid mass
        with holes punched in it, so what shows through the gaps is
        whatever stands behind the tower. */
-    const splay = t => 9.6 + 23.7 * Math.pow(1 - t, 1.2);
+    const splay = t => 10.4 + 22.9 * Math.pow(1 - t, 1.2);
     for (let m = 0; m < FLR; m++){
       const t = m / FLR, o = splay(t), c = 7.4, lt = 4.2 + 3.4 * (1 - t);
       const yy = Y(m), hgt = Math.max(1, Math.round(S)) + 1;
@@ -3224,10 +3224,9 @@ const CITY = (function(){
     }
     /* the glass elevators run up one face of the core: two continuous
        channels, not a dashed line */
-    for (let m = 12; m < 336; m += 2){
-      const c = m < FLR ? 7.4 : core(m), hgt = Math.max(2, Math.round(S * 2) + 1);
-      px(cx - X(c * 0.46), Y(m), Math.max(1, X(1.2)), hgt, C_D);
-      px(cx - X(c * 0.10), Y(m), Math.max(1, X(1.2)), hgt, C_D);
+    for (let m = 12; m < 330; m += 2){
+      const c = m < FLR ? 7.0 : core(m), hgt = Math.max(2, Math.round(S * 2) + 1);
+      px(cx - X(c * 0.30), Y(m), Math.max(1, X(1.0)), hgt, C_X);
     }
     px(cx - X(26), Y(13), X(52), Y(0) - Y(13), C_D);            /* base building */
     px(cx - X(26), Y(13), X(52), Math.max(2, X(1.6)), C_M);
@@ -3236,73 +3235,75 @@ const CITY = (function(){
          Math.max(3, Math.round(X(48)/11) - 3), Math.max(3, X(3.4)), WIN);
 
     /* ---- the top ------------------------------------------------------
-       Every level of the pod is its own ring seen edge on, so its outline
-       is a lozenge: the extreme rows pull in at both ends. Stacked, the
-       widest and brightest disc sits at the BOTTOM - it is the soffit
-       under the terrace, catching light off the lake - and the stack
-       steps in as it rises to the gold band of the restaurant and a pale
-       cap. That order is what makes it read as the CN Tower rather than
-       as a bulb with stripes painted on it.                            */
-    function lozenge(m0, m1, hwm, kind){
+       Measured off the reference rather than off the survey. Seven discs,
+       each seen edge on so its outline is a lozenge, widths climbing
+       steadily as they descend and the brightest at the foot of the
+       stack. The proportions that carry it are the ratios between the
+       three parts: the pod is twice the shaft below it and better than
+       four times the mast above, so the pod reads as a bulge on a pole
+       rather than as a collar on a column.                             */
+    const PW2 = 18.2;                                  /* the pod's half-width */
+    function lozenge(m0, m1, hwm, set){
       const w = X(hwm), y1 = Y(m1), h = Math.max(3, Y(m0) - Y(m1));
-      const r = Math.max(1, Math.round(w * 0.17));
-      const SET = {
-        soffit: ['#DCDEE2', '#F4F6F8', '#A2A6AC'],
-        body:   ['#8A828A', '#B2AEB4', '#5E565E'],
-        dark:   ['#4A4450', '#635C6A', '#2E2A36'],
-        navy:   ['#242634', '#3A3C4C', '#16181F'],
-        gold:   ['#B8985C', '#E2C88A', '#7E6438'],
-        cap:    ['#C2C4CA', '#E8EAEE', '#8A8E96']
-      }[kind];
+      const r = Math.max(2, Math.round(w * 0.20));
       for (let i = 0; i < h; i++){
         const ww = w - Math.round(r * (1 - Math.sin(Math.PI * (i + 0.5) / h)));
-        const col = i < Math.max(1, h * 0.22) ? SET[1]
-                  : i > h - 1 - Math.max(1, h * 0.26) ? SET[2] : SET[0];
+        const col = i < Math.max(1, h * 0.24) ? set[1]
+                  : i > h - 1 - Math.max(1, h * 0.28) ? set[2] : set[0];
         px(cx - ww, y1 + i, ww * 2, 1, col);
       }
-      if (kind === 'gold'){
-        const nw = Math.max(3, Math.round(w * 2 / 15));
-        for (let cI = 0; cI < 15; cI++)
-          px(cx - w + 3 + cI * nw, y1 + 1, Math.max(2, nw - 2), Math.max(2, h - 2), '#F2DCA6');
-      }
-      if (kind === 'dark' || kind === 'navy'){
-        for (let i = 3; i < w*2 - 3; i += Math.max(2, X(1.5)))
-          px(cx - w + i, y1 + 1, 1, Math.max(1, h - 2), kind === 'navy' ? '#3E4252' : '#6E6878');
+      if (set[3]){                                     /* glazing or louvres */
+        const n = set[3] === 'win' ? 15 : Math.round(w / 2);
+        const nw = Math.max(2, Math.round(w * 2 / n));
+        for (let k = 0; k < n; k++)
+          px(cx - w + 3 + k * nw, y1 + 1, Math.max(1, nw - 2),
+             Math.max(1, h - 2), set[4]);
       }
     }
-    /* bottom, top, half-width, kind */
+    const WHITE = ['#DEDAD8', '#F0EEEC', '#A69E9E'];
+    const DKWID = ['#6A5E62', '#8A7E82', '#463C40', 'lv', '#7E7276'];
+    const NAVY  = ['#2E3038', '#44464F', '#1C1E24', 'lv', '#3E4250'];
+    const MIDGY = ['#A89EA0', '#C8C0C0', '#7A6E70'];
+    const DKGY  = ['#5E5458', '#7A6E72', '#3E363A', 'lv', '#6E6266'];
+    const GOLD  = ['#948250', '#B8A470', '#5E4E2C', 'win', '#C4B482'];
+    const CAP   = ['#C0BABA', '#E2DEDC', '#8A8282'];
+    /* bottom, top, half-width, palette */
     const POD = [
-      [334.0, 340.0, 18.2, 'soffit'],   /* widest and brightest, at the foot */
-      [340.0, 343.0, 16.2, 'navy'],     /* the recess above it */
-      [343.0, 348.0, 17.2, 'body'],     /* the deck */
-      [348.0, 352.5, 17.8, 'dark'],     /* the dark ring, the heaviest band */
-      [352.5, 356.5, 16.0, 'gold'],     /* the restaurant, lit */
-      [356.5, 360.0, 12.8, 'cap']
+      [331.0, 336.8, 18.20, WHITE],
+      [336.8, 342.6, 18.00, DKWID],
+      [342.6, 345.8, 16.40, NAVY ],
+      [345.8, 349.4, 15.80, MIDGY],
+      [349.4, 352.6, 14.90, DKGY ],
+      [352.6, 356.0, 13.50, GOLD ],
+      [356.0, 358.8, 12.00, CAP  ]
     ];
-    for (let m = 320; m < 334; m++){                   /* the cone out of the shaft */
-      const t = (m - 320) / 14, w = X(core(320) + (18.2 - core(320)) * t * t);
-      px(cx - w, Y(m), w * 2, Math.max(1, Math.round(S)) + 1, C_D);
-      px(cx - w, Y(m), Math.max(2, Math.round(w * 0.30)), Math.max(1, Math.round(S)) + 1, C_M);
+    /* the cone, solved per destination row so it does not step */
+    for (let yy = Y(331); yy < Y(324); yy++){
+      const m = (GND - yy) / S, t = clamp((m - 324) / 7, 0, 1);
+      const w = X(core(324) + (PW2 - core(324)) * t * t);
+      px(cx - w, yy, w * 2, 1, C_D);
+      px(cx - w, yy, Math.max(2, Math.round(w * 0.26)), 1, C_M);
+      px(cx + w - Math.max(2, Math.round(w * 0.20)), yy, Math.max(2, Math.round(w * 0.20)), 1, C_X);
     }
-    for (const [m0, m1, hwm, kind] of POD) lozenge(m0, m1, hwm, kind);
+    for (const [m0, m1, hwm, set] of POD) lozenge(m0, m1, hwm, set);
 
-    /* SkyPod at 447: a small bead threaded on the mast, not a lump - a
-       dark collar under it, the pale capsule, a cap over. */
-    lozenge(443.5, 445.5, 7.0, 'dark');
-    lozenge(445.5, 450.0, 8.6, 'cap');
-    lozenge(450.0, 451.5, 6.8, 'body');
+    /* the SkyPod: a compact bead threaded on the mast, 0.38 of the pod
+       across, with a thin collar under it */
+    lozenge(400.4, 402.4, 5.2, DKGY);
+    lozenge(402.4, 409.6, 6.90, CAP);
+    lozenge(409.6, 411.2, 5.0, DKWID);
 
-    /* the antenna: 102m from 451, stepping twice, with a collar and a
-       dark segment near the top */
-    const AT = [[451.5, 497, 2.4], [502, 529, 1.7], [533, 553.33, 1.0]];
+    /* the antenna: a fine mast with two dark segments, as the reference
+       draws it - not a smooth needle */
+    const AT = [[411.2, 468, 2.3], [474, 516, 1.7], [522, 553.33, 1.1]];
     for (const [m0, m1, w] of AT){
       const ww = Math.max(1, X(w));
-      px(cx - ww, Y(m1), ww * 2, Y(m0) - Y(m1), '#9A9299');
-      px(cx - ww, Y(m1), Math.max(1, ww >> 1), Y(m0) - Y(m1), '#C8C4C8');
+      px(cx - ww, Y(m1), ww * 2, Y(m0) - Y(m1), C_M);
+      px(cx - ww, Y(m1), Math.max(1, ww >> 1), Y(m0) - Y(m1), C_L);
     }
-    lozenge(497, 502, 3.6, 'cap');
-    px(cx - Math.max(1, X(1.7)), Y(533), Math.max(2, X(3.4)), Y(529) - Y(533), '#26262E');
-    px(cx - Math.max(2, X(1.6)), Y(553.33) - 2, Math.max(4, X(3.2)), Math.max(4, X(4)), '#E4353F');
+    lozenge(468, 474, 3.3, CAP);
+    px(cx - Math.max(1, X(1.8)), Y(522), Math.max(2, X(3.6)), Y(516) - Y(522), '#24262E');
+    px(cx - Math.max(2, X(1.5)), Y(553.33) - 2, Math.max(3, X(3.0)), Math.max(4, X(4)), '#E4353F');
   }
   function rogersCentre(cx, w, h){
     /* Four roof panels that nest like a stack of plates - three slide,
