@@ -6,55 +6,55 @@ letterboxed; `FEET_PER_PX = 0.07`.
 
 ## Art direction — read this before drawing anything
 
-The target is **Sega Genesis sprite work**. This is not a vague mood; it is a
-specific set of properties, and every new asset has to hit them. The house
-sprites already do — measure against them rather than guessing.
+The reference is the **planes, cranes and elevator car**, not the debris. Those
+are the sprites the game is judged by, and they are *crisp*: bright saturated
+fills, edges that step on a coarse grid, a light line along the top, and detail
+made of distinct **parts** — window rows, a lattice, a painted stripe — never
+surface texture.
 
-### The numbers
-
-Count the colours in a finished sprite and the share of opaque pixels the
-commonest one takes. The existing set:
+### What the numbers actually mean
 
 | sprite  | colours | dominant |
 |---------|---------|----------|
-| debris  | 5–6     | 41–69%   |
-| pickup  | 6       | 34%      |
-| bird    | 8–10    | 33%      |
-| heli    | 16      | 17%      |
 | car     | 31      | 17%      |
+| heli    | 16      | 17%      |
+| plane   | 15      | 17%      |
+| bird    | 8–10    | 33%      |
+| pickup  | 6       | 34%      |
+| debris  | 5–6     | 41–69%   |
 
-Small tumbling objects live at the top of that table: **4–6 colours, one of
-them covering 40%+**. That lopsided split is the whole look. An even ramp —
-31/26/18/15/10 across five tones — is a gradient wearing five colours and
-reads as modern indie pixel art, not Genesis. If the histogram is flat, the
-sprite is wrong no matter how it looks at 3×.
+A plane carries 15 colours because it has a fuselage, a window row, a tail, an
+engine and a stripe — each flat filled with two or three tones. **Not** because
+one shape is shaded richly. Colour count follows part count. Do not chase the
+number; chase the parts.
 
-### The rules that produce those numbers
+### The rules
 
-- **One flat body colour.** Then shading laid on as a few large contiguous
-  patches: one shadow shape, one highlight shape. Not a per-row ramp.
-- **Hard near-black outline** down both flanks, doubled where the form turns
-  away hardest.
-- **No dithering as shading.** Bayer fields read as noise beside flat regions.
-  Dither only where a real Genesis game would: a transparency effect.
-- **No per-pixel texture spray.** `speck` is an accent at ~1% of the sprite,
-  not a surface treatment. If it is breaking up every seam, the seams are
-  wrong.
-- **Features are flat shapes.** A crater is a flat disc with one pixel of rim
-  on the sunward side. Anything dished or bowled reads as an airbrush.
+- **Flat fills, hard edges.** Two or three tones per part, no ramps.
+- **No texture, anywhere.** No dithering as shading, no per-pixel grit spray.
+  There is not a single noisy pixel in the reference set. If a surface needs
+  interest, give it a *thing* — a crater, a seam, a panel line — not noise.
+- **Silhouettes step on a 3px grid.** Long constant runs with deliberate steps
+  is what gives the boom and the heli their clean edges. Per-row jitter reads
+  as ragged.
+- **A light line along the top edge**, two pixels, following the silhouette
+  down the flanks and stopping where the form turns away. Follow the edge
+  column by column — filling the top third of the rows just bleaches it.
+- **Hard near-black outline** down both flanks.
+- **Features are their own parts.** A crater is a flat floor, a hard outline
+  and a bright rim on the sunward arc — built like a cockpit window, not
+  shaded like a dent. Anything dished or bowled reads as an airbrush.
+- **One colour beat per sprite** where it earns it — the red stripe on the news
+  helicopter, a seam of exposed ice on a rock. One, not three.
 - **Silhouettes are hand-laid row tables** — `[[y, x0, x1], ...]` — not a noise
-  function evaluated at runtime. See `debrislib.js` for the reference
-  implementation. A generator cannot produce a deliberate outline.
-- **Boundaries step in runs**, four to six rows, never jitter a pixel per row.
-- **Light comes from the upper left.** Space objects get one hard source and a
-  sharp terminator; city objects get the softer three-tone ramp.
+  function evaluated at runtime. See `debrislib.js` for the format.
+- **Light comes from the upper left.**
 
 ### Matching the style means matching the technique, not transplanting features
 
 The debris set's straight-edged details work because debris *is* straight-edged.
 Ruled bars and flat stripes put onto a round rock read as paint. Take the
-method — row tables, flat regions, hand placement — and let the forms follow
-the object.
+method and let the forms follow the object.
 
 ## Pipeline
 
