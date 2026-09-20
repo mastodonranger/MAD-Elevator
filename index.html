@@ -1032,7 +1032,10 @@ function rectsOf(o){
     return [{ x: o.x - o.r*0.85, y: o.y - o.r*0.85, w: o.r*1.7, h: o.r*1.7 }];
   }
   if (o.t === 'asteroid'){
-    return [{ x: o.x - o.r*0.82, y: o.y - o.r*0.82, w: o.r*1.64, h: o.r*1.64 }];
+    /* o.r is the equivalent-area radius of the baked rock, so this is
+       the art rather than a guess at it */
+    const b = o.r * 0.86;
+    return [{ x: o.x - b, y: o.y - b, w: b*2, h: b*2 }];
   }
   if (o.t === 'satfrag') return rotBox(o, 0.78);
   /* The sprite IS the hitbox now - w,h come from the baked art - so the
@@ -1216,14 +1219,13 @@ function spawnMeteor(){
                    flick: rnd(0, 6.28), passed:false });
 }
 function spawnAsteroid(){
-  const r = rnd(24, 48);
-  const lumps = Array.from({length: 11}, (_, i) =>
-    0.78 + 0.24 * Math.abs(Math.sin(i * 2.17 + r)));
-  obstacles.push({ t:'asteroid', x: rnd(60, W-60), y: -90, r, lumps,
-                   w: r*2, h: r*2, vx: rnd(-42, 42), vy: rnd(45, 110),
-                   rot: rnd(0, 6.28), spin: rnd(-1.1, 1.1), passed:false,
-                   craters: Array.from({length: rndi(2,4)}, () => ({
-                     a: rnd(0, 6.28), d: rnd(0.18, 0.52), s: rnd(0.13, 0.26) })) });
+  /* two shapes at three sizes each. The radius used to be continuous,
+     which a baked sprite cannot follow without resampling. */
+  const k = rndi(0, SPR.astCount() - 1), d = SPR.astDims(k);
+  obstacles.push({ t:'asteroid', k, x: rnd(60, W-60), y: -90,
+                   r: SPR.astRadius(k), w: d.w, h: d.h,
+                   vx: rnd(-42, 42), vy: rnd(45, 110),
+                   rot: rnd(0, 6.28), spin: rnd(-1.1, 1.1), passed:false });
 }
 function spawnSatFrag(){
   const kind = pick(['panel','dish','strut']);
@@ -2844,6 +2846,235 @@ const SPR = (function(){
     pkIcon(PK_ICON[k], P[4]);
   }
 
+  /* ---- asteroids ---------------------------------------------------
+     Matched to the planes, cranes and elevator, which are the sprites
+     this game is judged by. Those are crisp: bright flat fills, edges
+     stepping on a coarse grid, a light line along the top, and detail
+     made of distinct PARTS rather than surface texture. Their high
+     colour counts come from part count, not from shading one shape
+     richly - a plane has a fuselage, a window row, a tail, an engine and
+     a stripe. There is not one noisy pixel in that set, so there is none
+     here either.
+
+     Silhouettes are hand-laid row tables stepping on a 3px grid. Two
+     shapes, three size buckets each, because spawn radius used to be a
+     continuous 24-48 and a baked sprite cannot follow that without
+     resampling - which is the one thing that gives the grid away.     */
+  const K_O='#1C1410', K_D='#7A5330', K_B='#A8763F', K_L='#C89354', K_H='#F2CC93';
+  const K_F='#3E2A18', K_R='#E8BE85';
+  const C_O='#12100E', C_D='#4A443C', C_B='#6E655A', C_L='#8C8274', C_H='#B4A897';
+
+  function rows(spans, col){ for (const [y,a,b] of spans) px(a, y, b-a+1, 1, col); }
+  /* The light sits ON the top edge and follows it down the flanks, the
+     way the boom's top chord does. Column by column - filling the first
+     third of the rows instead just bleaches the rock. */
+  function astTop(S, col){
+    const top = new Map();
+    for (const [y,a,b] of S)
+      for (let x = a; x <= b; x++) if (!top.has(x)) top.set(x, y);
+    const b0 = S[0][2], bN = S[S.length-1][2];
+    for (const [x, y] of top){
+      if (x > b0 + (bN - b0) * 0.55) continue;
+      px(x, y + 1, 1, 2, col);
+    }
+  }
+  function astEdge(S, col){
+    for (const [y,a,b] of S){ px(a, y, 1, 1, col); px(b, y, 1, 1, col); }
+    for (let i = 1; i < S.length; i++){
+      const [y,a,b] = S[i], [,pa,pb] = S[i-1];
+      if (a < pa) px(a, y, pa - a, 1, col); else if (pa < a) px(pa, y-1, a - pa, 1, col);
+      if (b > pb) px(pb, y, b - pb, 1, col); else if (pb > b) px(b, y-1, pb - b, 1, col);
+    }
+    const f = S[0], l = S[S.length-1];
+    px(f[1], f[0], f[2]-f[1]+1, 1, col);
+    px(l[1], l[0], l[2]-l[1]+1, 1, col);
+  }
+  /* a crater is its own part - flat floor, hard outline, bright rim on
+     the sunward arc. Built like a cockpit window, not shaded like a dent. */
+  function crater(cx, cy, rx, ry, floor, rim, out){
+    for (let y = -ry; y <= ry; y++){
+      const w = Math.round(rx * Math.sqrt(Math.max(0, 1 - (y*y)/(ry*ry))));
+      if (w < 1) continue;
+      px(cx - w, cy + y, w*2, 1, out);
+      if (w > 2) px(cx - w + 1, cy + y, w*2 - 2, 1, floor);
+    }
+    for (let i = 0; i <= 24; i++){
+      const a = Math.PI * (1.06 + i/24 * 0.56);
+      px(cx + Math.round(Math.cos(a)*rx), cy + Math.round(Math.sin(a)*ry) - 1, 1, 2, rim);
+    }
+  }
+  const AST_BOX = [[52,48],[66,60],[86,78],[56,52],[72,66],[92,84]];
+  const AST_DRAW = [
+    /* chunk, bucket 0 - 52x48 */
+    () => {
+      const S =[[0,18,35], [1,18,35], [2,18,35], [3,15,41], [4,15,41], [5,15,41], [6,12,44],
+               [7,12,44], [8,12,44], [9,9,47], [10,9,47], [11,9,47], [12,6,50], [13,6,50],
+               [14,6,50], [15,3,50], [16,3,50], [17,3,50], [18,3,50], [19,3,50], [20,3,50],
+               [21,0,50], [22,0,50], [23,0,50], [24,0,47], [25,0,47], [26,0,47], [27,0,47],
+               [28,0,47], [29,0,47], [30,0,47], [31,0,47], [32,0,47], [33,0,47], [34,0,47],
+               [35,0,47], [36,0,47], [37,0,47], [38,0,47], [39,6,41], [40,6,41], [41,6,41],
+               [42,12,38], [43,12,38], [44,12,38], [45,21,29], [46,21,29]];
+      const SH=[[0,27,35], [1,27,35], [2,27,35], [3,30,41], [4,30,41], [5,30,41], [6,30,44],
+               [7,30,44], [8,30,44], [9,30,47], [10,30,47], [11,30,47], [12,30,50], [13,30,50],
+               [14,30,50], [15,27,50], [16,27,50], [17,27,50], [18,30,50], [19,30,50], [20,30,50],
+               [21,27,50], [22,27,50], [23,27,50], [24,27,47], [25,27,47], [26,27,47], [27,24,47],
+               [28,24,47], [29,24,47], [30,24,47], [31,24,47], [32,24,47], [33,18,47], [34,18,47],
+               [35,18,47], [36,18,47], [37,18,47], [38,18,47], [39,18,41], [40,18,41], [41,18,41],
+               [42,21,38], [43,18,38], [44,18,38], [45,26,29], [46,26,29]];
+      rows(S,  K_B); rows(SH, K_D);
+      astTop(S, K_H); astEdge(S, K_O);
+  crater(19,21, 6,5, K_F, K_R, K_O);
+  crater(35,30, 5,4, K_F, K_R, K_O);
+  crater(13,35, 4,3, K_F, K_R, K_O);
+    },
+    /* chunk, bucket 1 - 66x60 */
+    () => {
+      const S =[[0,24,44], [1,24,44], [2,24,44], [3,18,50], [4,18,50], [5,18,50], [6,15,56],
+               [7,15,56], [8,15,56], [9,12,59], [10,12,59], [11,12,59], [12,9,59], [13,9,59],
+               [14,9,59], [15,6,62], [16,6,62], [17,6,62], [18,6,62], [19,6,62], [20,6,62],
+               [21,3,62], [22,3,62], [23,3,62], [24,3,62], [25,3,62], [26,3,62], [27,3,62],
+               [28,3,62], [29,3,62], [30,0,62], [31,0,62], [32,0,62], [33,0,62], [34,0,62],
+               [35,0,62], [36,0,62], [37,0,62], [38,0,62], [39,0,62], [40,0,62], [41,0,62],
+               [42,0,62], [43,0,62], [44,0,62], [45,0,59], [46,0,59], [47,0,59], [48,6,56],
+               [49,6,56], [50,6,56], [51,12,50], [52,12,50], [53,12,50], [54,21,44], [55,21,44],
+               [56,21,44], [57,30,38], [58,30,38]];
+      const SH=[[0,36,44], [1,36,44], [2,36,44], [3,36,50], [4,36,50], [5,36,50], [6,39,56],
+               [7,39,56], [8,39,56], [9,39,59], [10,39,59], [11,39,59], [12,36,59], [13,36,59],
+               [14,36,59], [15,36,62], [16,36,62], [17,36,62], [18,39,62], [19,39,62], [20,39,62],
+               [21,36,62], [22,36,62], [23,36,62], [24,36,62], [25,36,62], [26,36,62], [27,36,62],
+               [28,36,62], [29,36,62], [30,33,62], [31,33,62], [32,33,62], [33,27,62], [34,27,62],
+               [35,27,62], [36,27,62], [37,27,62], [38,27,62], [39,24,62], [40,24,62], [41,24,62],
+               [42,24,62], [43,24,62], [44,24,62], [45,33,59], [46,30,59], [47,30,59], [48,33,56],
+               [49,33,56], [50,33,56], [51,33,50], [52,33,50], [53,33,50], [54,36,44], [55,36,44],
+               [56,36,44], [57,35,38], [58,35,38]];
+      rows(S,  K_B); rows(SH, K_D);
+      astTop(S, K_H); astEdge(S, K_O);
+  crater(24,26, 8,6, K_F, K_R, K_O);
+  crater(45,38, 6,4, K_F, K_R, K_O);
+  crater(16,44, 5,4, K_F, K_R, K_O);
+    },
+    /* chunk, bucket 2 - 86x78 */
+    () => {
+      const S =[[0,33,56], [1,33,56], [2,33,56], [3,24,62], [4,24,62], [5,24,62], [6,21,68],
+               [7,21,68], [8,21,68], [9,18,71], [10,18,71], [11,18,71], [12,15,74], [13,15,74],
+               [14,15,74], [15,12,77], [16,12,77], [17,12,77], [18,12,80], [19,12,80], [20,12,80],
+               [21,9,80], [22,9,80], [23,9,80], [24,6,83], [25,6,83], [26,6,83], [27,6,83],
+               [28,6,83], [29,6,83], [30,3,83], [31,3,83], [32,3,83], [33,3,83], [34,3,83],
+               [35,3,83], [36,3,80], [37,3,80], [38,3,80], [39,3,80], [40,3,80], [41,3,80],
+               [42,0,80], [43,0,80], [44,0,80], [45,0,80], [46,0,80], [47,0,80], [48,0,80],
+               [49,0,80], [50,0,80], [51,0,83], [52,0,83], [53,0,83], [54,0,80], [55,0,80],
+               [56,0,80], [57,0,80], [58,0,80], [59,0,80], [60,3,77], [61,3,77], [62,3,77],
+               [63,9,74], [64,9,74], [65,9,74], [66,15,68], [67,15,68], [68,15,68], [69,21,62],
+               [70,21,62], [71,21,62], [72,30,56], [73,30,56], [74,30,56], [75,39,47], [76,39,47]];
+      const SH=[[0,48,56], [1,48,56], [2,48,56], [3,45,62], [4,45,62], [5,45,62], [6,48,68],
+               [7,48,68], [8,48,68], [9,48,71], [10,48,71], [11,48,71], [12,48,74], [13,48,74],
+               [14,48,74], [15,48,77], [16,48,77], [17,48,77], [18,51,80], [19,51,80], [20,51,80],
+               [21,51,80], [22,51,80], [23,51,80], [24,51,83], [25,51,83], [26,51,83], [27,48,83],
+               [28,48,83], [29,48,83], [30,48,83], [31,48,83], [32,48,83], [33,42,83], [34,39,83],
+               [35,39,83], [36,39,80], [37,39,80], [38,39,80], [39,39,80], [40,39,80], [41,36,80],
+               [42,36,80], [43,36,80], [44,36,80], [45,45,80], [46,45,80], [47,42,80], [48,42,80],
+               [49,42,80], [50,42,80], [51,45,83], [52,45,83], [53,42,83], [54,42,80], [55,42,80],
+               [56,42,80], [57,42,80], [58,42,80], [59,42,80], [60,42,77], [61,42,77], [62,39,77],
+               [63,36,74], [64,36,74], [65,36,74], [66,36,68], [67,36,68], [68,36,68], [69,39,62],
+               [70,39,62], [71,36,62], [72,39,56], [73,39,56], [74,39,56], [75,42,47], [76,42,47]];
+      rows(S,  K_B); rows(SH, K_D);
+      astTop(S, K_H); astEdge(S, K_O);
+  crater(31,34,10,8, K_F, K_R, K_O);
+  crater(58,49, 8,5, K_F, K_R, K_O);
+  crater(21,57, 6,5, K_F, K_R, K_O);
+    },
+    /* cratered, bucket 0 - 56x52 */
+    () => {
+      const S =[[0,21,38], [1,21,38], [2,21,38], [3,18,41], [4,18,41], [5,18,41], [6,15,44],
+               [7,15,44], [8,15,44], [9,12,47], [10,12,47], [11,12,47], [12,9,50], [13,9,50],
+               [14,9,50], [15,3,53], [16,3,53], [17,3,53], [18,0,53], [19,0,53], [20,0,53],
+               [21,0,53], [22,0,53], [23,0,53], [24,0,53], [25,0,53], [26,0,53], [27,0,53],
+               [28,0,53], [29,0,53], [30,0,53], [31,0,53], [32,0,53], [33,0,53], [34,0,53],
+               [35,0,53], [36,0,50], [37,0,50], [38,0,50], [39,6,47], [40,6,47], [41,6,47],
+               [42,12,44], [43,12,44], [44,12,44], [45,15,41], [46,15,41], [47,15,41], [48,21,35],
+               [49,21,35], [50,21,35], [51,27,32]];
+      const SH=[[0,30,38], [1,30,38], [2,30,38], [3,33,41], [4,30,41], [5,30,41], [6,33,44],
+               [7,33,44], [8,30,44], [9,33,47], [10,33,47], [11,30,47], [12,33,50], [13,30,50],
+               [14,30,50], [15,30,53], [16,30,53], [17,30,53], [18,30,53], [19,30,53], [20,30,53],
+               [21,30,53], [22,30,53], [23,30,53], [24,30,53], [25,30,53], [26,30,53], [27,30,53],
+               [28,30,53], [29,27,53], [30,27,53], [31,27,53], [32,27,53], [33,21,53], [34,21,53],
+               [35,21,53], [36,18,50], [37,18,50], [38,18,50], [39,21,47], [40,21,47], [41,21,47],
+               [42,24,44], [43,21,44], [44,21,44], [45,33,41], [46,33,41], [47,30,41], [48,32,35],
+               [49,32,35], [50,32,35], [51,30,32]];
+      rows(S,  C_B); rows(SH, C_D);
+      astTop(S, C_H); astEdge(S, C_O);
+  crater(22,20, 8,6, C_O, C_H, C_O);
+  crater(41,17, 5,3, C_O, C_H, C_O);
+  crater(14,35, 5,4, C_O, C_H, C_O);
+  crater(35,38, 6,4, C_O, C_H, C_O);
+  crater(45,30, 3,2, C_O, C_H, C_O);
+    },
+    /* cratered, bucket 1 - 72x66 */
+    () => {
+      const S =[[0,30,47], [1,30,47], [2,30,47], [3,24,53], [4,24,53], [5,24,53], [6,21,56],
+               [7,21,56], [8,21,56], [9,18,59], [10,18,59], [11,18,59], [12,15,62], [13,15,62],
+               [14,15,62], [15,12,62], [16,12,62], [17,12,62], [18,6,65], [19,6,65], [20,6,65],
+               [21,3,68], [22,3,68], [23,3,68], [24,0,71], [25,0,71], [26,0,71], [27,0,71],
+               [28,0,71], [29,0,71], [30,0,71], [31,0,71], [32,0,71], [33,0,71], [34,0,71],
+               [35,0,71], [36,0,71], [37,0,71], [38,0,71], [39,0,68], [40,0,68], [41,0,68],
+               [42,0,68], [43,0,68], [44,0,68], [45,0,65], [46,0,65], [47,0,65], [48,6,62],
+               [49,6,62], [50,6,62], [51,9,59], [52,9,59], [53,9,59], [54,15,56], [55,15,56],
+               [56,15,56], [57,21,53], [58,21,53], [59,21,53], [60,24,50], [61,24,50], [62,24,50],
+               [63,30,44], [64,30,44], [65,30,44]];
+      const SH=[[0,39,47], [1,39,47], [2,39,47], [3,42,53], [4,42,53], [5,42,53], [6,42,56],
+               [7,42,56], [8,42,56], [9,42,59], [10,42,59], [11,42,59], [12,42,62], [13,42,62],
+               [14,42,62], [15,39,62], [16,39,62], [17,39,62], [18,42,65], [19,42,65], [20,39,65],
+               [21,39,68], [22,39,68], [23,39,68], [24,39,71], [25,39,71], [26,39,71], [27,39,71],
+               [28,39,71], [29,39,71], [30,39,71], [31,39,71], [32,39,71], [33,33,71], [34,33,71],
+               [35,30,71], [36,30,71], [37,30,71], [38,30,71], [39,30,68], [40,30,68], [41,30,68],
+               [42,27,68], [43,27,68], [44,27,68], [45,36,65], [46,36,65], [47,36,65], [48,36,62],
+               [49,36,62], [50,36,62], [51,36,59], [52,36,59], [53,36,59], [54,39,56], [55,39,56],
+               [56,39,56], [57,39,53], [58,39,53], [59,39,53], [60,39,50], [61,39,50], [62,39,50],
+               [63,36,44], [64,36,44], [65,36,44]];
+      rows(S,  C_B); rows(SH, C_D);
+      astTop(S, C_H); astEdge(S, C_O);
+  crater(28,26,11,8, C_O, C_H, C_O);
+  crater(52,22, 6,4, C_O, C_H, C_O);
+  crater(18,44, 7,5, C_O, C_H, C_O);
+  crater(45,48, 8,5, C_O, C_H, C_O);
+  crater(57,38, 4,3, C_O, C_H, C_O);
+    },
+    /* cratered, bucket 2 - 92x84 */
+    () => {
+      const S =[[0,36,59], [1,36,59], [2,36,59], [3,30,65], [4,30,65], [5,30,65], [6,27,68],
+               [7,27,68], [8,27,68], [9,24,71], [10,24,71], [11,24,71], [12,21,74], [13,21,74],
+               [14,21,74], [15,18,77], [16,18,77], [17,18,77], [18,15,80], [19,15,80], [20,15,80],
+               [21,12,83], [22,12,83], [23,12,83], [24,6,86], [25,6,86], [26,6,86], [27,3,89],
+               [28,3,89], [29,3,89], [30,0,89], [31,0,89], [32,0,89], [33,0,89], [34,0,89],
+               [35,0,89], [36,0,91], [37,0,91], [38,0,91], [39,0,89], [40,0,89], [41,0,89],
+               [42,0,89], [43,0,89], [44,0,89], [45,0,89], [46,0,89], [47,0,89], [48,0,89],
+               [49,0,89], [50,0,89], [51,0,89], [52,0,89], [53,0,89], [54,0,89], [55,0,89],
+               [56,0,89], [57,0,86], [58,0,86], [59,0,86], [60,6,83], [61,6,83], [62,6,83],
+               [63,9,80], [64,9,80], [65,9,80], [66,15,74], [67,15,74], [68,15,74], [69,18,71],
+               [70,18,71], [71,18,71], [72,24,68], [73,24,68], [74,24,68], [75,27,65], [76,27,65],
+               [77,27,65], [78,33,59], [79,33,59], [80,33,59], [81,39,56], [82,39,56], [83,39,56]];
+      const SH=[[0,51,59], [1,51,59], [2,51,59], [3,51,65], [4,51,65], [5,51,65], [6,51,68],
+               [7,51,68], [8,51,68], [9,51,71], [10,51,71], [11,51,71], [12,51,74], [13,51,74],
+               [14,51,74], [15,51,77], [16,51,77], [17,51,77], [18,54,80], [19,54,80], [20,54,80],
+               [21,54,83], [22,54,83], [23,54,83], [24,51,86], [25,51,86], [26,51,86], [27,51,89],
+               [28,51,89], [29,51,89], [30,48,89], [31,48,89], [32,48,89], [33,42,89], [34,42,89],
+               [35,42,89], [36,42,91], [37,42,91], [38,42,91], [39,42,89], [40,42,89], [41,42,89],
+               [42,42,89], [43,39,89], [44,39,89], [45,48,89], [46,48,89], [47,48,89], [48,48,89],
+               [49,48,89], [50,48,89], [51,48,89], [52,48,89], [53,48,89], [54,48,89], [55,48,89],
+               [56,45,89], [57,45,86], [58,45,86], [59,45,86], [60,45,83], [61,45,83], [62,45,83],
+               [63,39,80], [64,39,80], [65,39,80], [66,39,74], [67,39,74], [68,39,74], [69,39,71],
+               [70,39,71], [71,39,71], [72,42,68], [73,42,68], [74,42,68], [75,42,65], [76,42,65],
+               [77,42,65], [78,42,59], [79,42,59], [80,42,59], [81,45,56], [82,45,56], [83,45,56]];
+      rows(S,  C_B); rows(SH, C_D);
+      astTop(S, C_H); astEdge(S, C_O);
+  crater(36,33,14,10,C_O, C_H, C_O);
+  crater(66,28, 8,5, C_O, C_H, C_O);
+  crater(23,56, 9,6, C_O, C_H, C_O);
+  crater(57,61,10,6, C_O, C_H, C_O);
+  crater(73,48, 5,4, C_O, C_H, C_O);
+    },
+  ];
+
   /* ---- baking ---------------------------------------------------- */
   function surface(w, h, ox, oy, draw){
     const cv = document.createElement('canvas');
@@ -2864,7 +3095,7 @@ const SPR = (function(){
   const HELI_PICK   = [0,2,5];              /* news, rescue, cargo        */
 
   const cache = { car:[], bird:[], debris:[], heli:[], plane:[], pickup:[],
-                  boom:new Map() };
+                  asteroid:[], boom:new Map() };
   let stats = null;
 
   function bake(){
@@ -2896,11 +3127,14 @@ const SPR = (function(){
     cache.pickup = [0,1,2].map(k =>
       Array.from({ length: PK_FRAMES },
                  (_, f) => surface(70, 70, 1, 1, () => pickup(k, f))));
+    cache.asteroid = AST_DRAW.map((d, i) =>
+      surface(AST_BOX[i][0] + 4, AST_BOX[i][1] + 4, 2, 2, d));
     let n = cache.car.length + cache.debris.length;
     cache.bird.forEach(a => n += a.length);
     cache.heli.forEach(a => n += a.length);
     cache.plane.forEach(a => a.forEach(b => n += b.length));
     cache.pickup.forEach(a => n += a.length);
+    n += cache.asteroid.length;
     /* A sprite touching its surface edge has been clipped - the surface
        was sized too small. Cheap to check once at boot, invisible to
        find by eye later. */
@@ -2922,6 +3156,7 @@ const SPR = (function(){
     cache.heli.forEach((a,i) => a.forEach(add('heli'+i)));
     cache.plane.forEach((a,i) => a.forEach(b => b.forEach(add('plane'+i))));
     cache.pickup.forEach((a,i) => a.forEach(add('pickup'+i)));
+    cache.asteroid.forEach(add('asteroid'));
     index();
     stats = { ms: +(performance.now()-t0).toFixed(2), sprites: n,
               kb: Math.round(bytes/1024), clipped, where };
@@ -2970,6 +3205,7 @@ const SPR = (function(){
   const HIT_KEY = { plane:['plane','planeHigh','bizjet','twin'],
                     heli:['heli','heli','heliCargo'] };
   const anchors = {}, boxes = {};
+  let astRad = [];
 
   function boxOf(cv){
     const c = cv.getContext('2d');
@@ -2993,6 +3229,17 @@ const SPR = (function(){
       [HIT[k].anchor[0]+PAD.heli[0], HIT[k].anchor[1]+PAD.heli[1]]);
     anchors.plane  = HIT_KEY.plane.map((k,i) =>
       [HIT[k].anchor[0]+PAD.plane[i][0], HIT[k].anchor[1]+PAD.plane[i][1]]);
+    boxes.asteroid   = cache.asteroid.map(boxOf);
+    anchors.asteroid = cache.asteroid.map(mid);
+    /* the radius of a disc with the same area as the drawn rock, so the
+       hitbox is measured off the art rather than guessed from the size
+       the generator was asked for */
+    astRad = cache.asteroid.map(cv => {
+      const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+      let n = 0;
+      for (let k = 3; k < d.length; k += 4) if (d[k] > 8) n++;
+      return Math.sqrt(n / Math.PI);
+    });
   }
 
   function put(ctx, cv, anc, x, y, dir, rot){
@@ -3027,6 +3274,11 @@ const SPR = (function(){
        one pixel of margin the surface carries. */
     drawPickup: (ctx,k,f,x,y)       => put(ctx, cache.pickup[k][f % PK_FRAMES],
                                            [35,35], x, y, 1, 0),
+    drawAsteroid: (ctx,k,x,y,rot) => put(ctx, cache.asteroid[k],
+                                         anchors.asteroid[k], x, y, 1, rot),
+    astDims:   k => boxes.asteroid[k],
+    astRadius: k => astRad[k],
+    astCount:  () => cache.asteroid.length,
     pickupFrames: () => PK_FRAMES,
     car:    i        => cache.car[i],
     bird:   (k,f)    => cache.bird[k][f],
@@ -4387,35 +4639,6 @@ function drawMeteor(o){
 }
 
 /* ---- asteroid ------------------------------------------------------- */
-function drawAsteroid(o){
-  ctx.save();
-  ctx.translate(o.x, o.y);
-  ctx.rotate(o.rot);
-  const g = ctx.createLinearGradient(-o.r*0.6, -o.r*0.8, o.r*0.7, o.r*0.8);
-  g.addColorStop(0, '#B9AC9E');
-  g.addColorStop(0.45, '#8A7E72');
-  g.addColorStop(1, '#4A423C');
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  for (let i = 0; i < o.lumps.length; i++){
-    const a = i / o.lumps.length * 6.2832;
-    const rr = o.r * o.lumps[i];
-    const x = Math.cos(a)*rr, y = Math.sin(a)*rr;
-    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-  }
-  ctx.closePath(); ctx.fill();
-  ctx.strokeStyle = 'rgba(38,32,28,.6)'; ctx.lineWidth = 2.4; ctx.stroke();
-  ctx.save(); ctx.clip();
-  for (const c of o.craters){
-    const cx = Math.cos(c.a)*o.r*c.d, cy = Math.sin(c.a)*o.r*c.d;
-    ctx.fillStyle = 'rgba(58,50,44,.55)';
-    ctx.beginPath(); ctx.arc(cx, cy, o.r*c.s, 0, 6.2832); ctx.fill();
-    ctx.fillStyle = 'rgba(214,204,192,.35)';
-    ctx.beginPath(); ctx.arc(cx - o.r*c.s*0.22, cy - o.r*c.s*0.26, o.r*c.s*0.72, 0, 6.2832); ctx.fill();
-  }
-  ctx.restore();
-  ctx.restore();
-}
 
 /* ---- satellite wreckage --------------------------------------------- */
 function drawSatFrag(o){
@@ -4620,7 +4843,7 @@ function paintObstacle(o){
                    o.x, o.y + Math.sin(o.bob) * 4, o.dir);
       break;
     case 'meteor':   drawMeteor(o);   break;
-    case 'asteroid': drawAsteroid(o); break;
+    case 'asteroid': SPR.drawAsteroid(ctx, o.k, o.x, o.y, o.rot); break;
     case 'satfrag':  drawSatFrag(o);  break;
     case 'shield':   drawPickup(o, 0); break;
     case 'vms3':     drawPickup(o, 1); break;
