@@ -3186,38 +3186,41 @@ const CITY = (function(){
        its far edge, the seam behind it, then the bright core face, then
        the whole right-hand half in shadow. It is the hexagon, and it is
        the one thing that keeps the shaft from reading as a chimney.    */
-    const SEG = [[0, .05], [.05, .11], [.11, .17], [.17, .25],
-                 [.25, .44], [.44, .56], [.56, .95], [.95, 1]];
-    const COL = [
-      /* m,      edge      wing      strip     seam      core      mid       shade  */
-      [  0,   '#22384A','#57606E','#B8AEB0','#4E382F','#C59F87','#6E6253','#4A4E5C'],
-      [200,   '#1E3B4F','#585F6E','#BCB4B4','#523C33','#CDAE96','#726659','#4C5160'],
-      [280,   '#1E3B4F','#5B6573','#C0BABE','#563E37','#D4B89E','#74685D','#4E5360'],
-      [383,   '#2E4A5C','#4A4A52','#A8A49A','#6A5F5A','#CFD0C2','#8A7F78','#434E66'],
-      [444,   '#3A5A70','#7C848C','#C8D2DA','#8A8F96','#EBF3FA','#AFB9BB','#5E6D80']
-    ];
+    /* Across the face the shaft is a hexagon, and the reference resolves
+       it into far more than a lit side and a dark one: two bright facets
+       separated by a thin seam, a graded fall through mid grey, a corner
+       that goes almost to black at two thirds across, then the shadowed
+       side. It is also entirely neutral - the chroma of every stop on the
+       lit half measures zero to three - which is most of what separates
+       concrete from the glass towers around it. */
+    const SEG = [[0, .05], [.05, .11], [.11, .15], [.15, .24], [.24, .28],
+                 [.28, .32], [.32, .44], [.44, .50], [.50, .58], [.58, .64],
+                 [.64, .74], [.74, .90], [.90, 1]];
+    const STEM = ['#343B48', '#565659', '#AFAFAF', '#CFCFCF', '#B4B4B4',
+                  '#9E9E9E', '#BDBDBD', '#9B9B9B', '#898789', '#666567',
+                  '#26242A', '#4A484C', '#1E2836'];
     /* The column is a smooth taper, not a stack, so it quantises to the
        row grid rather than the coarser width grid the pod uses - six-pixel
        steps on a shaft this long read as a staircase. */
     function column(yy, hwm, C, h){
       const w = snap(X(hwm) * 2); if (w < Q) return 0;
-      const x0 = snap(cx - w / 2);
-      if (w < 8 * Q){                       /* too narrow to facet */
-        px(x0, yy, w, h, C[5]);
-        px(x0 + Math.max(1, w - 2), yy, Math.min(2, w), h, C[7]);
-        px(x0, yy, 1, h, C[1]);
+      const x0 = snap(cx - w / 2), n = C.length;
+      if (w < 9 * Q){                       /* too narrow to facet */
+        const e = w >= 6 ? 2 : 1;
+        px(x0, yy, w, h, C[(n * 0.45) | 0]);
+        px(x0 + w - e, yy, e, h, C[n - 2]);
+        px(x0, yy, 1, h, C[0]);
         return w;
       }
-      /* The seams are placed off a width that has been rounded to the
-         coarse grid, then snapped to the row grid. They then move only
-         when that coarse width does - on a taper this long, seams
-         computed from the exact width creep a pixel at a time and saw the
-         shaft into grain. */
-      const ws = Math.round(w / WQ) * WQ;
+      /* The seams are placed off a heavily rounded width, then snapped to
+         the row grid, so all thirteen move together and only a handful of
+         times over the whole height. Computed from the exact width they
+         churn against each other and weave the shaft into rope. */
+      const ws = Math.round(w / (4 * Q)) * (4 * Q);
       for (let i = 0; i < SEG.length; i++){
         const a = i === 0 ? 0 : snap(ws * SEG[i][0]);
         const b = i === SEG.length - 1 ? w : Math.max(a + 1, snap(ws * SEG[i][1]));
-        if (b > a) px(x0 + a, yy, Math.min(b, w) - a, h, C[i + 1]);
+        if (b > a) px(x0 + a, yy, Math.min(b, w) - a, h, C[i]);
       }
       return w;
     }
@@ -3293,7 +3296,7 @@ const CITY = (function(){
                   [484.7, 5.60]];
     for (let yy = snap(Y(484.7)); yy < Y(0); yy += Q){
       const m = (g - yy - Q / 2) / S;
-      column(yy, lerpAt(CORE, Math.max(m, 0)), stepAt(COL, m), Q);
+      column(yy, lerpAt(CORE, Math.max(m, 0)), STEM, Q);
     }
     /* the glass elevators run up one face: two continuous channels, not a
        dashed line */
@@ -3329,8 +3332,12 @@ const CITY = (function(){
        pixels across, the dark outline is most of what a row trace sees. */
     const AER = [[484.7, 3.60], [486.9, 3.93], [505.3, 2.79], [510.4, 1.57],
                  [523.6, 2.65], [531.0, 1.10], [542.8, 2.50], [553.4, 2.50]];
-    const A_D = ['#2A3038', '#1C222C', '#12161E', '#2A3A48', '#151A22', '#0E1219', '#1E2A36'];
-    const A_L = ['#4A5A6A', '#8C949E', '#E0E4EA', '#AEB6C0', '#F2F6FA', '#BAC2CC', '#828C99'];
+    const A_D = ['#0E1219', '#1C222C', '#3A3A3C', '#46464A', '#3C3C3E',
+                 '#303032', '#404042', '#303032', '#282628', '#1A1A1C',
+                 '#08080A', '#141416', '#0A1018'];
+    const A_L = ['#2A303A', '#6A6A6C', '#D8D8D8', '#F0F0F0', '#DCDCDC',
+                 '#C2C2C2', '#E2E2E2', '#C0C0C0', '#AEACAE', '#6E6C6E',
+                 '#2A2628', '#44423F', '#1A2430'];
     for (let yy = snap(Y(553.33)); yy <= snap(Y(484.7)); yy += Q){
       const m = (g - yy - Q / 2) / S;
       const dark = (m >= 542.8) || (m >= 505.3 && m < 510.4)
