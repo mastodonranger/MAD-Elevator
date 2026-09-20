@@ -4,6 +4,22 @@ A 9:16 portrait endless runner in a single self-contained `index.html`. A glass
 elevator car flies from street level into space. 540×960 logical world,
 letterboxed; `FEET_PER_PX = 0.07`.
 
+## Working on assets — the process
+
+**Design and confirm every asset first. Do not wire anything into the game
+until the whole set is signed off.** Asset work is the primary track unless
+told otherwise.
+
+Present each asset as a **sheet**, in the format of `birds.html` and the plane
+sheet: a large pixel grid at 6-7x zoom with a faint cell grid behind it,
+numbered candidates down the left with a name and a one-line note on what makes
+each distinct, animation frames or tumble angles across the columns, and a
+footer stating the cell size, the facing, and the technical constraint the art
+is working to.
+
+Show candidates, take the picks, iterate on the picks. Only once the whole set
+is agreed does any of it go near `index.html`.
+
 ## Art direction — read this before drawing anything
 
 The reference is the **planes, cranes and elevator car**, not the debris. Those
