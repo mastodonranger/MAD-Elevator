@@ -1029,7 +1029,9 @@ function rectsOf(o){
   if (o.t === 'heli')
     return SPR.rectsFor(SPR.hitKey('heli', KIX['heli:'+o.kind]), o.x, o.y, o.dir);
   if (o.t === 'meteor'){
-    return [{ x: o.x - o.r*0.85, y: o.y - o.r*0.85, w: o.r*1.7, h: o.r*1.7 }];
+    /* the trail is light, not rock - only the head collides */
+    const b = o.r * 0.86;
+    return [{ x: o.x - b, y: o.y - b, w: b*2, h: b*2 }];
   }
   if (o.t === 'asteroid'){
     /* o.r is the equivalent-area radius of the baked rock, so this is
@@ -1211,12 +1213,11 @@ function spawnHeli(){
 function spawnMeteor(){
   /* comes in steep and fast, burning as it goes */
   const dir = Math.random() < 0.5 ? 1 : -1;
-  const r = rnd(13, 26);
-  obstacles.push({ t:'meteor', x: rnd(40, W-40), y: -90, r,
-                   w: r*2, h: r*2, tail: r * rnd(8.5, 11.5),
+  const k = rndi(0, SPR.metCount() - 1), d = SPR.metDims(k);
+  obstacles.push({ t:'meteor', k, x: rnd(40, W-40), y: -90,
+                   r: SPR.metRadius(k), w: d.w, h: d.h,
                    vx: dir * rnd(40, 125), vy: rnd(150, 260),
-                   rot: rnd(0, 6.28), spin: rnd(-3, 3),
-                   flick: rnd(0, 6.28), passed:false });
+                   rot: rnd(0, 6.28), spin: rnd(-3, 3), passed:false });
 }
 function spawnAsteroid(){
   /* two shapes at three sizes each. The radius used to be continuous,
@@ -1410,7 +1411,6 @@ function updateObstacles(dt, scroll){
     } else if (o.t === 'meteor'){
       o.x += o.vx * dt;
       o.rot += o.spin * dt;
-      o.flick += dt * 18;
     } else if (o.t === 'asteroid' || o.t === 'satfrag'){
       o.x += o.vx * dt;
       o.rot += o.spin * dt;
@@ -3075,6 +3075,192 @@ const SPR = (function(){
     },
   ];
 
+  /* ---- meteors -----------------------------------------------------
+     Two sprites, because the rock tumbles on its own while the trail has
+     to point along the track. So the fire lives on the TRAIL, not baked
+     onto a spinning rock - otherwise the hot face rotates away from the
+     direction of travel, which is the giveaway on most pixel meteors.
+
+     The flame is nested flat wedges with hard stepped edges, the way a
+     Genesis exhaust is built, not an alpha ramp. Embers at the tail are
+     separate blocks - parts, not grit.                                */
+  const M_O='#0D0B0A', M_D='#3A332C', M_B='#574C41', M_L='#6F6153', M_H='#8F7F6C';
+  const F0='#3A0C06', F1='#8C2A0A', F2='#D4560E', F3='#F59220',
+        F4='#FFC94A', F5='#FFF3C0';
+  const MET_FIRE = [F0, F1, F2, F3, F5];
+  const MET_BOX = [[30,30],[42,42],[54,54]];
+  const MET_DRAW = [
+    /* meteor rock, bucket 0 - 30x30 */
+    () => {
+      const S =[[0,9,23], [1,9,23], [2,9,23], [3,6,26], [4,6,26], [5,6,26], [6,6,26],
+             [7,6,26], [8,6,26], [9,3,26], [10,3,26], [11,3,26], [12,0,29], [13,0,29],
+             [14,0,29], [15,0,29], [16,0,29], [17,0,29], [18,0,26], [19,0,26], [20,0,26],
+             [21,0,26], [22,0,26], [23,0,26], [24,3,23], [25,3,23], [26,3,23], [27,12,20],
+             [28,12,20]];
+      const SH=[[0,18,23], [1,18,23], [2,18,23], [3,18,26], [4,18,26], [5,18,26], [6,18,26],
+             [7,18,26], [8,18,26], [9,15,26], [10,15,26], [11,15,26], [12,15,29], [13,15,29],
+             [14,15,29], [15,15,29], [16,15,29], [17,15,29], [18,15,26], [19,15,26], [20,15,26],
+             [21,15,26], [22,15,26], [23,15,26], [24,15,23], [25,15,23], [26,15,23], [27,17,20],
+             [28,17,20]];
+      rows(S, M_B); rows(SH, M_D);
+      astTop(S, M_H); astEdge(S, M_O);
+      crater(10,13, 3,2, M_O, M_H, M_O);
+    },
+    /* meteor rock, bucket 1 - 42x42 */
+    () => {
+      const S =[[0,15,29], [1,15,29], [2,15,29], [3,9,35], [4,9,35], [5,9,35], [6,6,35],
+             [7,6,35], [8,6,35], [9,6,35], [10,6,35], [11,6,35], [12,3,35], [13,3,35],
+             [14,3,35], [15,0,38], [16,0,38], [17,0,38], [18,0,38], [19,0,38], [20,0,38],
+             [21,0,41], [22,0,41], [23,0,41], [24,0,41], [25,0,41], [26,0,41], [27,0,38],
+             [28,0,38], [29,0,38], [30,3,38], [31,3,38], [32,3,38], [33,6,38], [34,6,38],
+             [35,6,38], [36,12,32], [37,12,32], [38,12,32], [39,18,26], [40,18,26]];
+      const SH=[[0,24,29], [1,24,29], [2,24,29], [3,24,35], [4,24,35], [5,24,35], [6,21,35],
+             [7,21,35], [8,21,35], [9,21,35], [10,21,35], [11,21,35], [12,21,35], [13,21,35],
+             [14,18,35], [15,18,38], [16,18,38], [17,18,38], [18,21,38], [19,21,38], [20,21,38],
+             [21,24,41], [22,21,41], [23,21,41], [24,21,41], [25,21,41], [26,21,41], [27,21,38],
+             [28,21,38], [29,21,38], [30,21,38], [31,21,38], [32,21,38], [33,18,38], [34,15,38],
+             [35,15,38], [36,18,32], [37,18,32], [38,18,32], [39,21,26], [40,21,26]];
+      rows(S, M_B); rows(SH, M_D);
+      astTop(S, M_H); astEdge(S, M_O);
+      crater(14,19, 4,3, M_O, M_H, M_O);
+    },
+    /* meteor rock, bucket 2 - 54x54 */
+    () => {
+      const S =[[0,18,38], [1,18,38], [2,18,38], [3,12,41], [4,12,41], [5,12,41], [6,9,44],
+             [7,9,44], [8,9,44], [9,6,44], [10,6,44], [11,6,44], [12,6,44], [13,6,44],
+             [14,6,44], [15,3,44], [16,3,44], [17,3,44], [18,3,47], [19,3,47], [20,3,47],
+             [21,0,50], [22,0,50], [23,0,50], [24,0,53], [25,0,53], [26,0,53], [27,0,53],
+             [28,0,53], [29,0,53], [30,0,53], [31,0,53], [32,0,53], [33,0,53], [34,0,53],
+             [35,0,53], [36,3,53], [37,3,53], [38,3,53], [39,6,50], [40,6,50], [41,6,50],
+             [42,6,50], [43,6,50], [44,6,50], [45,12,44], [46,12,44], [47,12,44], [48,18,38],
+             [49,18,38], [50,18,38], [51,24,32], [52,24,32]];
+      const SH=[[0,30,38], [1,30,38], [2,30,38], [3,27,41], [4,27,41], [5,27,41], [6,30,44],
+             [7,27,44], [8,27,44], [9,27,44], [10,27,44], [11,27,44], [12,27,44], [13,27,44],
+             [14,27,44], [15,24,44], [16,24,44], [17,24,44], [18,30,47], [19,27,47], [20,27,47],
+             [21,27,50], [22,27,50], [23,27,50], [24,30,53], [25,30,53], [26,30,53], [27,27,53],
+             [28,27,53], [29,27,53], [30,27,53], [31,27,53], [32,27,53], [33,21,53], [34,21,53],
+             [35,21,53], [36,21,53], [37,21,53], [38,21,53], [39,21,50], [40,21,50], [41,21,50],
+             [42,21,50], [43,21,50], [44,21,50], [45,30,44], [46,30,44], [47,30,44], [48,33,38],
+             [49,33,38], [50,33,38], [51,29,32], [52,29,32]];
+      rows(S, M_B); rows(SH, M_D);
+      astTop(S, M_H); astEdge(S, M_O);
+      crater(18,25, 6,4, M_O, M_H, M_O);
+    },
+  ];
+  const MET_TAIL_BOX = [[138,28],[198,36],[258,46]];
+  const Q_ = 3;
+  const MET_TAIL = [
+    /* trail, bucket 0 - 138 long, head at x=0 */
+    () => {
+      const B = [
+        [[0,12], [3,12], [6,9], [9,9], [12,9], [15,9], [18,9], [21,9], [24,9],
+             [27,9], [30,9], [33,9], [36,9], [39,9], [42,6], [45,6], [48,6], [51,6],
+             [54,6], [57,6], [60,6], [63,6], [66,6], [69,6], [72,6], [75,3], [78,3],
+             [81,3], [84,3], [87,3], [90,3], [93,3], [96,3], [99,3], [102,3], [105,3],
+             [108,3], [111,3]],
+        [[0,9], [3,6], [6,6], [9,6], [12,6], [15,6], [18,6], [21,6], [24,6],
+             [27,6], [30,6], [33,6], [36,6], [39,3], [42,3], [45,3], [48,3], [51,3],
+             [54,3], [57,3], [60,3], [63,3], [66,3], [69,3], [72,3]],
+        [[0,6], [3,6], [6,6], [9,3], [12,3], [15,3], [18,3], [21,3], [24,3],
+             [27,3], [30,3], [33,3], [36,3], [39,3]],
+        [[0,3], [3,3], [6,3], [9,3], [12,3], [15,3]],
+        [[0,3]]];
+      for (let k = 0; k < B.length; k++)
+        for (const [x, h] of B[k]) px(x, -h, Q_, h*2, MET_FIRE[k]);
+      /* the hot head: two flat discs, the inner one white. It sits over
+         the rock's leading edge rather than ringing it. */
+      for (let y = -10; y <= 10; y++){
+        const w = Math.round(10 * Math.sqrt(Math.max(0, 1 - (y*y)/100)));
+        if (w > 0) px(-w + 2, y, w*2, 1, F4);
+      }
+      for (let y = -7; y <= 7; y++){
+        const w = Math.round(7 * Math.sqrt(Math.max(0, 1 - (y*y)/49)));
+        if (w > 0) px(-w + 2, y, w*2, 1, F5);
+      }
+      const E = [[69,-5,3],[85,4,3],[99,-4,2],
+                 [114,5,2],[124,-4,2]];
+      for (const [x,y,s] of E){ px(x, y, s, s, F3); px(x, y, 1, 1, F5); }
+    },
+    /* trail, bucket 1 - 198 long, head at x=0 */
+    () => {
+      const B = [
+        [[0,15], [3,15], [6,15], [9,15], [12,15], [15,15], [18,12], [21,12], [24,12],
+             [27,12], [30,12], [33,12], [36,12], [39,12], [42,12], [45,12], [48,12], [51,12],
+             [54,9], [57,9], [60,9], [63,9], [66,9], [69,9], [72,9], [75,9], [78,9],
+             [81,9], [84,9], [87,9], [90,6], [93,6], [96,6], [99,6], [102,6], [105,6],
+             [108,6], [111,6], [114,6], [117,6], [120,6], [123,6], [126,6], [129,3], [132,3],
+             [135,3], [138,3], [141,3], [144,3], [147,3], [150,3], [153,3], [156,3], [159,3],
+             [162,3], [165,3], [168,3], [171,3]],
+        [[0,12], [3,9], [6,9], [9,9], [12,9], [15,9], [18,9], [21,9], [24,9],
+             [27,9], [30,9], [33,9], [36,6], [39,6], [42,6], [45,6], [48,6], [51,6],
+             [54,6], [57,6], [60,6], [63,6], [66,6], [69,6], [72,6], [75,3], [78,3],
+             [81,3], [84,3], [87,3], [90,3], [93,3], [96,3], [99,3], [102,3], [105,3],
+             [108,3], [111,3]],
+        [[0,6], [3,6], [6,6], [9,6], [12,6], [15,6], [18,6], [21,6], [24,6],
+             [27,6], [30,3], [33,3], [36,3], [39,3], [42,3], [45,3], [48,3], [51,3],
+             [54,3], [57,3], [60,3], [63,3], [66,3]],
+        [[0,6], [3,3], [6,3], [9,3], [12,3], [15,3], [18,3], [21,3], [24,3],
+             [27,3], [30,3]],
+        [[0,3], [3,3], [6,3]]];
+      for (let k = 0; k < B.length; k++)
+        for (const [x, h] of B[k]) px(x, -h, Q_, h*2, MET_FIRE[k]);
+      /* the hot head: two flat discs, the inner one white. It sits over
+         the rock's leading edge rather than ringing it. */
+      for (let y = -14; y <= 14; y++){
+        const w = Math.round(14 * Math.sqrt(Math.max(0, 1 - (y*y)/196)));
+        if (w > 0) px(-w + 2, y, w*2, 1, F4);
+      }
+      for (let y = -9; y <= 9; y++){
+        const w = Math.round(9 * Math.sqrt(Math.max(0, 1 - (y*y)/81)));
+        if (w > 0) px(-w + 2, y, w*2, 1, F5);
+      }
+      const E = [[99,-7,3],[122,6,3],[142,-5,2],
+                 [164,7,2],[178,-6,2]];
+      for (const [x,y,s] of E){ px(x, y, s, s, F3); px(x, y, 1, 1, F5); }
+    },
+    /* trail, bucket 2 - 258 long, head at x=0 */
+    () => {
+      const B = [
+        [[0,21], [3,21], [6,18], [9,18], [12,18], [15,18], [18,18], [21,18], [24,18],
+             [27,18], [30,18], [33,18], [36,18], [39,18], [42,15], [45,15], [48,15], [51,15],
+             [54,15], [57,15], [60,15], [63,15], [66,15], [69,15], [72,15], [75,12], [78,12],
+             [81,12], [84,12], [87,12], [90,12], [93,12], [96,12], [99,12], [102,12], [105,12],
+             [108,12], [111,9], [114,9], [117,9], [120,9], [123,9], [126,9], [129,9], [132,9],
+             [135,9], [138,9], [141,9], [144,9], [147,9], [150,6], [153,6], [156,6], [159,6],
+             [162,6], [165,6], [168,6], [171,6], [174,6], [177,6], [180,6], [183,6], [186,6],
+             [189,3], [192,3], [195,3], [198,3], [201,3], [204,3], [207,3], [210,3], [213,3],
+             [216,3], [219,3], [222,3], [225,3], [228,3]],
+        [[0,15], [3,15], [6,12], [9,12], [12,12], [15,12], [18,12], [21,12], [24,12],
+             [27,12], [30,12], [33,12], [36,12], [39,12], [42,9], [45,9], [48,9], [51,9],
+             [54,9], [57,9], [60,9], [63,9], [66,9], [69,9], [72,9], [75,9], [78,6],
+             [81,6], [84,6], [87,6], [90,6], [93,6], [96,6], [99,6], [102,6], [105,6],
+             [108,6], [111,6], [114,3], [117,3], [120,3], [123,3], [126,3], [129,3], [132,3],
+             [135,3], [138,3], [141,3], [144,3], [147,3], [150,3], [153,3]],
+        [[0,9], [3,9], [6,9], [9,9], [12,9], [15,9], [18,9], [21,9], [24,6],
+             [27,6], [30,6], [33,6], [36,6], [39,6], [42,6], [45,6], [48,6], [51,6],
+             [54,6], [57,3], [60,3], [63,3], [66,3], [69,3], [72,3], [75,3], [78,3],
+             [81,3], [84,3], [87,3], [90,3], [93,3]],
+        [[0,6], [3,6], [6,6], [9,6], [12,6], [15,3], [18,3], [21,3], [24,3],
+             [27,3], [30,3], [33,3], [36,3], [39,3], [42,3], [45,3]],
+        [[0,3], [3,3], [6,3], [9,3], [12,3], [15,3]]];
+      for (let k = 0; k < B.length; k++)
+        for (const [x, h] of B[k]) px(x, -h, Q_, h*2, MET_FIRE[k]);
+      /* the hot head: two flat discs, the inner one white. It sits over
+         the rock's leading edge rather than ringing it. */
+      for (let y = -19; y <= 19; y++){
+        const w = Math.round(19 * Math.sqrt(Math.max(0, 1 - (y*y)/361)));
+        if (w > 0) px(-w + 2, y, w*2, 1, F4);
+      }
+      for (let y = -11; y <= 11; y++){
+        const w = Math.round(11 * Math.sqrt(Math.max(0, 1 - (y*y)/121)));
+        if (w > 0) px(-w + 2, y, w*2, 1, F5);
+      }
+      const E = [[129,-9,3],[159,7,3],[185,-6,2],
+                 [214,9,2],[232,-7,2]];
+      for (const [x,y,s] of E){ px(x, y, s, s, F3); px(x, y, 1, 1, F5); }
+    },
+  ];
+
   /* ---- baking ---------------------------------------------------- */
   function surface(w, h, ox, oy, draw){
     const cv = document.createElement('canvas');
@@ -3095,7 +3281,7 @@ const SPR = (function(){
   const HELI_PICK   = [0,2,5];              /* news, rescue, cargo        */
 
   const cache = { car:[], bird:[], debris:[], heli:[], plane:[], pickup:[],
-                  asteroid:[], boom:new Map() };
+                  asteroid:[], meteor:[], metTail:[], boom:new Map() };
   let stats = null;
 
   function bake(){
@@ -3129,12 +3315,19 @@ const SPR = (function(){
                  (_, f) => surface(70, 70, 1, 1, () => pickup(k, f))));
     cache.asteroid = AST_DRAW.map((d, i) =>
       surface(AST_BOX[i][0] + 4, AST_BOX[i][1] + 4, 2, 2, d));
+    cache.meteor = MET_DRAW.map((d, i) =>
+      surface(MET_BOX[i][0] + 4, MET_BOX[i][1] + 4, 2, 2, d));
+    /* the trail's origin is its head, which is where the rock sits, so
+       the surface carries the head's bloom to the left of x=0 */
+    cache.metTail = MET_TAIL.map((d, i) =>
+      surface(MET_TAIL_BOX[i][0] + 58, MET_TAIL_BOX[i][1] + 10, 44,
+              (MET_TAIL_BOX[i][1] + 10) >> 1, d));
     let n = cache.car.length + cache.debris.length;
     cache.bird.forEach(a => n += a.length);
     cache.heli.forEach(a => n += a.length);
     cache.plane.forEach(a => a.forEach(b => n += b.length));
     cache.pickup.forEach(a => n += a.length);
-    n += cache.asteroid.length;
+    n += cache.asteroid.length + cache.meteor.length + cache.metTail.length;
     /* A sprite touching its surface edge has been clipped - the surface
        was sized too small. Cheap to check once at boot, invisible to
        find by eye later. */
@@ -3157,6 +3350,8 @@ const SPR = (function(){
     cache.plane.forEach((a,i) => a.forEach(b => b.forEach(add('plane'+i))));
     cache.pickup.forEach((a,i) => a.forEach(add('pickup'+i)));
     cache.asteroid.forEach(add('asteroid'));
+    cache.meteor.forEach(add('meteor'));
+    cache.metTail.forEach(add('metTail'));
     index();
     stats = { ms: +(performance.now()-t0).toFixed(2), sprites: n,
               kb: Math.round(bytes/1024), clipped, where };
@@ -3205,7 +3400,7 @@ const SPR = (function(){
   const HIT_KEY = { plane:['plane','planeHigh','bizjet','twin'],
                     heli:['heli','heli','heliCargo'] };
   const anchors = {}, boxes = {};
-  let astRad = [];
+  let astRad = [], metRad = [];
 
   function boxOf(cv){
     const c = cv.getContext('2d');
@@ -3234,6 +3429,16 @@ const SPR = (function(){
     /* the radius of a disc with the same area as the drawn rock, so the
        hitbox is measured off the art rather than guessed from the size
        the generator was asked for */
+    boxes.meteor   = cache.meteor.map(boxOf);
+    anchors.meteor = cache.meteor.map(mid);
+    anchors.metTail = MET_TAIL_BOX.map(b => [44, (b[1] + 10) >> 1]);
+    const eqRad = cv => {
+      const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+      let n = 0;
+      for (let k = 3; k < d.length; k += 4) if (d[k] > 8) n++;
+      return Math.sqrt(n / Math.PI);
+    };
+    metRad = cache.meteor.map(eqRad);
     astRad = cache.asteroid.map(cv => {
       const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
       let n = 0;
@@ -3277,6 +3482,13 @@ const SPR = (function(){
     drawAsteroid: (ctx,k,x,y,rot) => put(ctx, cache.asteroid[k],
                                          anchors.asteroid[k], x, y, 1, rot),
     astDims:   k => boxes.asteroid[k],
+    drawMeteor:  (ctx,k,x,y,rot) => put(ctx, cache.meteor[k],
+                                        anchors.meteor[k], x, y, 1, rot),
+    drawMetTail: (ctx,k,x,y,ang) => put(ctx, cache.metTail[k],
+                                        anchors.metTail[k], x, y, 1, ang),
+    metDims:   k => boxes.meteor[k],
+    metRadius: k => metRad[k],
+    metCount:  () => cache.meteor.length,
     astRadius: k => astRad[k],
     astCount:  () => cache.asteroid.length,
     pickupFrames: () => PK_FRAMES,
@@ -4582,61 +4794,6 @@ function drawHeli(o){
 }
 
 /* ---- meteor: rock on the way in, burning ---------------------------- */
-function drawMeteor(o){
-  const m = Math.hypot(o.vx, o.vy) || 1;
-  const ux = -o.vx/m, uy = -o.vy/m;          /* back along the track */
-  const len = o.tail;
-  ctx.save();
-
-  /* the burn: a tapered streak plus a hot bloom at the head */
-  const tg = ctx.createLinearGradient(o.x, o.y, o.x + ux*len, o.y + uy*len);
-  tg.addColorStop(0,    'rgba(255,244,204,.92)');
-  tg.addColorStop(0.18, 'rgba(255,186,66,.72)');
-  tg.addColorStop(0.55, 'rgba(232,96,28,.34)');
-  tg.addColorStop(1,    'rgba(150,40,10,0)');
-  ctx.fillStyle = tg;
-  const px2 = -uy, py2 = ux;                  /* perpendicular */
-  ctx.beginPath();
-  ctx.moveTo(o.x + px2*o.r*0.95, o.y + py2*o.r*0.95);
-  ctx.lineTo(o.x + ux*len + px2*o.r*0.16, o.y + uy*len + py2*o.r*0.16);
-  ctx.lineTo(o.x + ux*len - px2*o.r*0.16, o.y + uy*len - py2*o.r*0.16);
-  ctx.lineTo(o.x - px2*o.r*0.95, o.y - py2*o.r*0.95);
-  ctx.closePath(); ctx.fill();
-
-  const bloom = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, o.r*1.05);
-  bloom.addColorStop(0,   'rgba(255,238,190,.85)');
-  bloom.addColorStop(0.5, 'rgba(255,156,52,.34)');
-  bloom.addColorStop(1,   'rgba(255,120,30,0)');
-  ctx.fillStyle = bloom;
-  ctx.beginPath(); ctx.arc(o.x, o.y, o.r*1.05, 0, 6.2832); ctx.fill();
-
-  /* sparks shedding off the back */
-  for (let i = 0; i < 5; i++){
-    const t = ((i * 0.21 + o.flick * 0.06) % 1);
-    const sx = o.x + ux*len*t + px2 * Math.sin(o.flick + i*2.4) * o.r * 0.7;
-    const sy = o.y + uy*len*t + py2 * Math.sin(o.flick + i*2.4) * o.r * 0.7;
-    ctx.fillStyle = 'rgba(255,' + (170 + ((i*37)%70)) + ',90,' + (0.75*(1-t)) + ')';
-    ctx.beginPath(); ctx.arc(sx, sy, (1 - t) * o.r * 0.26 + 1, 0, 6.2832); ctx.fill();
-  }
-
-  /* the rock itself, white hot on the leading face */
-  ctx.translate(o.x, o.y);
-  ctx.rotate(o.rot);
-  const rg = ctx.createLinearGradient(-o.r*0.4, -o.r*0.4, o.r*0.7, o.r*0.7);
-  rg.addColorStop(0, '#5A4238');
-  rg.addColorStop(0.55, '#3A2A24');
-  rg.addColorStop(1, '#FFD9A0');
-  ctx.fillStyle = rg;
-  ctx.beginPath();
-  for (let i = 0; i < 9; i++){
-    const a = i/9 * 6.2832;
-    const rr = o.r * (0.8 + 0.22*Math.abs(Math.sin(i*2.3 + o.r)));
-    const x = Math.cos(a)*rr, y = Math.sin(a)*rr;
-    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-  }
-  ctx.closePath(); ctx.fill();
-  ctx.restore();
-}
 
 /* ---- asteroid ------------------------------------------------------- */
 
@@ -4842,7 +4999,11 @@ function paintObstacle(o){
       SPR.drawHeli(ctx, KIX['heli:'+o.kind], Math.floor(o.rotor) & 3,
                    o.x, o.y + Math.sin(o.bob) * 4, o.dir);
       break;
-    case 'meteor':   drawMeteor(o);   break;
+    case 'meteor':
+      /* trail first, pointing back up the track, then the tumbling rock */
+      SPR.drawMetTail(ctx, o.k, o.x, o.y, Math.atan2(-o.vy, -o.vx));
+      SPR.drawMeteor(ctx, o.k, o.x, o.y, o.rot);
+      break;
     case 'asteroid': SPR.drawAsteroid(ctx, o.k, o.x, o.y, o.rot); break;
     case 'satfrag':  drawSatFrag(o);  break;
     case 'shield':   drawPickup(o, 0); break;
