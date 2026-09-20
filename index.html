@@ -3208,11 +3208,15 @@ const CITY = (function(){
         px(x0, yy, 1, h, C[1]);
         return w;
       }
-      /* the seams snap to the grid as well, so they hold for a run of rows
-         instead of creeping a pixel at a time and sawing up the shaft */
+      /* The seams are placed off a width that has been rounded to the
+         coarse grid, then snapped to the row grid. They then move only
+         when that coarse width does - on a taper this long, seams
+         computed from the exact width creep a pixel at a time and saw the
+         shaft into grain. */
+      const ws = Math.round(w / WQ) * WQ;
       for (let i = 0; i < SEG.length; i++){
-        const a = i === 0 ? 0 : snap(w * SEG[i][0]);
-        const b = i === SEG.length - 1 ? w : Math.max(a + 1, snap(w * SEG[i][1]));
+        const a = i === 0 ? 0 : snap(ws * SEG[i][0]);
+        const b = i === SEG.length - 1 ? w : Math.max(a + 1, snap(ws * SEG[i][1]));
         if (b > a) px(x0 + a, yy, Math.min(b, w) - a, h, C[i + 1]);
       }
       return w;
@@ -3279,48 +3283,37 @@ const CITY = (function(){
     }
 
     /* ---- shaft ------------------------------------------------------ */
-    const FLR = 92;                        /* the legs are merged by here */
-    const CORE = [[FLR, 16.5], [150, 15.2], [206, 14.4], [240, 11.8],
-                  [265, 10.5], [320, 10.4], [333, 10.7], [370.2, 10.7],
-                  [382.6, 9.8], [383.2, 6.44], [433.8, 5.87], [443, 5.87],
-                  [444.5, 5.60], [484.7, 5.60]];
-    for (let yy = snap(Y(484.7)); yy < Y(FLR); yy += Q){
+    /* Below about 210m the photograph's skyline hides the tower, so the
+       shaft is carried down on the trend the trace does show: a gentle
+       step-taper of roughly 0.045m of half-width per metre of height,
+       which reaches about 45m across at the foot. There is no splayed Y
+       here. The real tower has one, but it is the last thirty metres of a
+       553m building, the reference never shows it, and inventing it put a
+       shape at the bottom that belongs to no measurement.              */
+    const CORE = [[  0, 22.40], [100, 17.90], [170, 14.75], [212, 12.80],
+                  [237, 12.45], [257, 11.30], [282,  9.87], [305,  9.87],
+                  [320, 10.40], [333, 10.70], [370.2, 10.70], [382.6, 9.80],
+                  [383.2, 6.44], [433.8, 5.87], [443, 5.87], [444.5, 5.60],
+                  [484.7, 5.60]];
+    for (let yy = snap(Y(484.7)); yy < Y(0); yy += Q){
       const m = (g - yy - Q / 2) / S;
-      column(yy, lerpAt(CORE, m), stepAt(COL, m), Q);
+      column(yy, lerpAt(CORE, Math.max(m, 0)), stepAt(COL, m), Q);
     }
-
-    /* The Y. 33.3m half-width at the foot, curving in, with the two gaps
-       you see between the legs closing about a sixth of the way up. The
-       legs are painted as three separate shapes rather than a solid mass
-       with holes punched in it, so what shows through the gaps is
-       whatever stands behind the tower. */
-    /* The Y is the one part the reference does not show - its base is
-       behind the skyline - so this keeps the real proportion of leg to
-       shaft rather than the picture's. */
-    const splay = t => 16.5 + 9.5 * Math.pow(1 - t, 1.2);
-    for (let yy = snap(Y(FLR)); yy < Y(0); yy += Q){
-      const m = (GND - yy - Q/2) / S, t = clamp(m / FLR, 0, 1);
-      const o = splay(t), lt = 4.4 + 3.4 * (1 - t), inner = o - lt;
-      const c = lerpAt(CORE, Math.max(m, FLR)), C = stepAt(COL, m);
-      if (inner <= c + 1.1){ column(yy, o, C, Q); continue; }
-      /* the two splayed legs are painted behind the core as separate
-         shapes, so what shows between them is whatever stands behind the
-         tower rather than a hole punched in one mass */
-      const lw = Math.max(2, X(o) - X(inner));
-      px(cx - X(o), yy, lw, Q, C[6]);
-      px(cx - X(o), yy, Math.max(1, Math.round(lw * 0.45)), Q, C[5]);
-      px(cx + X(inner), yy, lw, Q, C[7]);
-      column(yy, c, C, Q);
+    /* the glass elevators run up one face: two continuous channels, not a
+       dashed line */
+    for (let yy = snap(Y(330)); yy < Y(6); yy += Q){
+      const m = (GND - yy) / S;
+      px(cx - snap(X(lerpAt(CORE, Math.max(m, 0)) * 0.30)), yy, Q, Q, '#3E4452');
     }
-    for (let yy = snap(Y(330)); yy < Y(12); yy += Q){
-      const m = (GND - yy) / S, c = lerpAt(CORE, Math.max(m, FLR));
-      px(cx - snap(X(c * 0.30)), yy, Q, Q, '#3E4452');
-    }
-    px(cx - snap(X(26)), snap(Y(13)), snap(X(26))*2, Y(0) - snap(Y(13)), '#5B6573');
-    px(cx - snap(X(26)), snap(Y(13)), snap(X(26))*2, Q, '#8A7A6C');
-    for (let c = 0; c < 11; c++)
-      px(cx - X(24) + c * Math.round(X(48)/11), Y(8),
-         Math.max(3, Math.round(X(48)/11) - 3), Math.max(3, X(3.4)), WIN);
+    /* the base building, sized off the foot of the shaft rather than a
+       number of its own, so the two meet cleanly */
+    const bw = snap(X(lerpAt(CORE, 0) * 1.34));
+    px(cx - bw, snap(Y(15)), bw * 2, Y(0) - snap(Y(15)), '#4A5464');
+    px(cx - bw, snap(Y(15)), bw * 2, Q, '#8A7A6C');
+    px(cx - bw, snap(Y(15)), Math.max(2, Math.round(bw * 0.22)), Y(0) - snap(Y(15)), '#6E6253');
+    for (let c = 0; c < 13; c++)
+      px(cx - bw + Math.round(bw * 2 * (c + 0.6) / 13), Y(9),
+         Math.max(3, Math.round(bw * 2 / 13) - 4), Math.max(3, X(3.6)), WIN);
 
     stack(POD, BAND, POD[POD.length-1][0], POD[0][0], true);
 
