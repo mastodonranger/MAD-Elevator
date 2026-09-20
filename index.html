@@ -3150,212 +3150,204 @@ const CITY = (function(){
   const TO_D='#2E3844', TO_M='#4A5464', TO_L='#68727F';
 
   function cnTower(cx, H){
-    /* The art grid. Every fill below snaps to it, so the tower is drawn at
-       the same pixel density as the elevator rather than at the resolution
-       of the maths behind it. */
-    const Q = 3, snap = v => Math.round(v / Q) * Q;
-    /* Built to the real section, in metres, then scaled. 553.33m overall.
-       The base is 66.6m across - the tower stands on three curved legs
-       that splay that far and take about a sixth of the height to merge
-       into the hexagonal core. Above that the core runs unbroken at about
-       17m across, with the three wings blended in, so any view shows one
-       broad lit face between two narrower shadowed ones. It does not
-       narrow for the pod: it passes straight through and carries on ten
-       metres above it before the steel antenna takes over at 371.       */
+    /* Traced off the reference photograph end to end. The tip sits at the
+       top of that frame and the ground at the bottom, which fixes its
+       vertical scale at 3.495 px per metre, and every width below was read
+       off the trace row by row against clean sky. Two things are worth
+       knowing about the numbers. The picture draws the tower about a fifth
+       wider than true scale - that stylisation is kept, because it is what
+       makes the silhouette read the way the picture reads. And nothing is
+       interpolated: widths hold flat through a band and step at its edge,
+       which is why the pod looks like a stack of plates rather than a
+       turned object.
+
+       Everything snaps to a three-pixel art grid, widths to six, so the
+       tower is drawn at the same density as the elevator.              */
+    const Q = 3, snap = v => Math.round(v / Q) * Q, WQ = 2 * Q;
     const g = GND, S = H / 553.33;
     const Y = m => g - Math.round(m * S);
     const X = m => Math.max(1, Math.round(m * S));
-
-    /* Read off the reference rather than chosen: the shaft is a narrow
-       bright core face with a shadowed wing either side, and the whole
-       right-hand half sits in cool shadow. The bright stripe is much
-       narrower and further left than it looks from a distance. */
-    const C_L = '#DCC9B4', C_M = '#9A8E8E', C_D = '#5C5763', C_X = '#454C60',
-          C_S = '#374054', C_E = '#233543';
-
-    const FLR = 92;                      /* the legs are merged by here */
-    const CORE = [[FLR, 10.6], [250, 9.4], [330, 8.7], [360.7, 8.4], [371.3, 8.3]];
-    function core(m){
-      if (m <= FLR) return CORE[0][1];
-      for (let i = 0; i < CORE.length - 1; i++){
-        const [a1, w1] = CORE[i], [a2, w2] = CORE[i+1];
+    const stepAt = (T, m) => {
+      let r = T[0];
+      for (let i = 0; i < T.length; i++){ if (m >= T[i][0]) r = T[i]; else break; }
+      return r;
+    };
+    const lerpAt = (T, m) => {
+      if (m <= T[0][0]) return T[0][1];
+      for (let i = 0; i < T.length - 1; i++){
+        const [a1, w1] = T[i], [a2, w2] = T[i+1];
         if (m <= a2) return w1 + (w2 - w1) * (m - a1) / (a2 - a1);
       }
-      return 8.3;
-    }
-    /* one band of shaft: a broad lit face, a shadowed wing either side,
-       and the two seams where the wings meet the core */
-    const SEG = [[0.00, 0.05, C_E], [0.05, 0.16, C_D], [0.16, 0.38, C_L],
-                 [0.38, 0.48, C_M], [0.48, 0.95, C_X], [0.95, 1.00, C_E]];
-    function band(m, hwm, hgt){
-      const w = snap(X(hwm)) * 2, x0 = cx - (w >> 1), yy = snap(Y(m));
-      px(x0, yy, w, hgt, C_S);
-      for (const [t0, t1, col] of SEG){
-        const a = Math.round(w * t0), b = Math.max(a + 1, Math.round(w * t1));
-        px(x0 + a, yy, b - a, hgt, col);
+      return T[T.length-1][1];
+    };
+
+    /* ---- the round column: shaft, mast and aerial -------------------
+       Across the face the reference shows a dark wing, a thin lit strip on
+       its far edge, the seam behind it, then the bright core face, then
+       the whole right-hand half in shadow. It is the hexagon, and it is
+       the one thing that keeps the shaft from reading as a chimney.    */
+    const SEG = [[0, .05], [.05, .11], [.11, .17], [.17, .25],
+                 [.25, .44], [.44, .56], [.56, .95], [.95, 1]];
+    const COL = [
+      /* m,      edge      wing      strip     seam      core      mid       shade  */
+      [  0,   '#22384A','#57606E','#B8AEB0','#4E382F','#C59F87','#6E6253','#4A4E5C'],
+      [200,   '#1E3B4F','#585F6E','#BCB4B4','#523C33','#CDAE96','#726659','#4C5160'],
+      [280,   '#1E3B4F','#5B6573','#C0BABE','#563E37','#D4B89E','#74685D','#4E5360'],
+      [383,   '#2E4A5C','#4A4A52','#A8A49A','#6A5F5A','#CFD0C2','#8A7F78','#434E66'],
+      [444,   '#3A5A70','#7C848C','#C8D2DA','#8A8F96','#EBF3FA','#AFB9BB','#5E6D80']
+    ];
+    /* The column is a smooth taper, not a stack, so it quantises to the
+       row grid rather than the coarser width grid the pod uses - six-pixel
+       steps on a shaft this long read as a staircase. */
+    function column(yy, hwm, C, h){
+      const w = snap(X(hwm) * 2); if (w < Q) return 0;
+      const x0 = snap(cx - w / 2);
+      if (w < 8 * Q){                       /* too narrow to facet */
+        px(x0, yy, w, h, C[5]);
+        px(x0 + Math.max(1, w - 2), yy, Math.min(2, w), h, C[7]);
+        px(x0, yy, 1, h, C[1]);
+        return w;
       }
+      /* the seams snap to the grid as well, so they hold for a run of rows
+         instead of creeping a pixel at a time and sawing up the shaft */
+      for (let i = 0; i < SEG.length; i++){
+        const a = i === 0 ? 0 : snap(w * SEG[i][0]);
+        const b = i === SEG.length - 1 ? w : Math.max(a + 1, snap(w * SEG[i][1]));
+        if (b > a) px(x0 + a, yy, Math.min(b, w) - a, h, C[i + 1]);
+      }
+      return w;
     }
-    for (let yy = snap(Y(371.3)); yy < Y(FLR); yy += Q)
-      band((g - yy) / S, core((g - yy) / S), Q);
+
+    /* ---- the pod ----------------------------------------------------
+       POD is the traced silhouette, half-width in metres by elevation,
+       read as a step function. BAND is the face of each tier, as
+       [floor, lit, mid, shadow, edge] - three flat regions with the cuts
+       at 0.44 and 0.66 across, and a dark column at each end.          */
+    const POD = [
+      [333.0, 11.44], [334.2, 20.02], [335.6, 21.45], [337.0, 20.02],
+      [339.8, 21.45], [341.2, 20.30], [346.7, 22.88], [348.1, 24.31],
+      [357.8, 21.45], [359.1, 18.59], [360.5, 21.45], [361.9, 18.59],
+      [363.3, 17.16], [370.2, 11.44], [371.6, 10.01], [377.1,  8.58],
+      [381.3, 10.01], [382.6, 10.01]
+    ];
+    const BAND = [
+      [333.0, '#3A4B5C', '#243E5B', '#243A57', '#405C74'],
+      [334.6, '#42506A', '#31455F', '#345665', '#527A88'],
+      [336.5, '#848D88', '#6E7C8A', '#546C85', '#4F7087'],
+      [339.3, '#CAD2D4', '#B0BABA', '#AEB6BC', '#8E9CA6'],
+      [343.3, '#7B8A97', '#6D7E90', '#48627C', '#46607C'],
+      [345.4, '#203555', '#1C2E4A', '#183651', '#4C6B85'],
+      [347.4, '#414E74', '#293C5D', '#395168', '#376C80'],
+      [349.4, '#907E8C', '#54637B', '#4A6078', '#306174'],
+      [352.2, '#C6AE9E', '#69778F', '#6A7B8C', '#325F73'],
+      [354.2, '#827A79', '#42516A', '#3D4F62', '#3D6B7F'],
+      [358.2, '#BFB2AF', '#788297', '#65788E', '#4E7487'],
+      [361.4, '#626455', '#3F4859', '#2F3F57', '#4B778C'],
+      [363.4, '#CAC79A', '#7D7879', '#4D5A6F', '#3F697F'],
+      [368.2, '#6B8273', '#767680', '#4A6477', '#487C8E'],
+      [370.2, '#4E606E', '#57545F', '#22364A', '#235567'],
+      [376.3, '#D3CDAE', '#605359', '#4B5A76', '#496880'],
+      [381.3, '#868676', '#595F72', '#46627A', '#527389']
+    ];
+    function tier(yy, hwm, B, h){
+      const w = Math.round(X(hwm) * 2 / WQ) * WQ; if (w < WQ) return 0;
+      const x0 = snap(cx - w / 2);
+      if (w < 5 * Q){ px(x0, yy, w, h, B[2]); return w; }
+      const e = Math.max(1, Math.round(X(1.1)));
+      const iw = w - 2 * e, ix = x0 + e;
+      const a = Math.max(1, Math.round(iw * 0.44));
+      const b = Math.max(a + 1, Math.round(iw * 0.66));
+      px(ix,      yy, a,      h, B[1]);
+      px(ix + a,  yy, b - a,  h, B[2]);
+      px(ix + b,  yy, iw - b, h, B[3]);
+      px(x0,          yy, e, h, B[4]);
+      px(x0 + w - e,  yy, e, h, B[4]);
+      return w;
+    }
+    /* the outline closes across the top of every step: one pixel, because
+       the rows are only three tall and a heavier line shuts the slab */
+    function stack(P, T, mTop, mBot, close){
+      let prevW = 0;
+      for (let yy = snap(Y(mTop)); yy <= snap(Y(mBot)); yy += Q){
+        const m = (g - yy - Q / 2) / S, B = stepAt(T, m);
+        const w = tier(yy, stepAt(P, m)[1], B, Q);
+        if (!w) { prevW = 0; continue; }
+        if (w !== prevW) px(snap(cx - Math.max(w, prevW) / 2), yy, Math.max(w, prevW), 1, B[4]);
+        prevW = w;
+      }
+      if (close) px(snap(cx - prevW / 2), snap(Y(mBot)) + Q - 1, prevW, 1, stepAt(T, mBot)[4]);
+    }
+
+    /* ---- shaft ------------------------------------------------------ */
+    const FLR = 92;                        /* the legs are merged by here */
+    const CORE = [[FLR, 16.5], [150, 15.2], [206, 14.4], [240, 11.8],
+                  [265, 10.5], [320, 10.4], [333, 10.7], [370.2, 10.7],
+                  [382.6, 9.8], [383.2, 6.44], [433.8, 5.87], [443, 5.87],
+                  [444.5, 5.60], [484.7, 5.60]];
+    for (let yy = snap(Y(484.7)); yy < Y(FLR); yy += Q){
+      const m = (g - yy - Q / 2) / S;
+      column(yy, lerpAt(CORE, m), stepAt(COL, m), Q);
+    }
 
     /* The Y. 33.3m half-width at the foot, curving in, with the two gaps
        you see between the legs closing about a sixth of the way up. The
        legs are painted as three separate shapes rather than a solid mass
        with holes punched in it, so what shows through the gaps is
        whatever stands behind the tower. */
-    const splay = t => 10.6 + 22.7 * Math.pow(1 - t, 1.2);
-    for (let yy0 = snap(Y(FLR)); yy0 < Y(0); yy0 += Q){
-      const m = (GND - yy0 - Q/2) / S;
-      const t = m / FLR, o = splay(t), c = 8.8, lt = 4.2 + 3.4 * (1 - t);
-      const yy = yy0, hgt = Q;
-      const inner = o - lt;
-      if (inner <= c + 1.1){                       /* merged: one mass */
-        px(cx - X(o), yy, X(o) * 2, hgt, C_M);
-        px(cx - X(o), yy, Math.max(2, Math.round(X(o) * 0.26)), hgt, C_D);
-        px(cx - X(c), yy, X(c) * 2, hgt, C_L);
-        px(cx + X(o) - Math.max(2, Math.round(X(o) * 0.26)), yy,
-           Math.max(2, Math.round(X(o) * 0.26)), hgt, C_D);
-      } else {                                     /* the near leg, then two splayed */
-        px(cx - X(c), yy, X(c) * 2, hgt, C_L);
-        px(cx - X(c), yy, Math.max(1, X(1.2)), hgt, C_X);
-        px(cx + X(c) - Math.max(1, X(1.2)), yy, Math.max(1, X(1.2)), hgt, C_X);
-        const lw = Math.max(2, X(o) - X(inner));
-        px(cx - X(o), yy, lw, hgt, C_D);
-        px(cx - X(o), yy, Math.max(1, Math.round(lw * 0.4)), hgt, C_M);
-        px(cx + X(inner), yy, lw, hgt, C_D);
-        px(cx + X(o) - Math.max(1, Math.round(lw * 0.4)), yy,
-           Math.max(1, Math.round(lw * 0.4)), hgt, C_M);
-      }
+    /* The Y is the one part the reference does not show - its base is
+       behind the skyline - so this keeps the real proportion of leg to
+       shaft rather than the picture's. */
+    const splay = t => 16.5 + 9.5 * Math.pow(1 - t, 1.2);
+    for (let yy = snap(Y(FLR)); yy < Y(0); yy += Q){
+      const m = (GND - yy - Q/2) / S, t = clamp(m / FLR, 0, 1);
+      const o = splay(t), lt = 4.4 + 3.4 * (1 - t), inner = o - lt;
+      const c = lerpAt(CORE, Math.max(m, FLR)), C = stepAt(COL, m);
+      if (inner <= c + 1.1){ column(yy, o, C, Q); continue; }
+      /* the two splayed legs are painted behind the core as separate
+         shapes, so what shows between them is whatever stands behind the
+         tower rather than a hole punched in one mass */
+      const lw = Math.max(2, X(o) - X(inner));
+      px(cx - X(o), yy, lw, Q, C[6]);
+      px(cx - X(o), yy, Math.max(1, Math.round(lw * 0.45)), Q, C[5]);
+      px(cx + X(inner), yy, lw, Q, C[7]);
+      column(yy, c, C, Q);
     }
-    /* the glass elevators run up one face of the core: two continuous
-       channels, not a dashed line */
     for (let yy = snap(Y(330)); yy < Y(12); yy += Q){
-      const m = (GND - yy) / S, c = m < FLR ? 8.4 : core(m);
-      px(cx - snap(X(c * 0.30)), yy, Q, Q, C_X);
+      const m = (GND - yy) / S, c = lerpAt(CORE, Math.max(m, FLR));
+      px(cx - snap(X(c * 0.30)), yy, Q, Q, '#3E4452');
     }
-    px(cx - snap(X(26)), snap(Y(13)), snap(X(26))*2, Y(0) - snap(Y(13)), C_D);
-    px(cx - snap(X(26)), snap(Y(13)), snap(X(26))*2, Q, C_M);
+    px(cx - snap(X(26)), snap(Y(13)), snap(X(26))*2, Y(0) - snap(Y(13)), '#5B6573');
+    px(cx - snap(X(26)), snap(Y(13)), snap(X(26))*2, Q, '#8A7A6C');
     for (let c = 0; c < 11; c++)
       px(cx - X(24) + c * Math.round(X(48)/11), Y(8),
          Math.max(3, Math.round(X(48)/11) - 3), Math.max(3, X(3.4)), WIN);
 
-    /* ---- the top ------------------------------------------------------
-       Measured off the reference rather than designed. The silhouette was
-       traced row by row against clean sky, and the colours read at
-       seventeen stations across the face on every one of those rows. Two
-       things fell out of it that no amount of eyeballing had got to.
-
-       The pod is not a bell. Its width holds flat through each colour
-       band and steps at the boundaries, so the silhouette is a staircase
-       of tiers - which is what makes it read as a stack of rings rather
-       than as one smooth turned object.
-
-       And the face is three flat regions, not a gradient. The cuts sit at
-       0.44 and 0.66 across, with a single dark column at each end where
-       the ring turns away. Blended stops were the other half of why it
-       looked three-dimensional.
-
-       POD is the traced silhouette: half-width in metres by elevation,
-       read as a step function so the tiers stay flat. BAND is the colour
-       of each tier, [floor, lit, mid, shadow, right edge, left edge].  */
-    const POD = [
-      [330.0, 11.20], [331.0, 16.60], [332.6, 18.00], [334.2, 19.00],
-      [338.4, 17.90], [340.0, 16.60], [341.4, 17.90], [343.0, 20.50],
-      [350.4, 18.00], [354.8, 13.80], [360.7, 13.80]
-    ];
-    const BAND = [
-      [330.0, '#6A7078', '#4E5A6E', '#46586C', '#44667A'],
-      [332.6, '#7A848E', '#5E7080', '#4E6881', '#437285'],
-      [336.0, '#F2F6F0', '#C2D0D6', '#8496A8', '#386E83'],
-      [339.4, '#2E4058', '#243654', '#243E58', '#476480'],
-      [342.6, '#434E72', '#2C3F62', '#3C546B', '#3B7082'],
-      [344.4, '#8E8288', '#51647D', '#4A5F74', '#356478'],
-      [346.6, '#C2AC9C', '#687791', '#687A8D', '#3A697E'],
-      [348.4, '#978C86', '#516078', '#455668', '#33667A'],
-      [350.2, '#787173', '#4A5568', '#3D5164', '#467487'],
-      [351.8, '#BEB5B3', '#768498', '#65778B', '#3C7485'],
-      [354.2, '#676659', '#40495B', '#2C3F56', '#4F728B'],
-      [356.0, '#C5C594', '#797678', '#4B5A6F', '#3A677E']
-    ];
-    const stepAt = (T, m) => {
-      let r = T[0];
-      for (let i = 0; i < T.length; i++) if (m >= T[i][0]) r = T[i]; else break;
-      return r;
-    };
-    /* Widths land on a coarser grid than the rows do. At the size the pod
-       actually gets - about thirty cells across - a width that creeps in by
-       one cell a row draws a curve, and a curve is what made it read as a
-       turned object instead of a stack. Two cells is the smallest step that
-       still reads as a step. */
-    const WQ = 2 * Q;
-    const OW = Math.max(1, Math.round(X(1.1)));     /* outline weight */
-    /* Resampling the reference down to this pixel density is what finally
-       showed it: every tier is wrapped in a dark outline, and that outline
-       is most of why the thing reads as plates on a shaft rather than as
-       one solid mass. The face inside it is three flat regions - the cuts
-       sit at 0.44 and 0.66 across - with no blending between them. */
-    function tier(yy, hwm, B, h){
-      const w = Math.round(X(hwm) * 2 / WQ) * WQ; if (w < WQ) return 0;
-      const x0 = snap(cx - w / 2);
-      if (w <= 4 * OW){ px(x0, yy, w, h, B[4]); return w; }
-      const iw = w - 2 * OW, ix = x0 + OW;
-      const a = Math.max(1, Math.round(iw * 0.44));
-      const b = Math.max(a + 1, Math.round(iw * 0.66));
-      px(ix,      yy, a,      h, B[1]);
-      px(ix + a,  yy, b - a,  h, B[2]);
-      px(ix + b,  yy, iw - b, h, B[3]);
-      px(x0,          yy, OW, h, B[4]);
-      px(x0 + w - OW, yy, OW, h, B[4]);
-      return w;
-    }
-    function stack(P, T, mTop, mBot, close){
-      let prev = null, prevW = 0;
-      for (let yy = snap(Y(mTop)); yy <= snap(Y(mBot)); yy += Q){
-        const m = (g - yy - Q / 2) / S, B = stepAt(T, m);
-        const w = tier(yy, stepAt(P, m)[1], B, Q);
-        if (!w) { prev = B; prevW = 0; continue; }
-        /* the outline closes across the top of every step, and a keyline
-           marks each change of band even where the width holds */
-        /* One pixel, not the full outline weight: the rows are only three
-           pixels tall and a heavy line here closes the slab up entirely.
-           Only where the silhouette steps, too - the bands already differ
-           in colour, and a keyline between two of them just eats rows. */
-        if (w !== prevW){
-          const ww = Math.max(w, prevW) || w;
-          px(snap(cx - ww / 2), yy, ww, 1, B[4]);
-        }
-        prev = B; prevW = w;
-      }
-      if (close) px(snap(cx - prevW / 2), snap(Y(mBot)) + Q - 1, prevW, 1, stepAt(T, mBot)[4]);
-    }
     stack(POD, BAND, POD[POD.length-1][0], POD[0][0], true);
 
-    /* SkyPod at 447 - same treatment, a third the size. The reference
-       crops the shaft between the two, so this sits where the real one
-       does rather than where the photograph puts it. */
-    const SKP = [
-      [443.2, 5.60], [444.4, 8.10], [449.4, 8.10], [450.4, 6.20], [451.4, 6.20]
-    ];
+    /* ---- SkyPod at 440 ---------------------------------------------- */
+    const SKP = [[434.5, 6.44], [435.5, 8.73], [437.0, 9.30],
+                 [442.3, 8.73], [443.6, 6.44], [444.5, 6.44]];
     const SKB = [
-      [443.2, '#48586A', '#33465E', '#2A3C54', '#2C4A5E'],
-      [445.4, '#9A93A2', '#6E7488', '#535C76', '#2E5367'],
-      [447.0, '#F4FAFF', '#C6D4E2', '#93A4BA', '#2E5367'],
-      [450.2, '#4A5A6C', '#38485E', '#2E3E54', '#2C4A5E']
+      [434.5, '#3F505E', '#313247', '#233B51', '#416578'],
+      [436.4, '#71828B', '#615F76', '#575D73', '#435F77'],
+      [438.6, '#E8F8FA', '#AAA6BB', '#68758B', '#436C7F'],
+      [441.8, '#7A7F89', '#5D6671', '#3B4F67', '#407085']
     ];
-    /* the mast runs unbroken and the SkyPod sits on top of it, so there is
-       no seam to keep aligned between the two */
-    const mast = m => 4.3 - 2.3 * clamp((m - 451.4) / 101.9, 0, 1);
-    for (let yy = snap(Y(553.33)); yy < Y(371.3); yy += Q){
+    stack(SKP, SKB, 444.5, 434.5, false);
+
+    /* ---- the aerial: alternating black collars and white mast ------- */
+    /* Read off the silhouette rather than the row trace: at three to six
+       pixels across, the dark outline is most of what a row trace sees. */
+    const AER = [[484.7, 3.60], [486.9, 3.93], [505.3, 2.79], [510.4, 1.57],
+                 [523.6, 2.65], [531.0, 1.10], [542.8, 2.50], [553.4, 2.50]];
+    const A_D = ['#2A3038', '#1C222C', '#12161E', '#2A3A48', '#151A22', '#0E1219', '#1E2A36'];
+    const A_L = ['#4A5A6A', '#8C949E', '#E0E4EA', '#AEB6C0', '#F2F6FA', '#BAC2CC', '#828C99'];
+    for (let yy = snap(Y(553.33)); yy <= snap(Y(484.7)); yy += Q){
       const m = (g - yy - Q / 2) / S;
-      const w = snap(X(m < 451.4 ? 4.8 : mast(m)) * 2), x0 = snap(cx - w / 2);
-      px(x0, yy, w, Q, '#6E6A70');
-      px(x0, yy, Math.max(1, Math.round(w * 0.42)), Q, '#B8ADA6');
-      px(x0 + w - Math.max(1, Math.round(w * 0.22)), yy,
-         Math.max(1, Math.round(w * 0.22)), Q, '#403C48');
+      const dark = (m >= 542.8) || (m >= 505.3 && m < 510.4)
+                || (m >= 523.6 && m < 531.0) || (m < 486.9);
+      column(yy, stepAt(AER, m)[1], dark ? A_D : A_L, Q);
     }
-    stack(SKP, SKB, 451.4, 443.2, false);
-    px(cx - Math.max(2, X(1.2)), snap(Y(500)), Math.max(3, X(2.4)),
-       snap(Y(492)) - snap(Y(500)), '#2E2A2E');
     px(cx - Math.max(2, X(1.4)), Y(553.33) - 2, Math.max(3, X(2.8)),
        Math.max(4, X(4)), '#E4353F');
   }
