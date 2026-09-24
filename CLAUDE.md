@@ -20,6 +20,11 @@ is working to.
 Show candidates, take the picks, iterate on the picks. Only once the whole set
 is agreed does any of it go near `index.html`.
 
+Once a design and its animation are confirmed, they go into the **motion tests
+doc** — <https://claude.ai/artifact/VVuUantPqsLPbzjYmGUS7w> — and that doc is
+what gets presented. It already holds the elevator tilt, birds, crane, debris,
+helicopters, aircraft and power-ups. Update it; do not start a second viewer.
+
 ## Art direction — read this before drawing anything
 
 The reference is the **planes, cranes and elevator car**, not the debris. Those
