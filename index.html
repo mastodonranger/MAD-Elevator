@@ -573,6 +573,88 @@ const rgba = (c,a) => 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')';
 const overlap = (a,b) =>
   a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 
+/* ---- hitboxes from the alpha, in bands ---------------------------
+   The sprite is the hitbox, but ONE box around a sprite is a poor fit
+   for anything that is not a rectangle. Measured: a bird's box holds 80%
+   more sky than bird, a tumbling stick at 45 degrees claims four times
+   its own area, and a satellite with panels and booms claims nearly
+   four. Splitting the mask into horizontal bands and giving each band
+   its own extent costs a handful of rects and follows the shape.
+
+   For anything that tumbles the mask is measured at each of ANGLES
+   rotations, so the rects are the ink at that angle rather than the
+   corners of a box swung round - which is where most of the slack was. */
+const HIT_BANDS = 10, HIT_ANGLES = 16;
+
+function maskBands(cv, cx, cy){
+  const w = cv.width, h = cv.height;
+  const d = cv.getContext('2d').getImageData(0, 0, w, h).data;
+  let y0 = -1, y1 = -1;
+  for (let y = 0; y < h; y++){
+    let any = false;
+    for (let x = 0; x < w; x++) if (d[(y*w+x)*4+3] > 8){ any = true; break; }
+    if (any){ if (y0 < 0) y0 = y; y1 = y; }
+  }
+  if (y0 < 0) return [];
+  const out = [], span = y1 - y0 + 1;
+  for (let b = 0; b < HIT_BANDS; b++){
+    const a = y0 + Math.floor(span * b / HIT_BANDS);
+    const z = y0 + Math.floor(span * (b+1) / HIT_BANDS) - 1;
+    if (z < a) continue;
+    /* runs, not one span: a satellite's row is body, sky, panel, and a
+       single min-to-max rect swallows the sky in the middle. Runs closer
+       than GAP are merged, and only the widest few are kept so the rect
+       count stays bounded. */
+    const on = new Uint8Array(w);
+    for (let y = a; y <= z; y++)
+      for (let x = 0; x < w; x++)
+        if (d[(y*w+x)*4+3] > 8) on[x] = 1;
+    const GAP = 4, KEEP = 3, runs = [];
+    let x0 = -1;
+    for (let x = 0; x <= w; x++){
+      if (x < w && on[x]){ if (x0 < 0) x0 = x; }
+      else if (x0 >= 0){
+        const last = runs[runs.length-1];
+        if (last && x0 - (last[0] + last[1]) <= GAP) last[1] = x - last[0];
+        else runs.push([x0, x - x0]);
+        x0 = -1;
+      }
+    }
+    if (!runs.length) continue;
+    runs.sort((p, q) => q[1] - p[1]);
+    for (const [rx, rw] of runs.slice(0, KEEP))
+      out.push([rx - cx, a - cy, rw, z - a + 1]);
+  }
+  return out;
+}
+/* the same, measured at each rotation the blit can use */
+function maskBandsSpun(cv){
+  const D = cv.width, c = D / 2;
+  const tmp = document.createElement('canvas'); tmp.width = D; tmp.height = D;
+  const g = tmp.getContext('2d', { willReadFrequently: true });
+  const sets = [];
+  for (let i = 0; i < HIT_ANGLES; i++){
+    g.clearRect(0, 0, D, D);
+    g.save(); g.imageSmoothingEnabled = false;
+    g.translate(c, c); g.rotate(i / HIT_ANGLES * Math.PI * 2);
+    g.drawImage(cv, -c, -c); g.restore();
+    sets.push(maskBands(tmp, c, c));
+  }
+  return sets;
+}
+/* sprite-space bands to world rects */
+function bandsAt(bands, x, y){
+  const out = [];
+  for (const [bx, by, bw, bh] of bands)
+    out.push({ x: x + bx, y: y + by, w: bw, h: bh });
+  return out;
+}
+function spunBandsAt(sets, rot, x, y){
+  const n = sets.length;
+  const i = ((Math.round(rot / (Math.PI*2) * n) % n) + n) % n;
+  return bandsAt(sets[i], x, y);
+}
+
 function roundRect(g,x,y,w,h,r){
   const rr = Math.min(r, Math.abs(w)/2, Math.abs(h)/2);
   g.beginPath();
@@ -1196,6 +1278,7 @@ function rotBox(o, m){
   const w = (o.w*c + o.h*s) * m, h = (o.w*s + o.h*c) * m;
   return [{ x: o.x - w/2, y: o.y - h/2, w, h }];
 }
+const shift = o => r => ({ x: o.x + r.x, y: o.y + r.y, w: r.w, h: r.h });
 function rectsOf(o){
   if (o.t === 'crane'){
     const top = o.y - o.h/2;
@@ -1206,23 +1289,21 @@ function rectsOf(o){
   }
   if (o.t === 'plane')
     return SPR.rectsFor(SPR.hitKey('plane', KIX['plane:'+o.kind]), o.x, o.y, o.dir);
-  if (o.t === 'ufo') return [{ x:o.x-o.w/2, y:o.y-o.h/2, w:o.w, h:o.h }];
+  if (o.t === 'ufo') return bandsAt(SPACE.ufoBands(), o.x, o.y);
   if (o.t === 'vms3' || o.t === 'f1' || o.t === 'shield'){
     return [{ x: o.x - 34, y: o.y - 34, w: 68, h: 68 }];
   }
   if (o.t === 'heli')
     return SPR.rectsFor(SPR.hitKey('heli', KIX['heli:'+o.kind]), o.x, o.y, o.dir);
-  /* w,h for these come off the baked alpha at spawn, so the old shrink
-     factors would only make the box lie the other way. The meteor's box
-     is the ROCK, not the trail - the flame is not solid. */
-  if (o.t === 'meteor')   return [{ x:o.x-o.w/2, y:o.y-o.h/2, w:o.w, h:o.h }];
-  if (o.t === 'asteroid') return rotBox(o, 1);
-  if (o.t === 'satfrag')  return rotBox(o, 1);
-  if (o.t === 'sat')      return rotBox(o, 1);
-  /* The sprite IS the hitbox now - w,h come from the baked art - so the
-     old shrink factors would only make it lie the other way. */
-  if (o.t === 'debris')  return rotBox(o, 1);
-  if (o.t === 'bird')    return [{ x:o.x-o.w/2, y:o.y-o.h/2, w:o.w, h:o.h }];
+  /* Bands off the baked alpha, measured at the angle the thing is
+     actually turned to. The meteor's box is the ROCK, not the trail -
+     the flame is not solid. */
+  if (o.t === 'meteor')   return bandsAt(SPACE.rockBands(), o.x, o.y);
+  if (o.t === 'asteroid') return SPACE.astBands(o.kind, o.rot).map(shift(o));
+  if (o.t === 'satfrag')  return SPACE.fragBands(o.kind, o.rot).map(shift(o));
+  if (o.t === 'sat')      return SPACE.satBands(o.kind, o.rot).map(shift(o));
+  if (o.t === 'debris')   return SPR.debrisBands(KIX['debris:'+o.kind], o.rot).map(shift(o));
+  if (o.t === 'bird')     return bandsAt(SPR.birdBands(KIX['bird:'+o.kind]), o.x, o.y);
   const sx = 0.82, sy = 0.82;
   return [{ x: o.x - o.w*sx/2, y: o.y - o.h*sy/2, w: o.w*sx, h: o.h*sy }];
 }
@@ -1583,6 +1664,7 @@ function playerRect(){
   const b = SPR.carBox();
   return { x: player.x - b.w/2, y: carY - b.h/2, w: b.w, h: b.h };
 }
+function playerRects(){ return bandsAt(SPR.carBands(), player.x, carY); }
 
 function updateObstacles(dt, scroll){
   const pr = playerRect();
@@ -3171,7 +3253,7 @@ const SPR = (function(){
                 plane:[[4,2],[3,2],[4,3],[4,3]] };
   const HIT_KEY = { plane:['plane','planeHigh','bizjet','twin'],
                     heli:['heli','heli','heliCargo'] };
-  const anchors = {}, boxes = {};
+  const anchors = {}, boxes = {}, bands = {};
 
   function boxOf(cv){
     const c = cv.getContext('2d');
@@ -3185,6 +3267,12 @@ const SPR = (function(){
   const mid = cv => { const b = boxOf(cv); return [b.x + b.w/2, b.y + b.h/2]; };
 
   function index(){
+    /* the hitbox is the ink, in bands - see maskBands */
+    bands.car    = cache.car.map(cv => { const b = boxOf(cv);
+      return maskBands(cv, b.x + b.w/2, b.y + b.h/2); });
+    bands.bird   = cache.bird.map(a => { const cv = a[1], b = boxOf(cv);
+      return maskBands(cv, b.x + b.w/2, b.y + b.h/2); });
+    bands.debris = cache.debris.map(maskBandsSpun);
     boxes.car    = cache.car.map(boxOf);
     boxes.bird   = cache.bird.map(a => boxOf(a[1]));
     boxes.debris = cache.debris.map(boxOf);
@@ -3221,6 +3309,11 @@ const SPR = (function(){
     put, rectsFor, hitKey: (fam,k) => HIT_KEY[fam][k],
     dims: (fam,k) => boxes[fam][k],
     carBox: () => boxes.car[0],
+    carBands:    () => bands.car[0],
+    birdBands:   i => bands.bird[i],
+    debrisBands: (i,rot) => spunBandsAt(bands.debris[i], rot, 0, 0),
+    birdCv:   i => cache.bird[i][1],
+    debrisCv: i => cache.debris[i],
     riderCv: i => cache.rider[i],
     carCvOf: i => cache.car[i],
     drawCar:    (ctx,i,x,y,rot,a)   => put(ctx, cache.car[i], anchors.car[i], x, y, 1, rot||0, a),
@@ -6109,7 +6202,7 @@ const SATPICK = [FULL[3], FULL[4]];              /* Cluster, Derelict */
 const MSHELL = 6, MW = 306, MH = 88, MAX = 86, MAY = 44;
 const UFOF = 5;
 
-const cvs = {}, box = {}, anc = {};
+const cvs = {}, box = {}, anc = {}, bnd = {};
 let stats = null;
 
 function bake(){
@@ -6124,6 +6217,13 @@ function bake(){
   ANG = 0;
   cvs.met  = Array.from({length:MSHELL},(_,f)=>surf(MW,MH,MAX,MAY,()=>bluntFrame(f,FIRE6)));
 
+  bnd.ast  = cvs.ast.map(maskBandsSpun);
+  bnd.frag = cvs.frag.map(maskBandsSpun);
+  bnd.sat  = cvs.sat.map(maskBandsSpun);
+  bnd.ufo  = (() => { const b = boxOf(cvs.ufo[0]);
+                      return maskBands(cvs.ufo[0], b.x + b.w/2, b.y + b.h/2); })();
+  bnd.rock = (() => { const b = boxOf(rockCv);
+                      return maskBands(rockCv, b.x + b.w/2, b.y + b.h/2); })();
   box.ast  = cvs.ast.map(boxOf);
   box.frag = cvs.frag.map(boxOf);
   box.sat  = cvs.sat.map(boxOf);
@@ -6166,6 +6266,16 @@ return {
   ufoBox:    () => box.ufo,
   ufoFrames: () => UFOF,
   ufo:  (ctx,x,y,f) => blit(ctx, cvs.ufo[f], anc.ufo, x, y, 0),
+  astCv:     i  => cvs.ast[i],
+  fragCv:    i  => cvs.frag[i],
+  satCv:     i  => cvs.sat[i],
+  ufoCv:     () => cvs.ufo[0],
+  rockCv:    () => rockCv,
+  astBands:  (i,rot) => spunBandsAt(bnd.ast[i],  rot, 0, 0),
+  fragBands: (i,rot) => spunBandsAt(bnd.frag[i], rot, 0, 0),
+  satBands:  (i,rot) => spunBandsAt(bnd.sat[i],  rot, 0, 0),
+  ufoBands:  () => bnd.ufo,
+  rockBands: () => bnd.rock,
   metBox:    () => box.rock,
   metFrames: () => MSHELL,
   /* the shell is turned to lie along the track; the rock is not turned
@@ -7978,6 +8088,17 @@ function draw(){
     if (!blink && (player.shield || player.bubble > 0)) drawBubble(player.x, carY + bob);
   }
 
+  /* ?debug only: the hitboxes over the art they came from */
+  if (window.DBG && DBG.boxesOn){
+    ctx.save(); ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255,90,80,.95)';
+    for (const o of obstacles) for (const r of rectsOf(o))
+      ctx.strokeRect(r.x + .5, r.y + .5, r.w, r.h);
+    ctx.strokeStyle = 'rgba(120,255,180,.95)';
+    for (const r of playerRects()) ctx.strokeRect(r.x + .5, r.y + .5, r.w, r.h);
+    ctx.restore();
+  }
+
   drawBits();
   drawClouds(true, boostEnv());
   drawPopups();
@@ -8047,6 +8168,7 @@ window.DBG = {
       if (b){ o.w = b.w; o.h = b.h; }
     }
     if (t === 'meteor'){ o.vx = 60; o.vy = 200; }
+    if (o.rot !== undefined) o.rot = 0.4;
     /* a shield, not mercy - mercy blinks the car, which takes it out of
        every other frame of a screenshot */
     player.shield = true; setLabels();
@@ -8056,6 +8178,8 @@ window.DBG = {
   bits: () => bits.length,
   /* light the F1 boost, so the wake and the chevrons can be looked at */
   boost: () => { player.boost = F1_TIME; setLabels(); },
+  boxesOn: false,
+  showBoxes: v => { DBG.boxesOn = v !== false; return DBG.boxesOn; },
   /* run the real crash path against the last parked hazard */
   hit: (asFirst) => { const o = obstacles[obstacles.length - 1];
                if (!o) return 'nothing parked';
@@ -8066,6 +8190,41 @@ window.DBG = {
                crash(player.x, carY, o); return hazardKey(o); },
   /* every hazard key the game can actually produce, and the line it
      lands on - so a renamed kind cannot quietly fall back for ever */
+  /* For every hazard: the area its collision rects claim against the
+     area its art actually covers. 1.00 means the box is the sprite. */
+  fit: () => {
+    const cover = cv => { const d = cv.getContext('2d')
+        .getImageData(0,0,cv.width,cv.height).data;
+      let n=0; for(let i=3;i<d.length;i+=4) if(d[i]>8) n++; return n; };
+    const rows = [];
+    const add = (label, cv, o) => {
+      const rs = rectsOf(o);
+      const area = rs.reduce((a,r)=>a+r.w*r.h, 0);
+      const ink  = cover(cv);
+      rows.push({ what: label, boxArea: Math.round(area), inkPx: ink,
+                  rects: rs.length, ratio: +(area/ink).toFixed(2) });
+    };
+    const at = (t, kind, extra) => Object.assign(
+      { t, kind, x:270, y:400, w:0, h:0, rot:0, dir:1 }, extra);
+    KIND.bird.forEach(k => { const i = KIX['bird:'+k], d = SPR.dims('bird', i);
+      add('bird:'+k, SPR.birdCv(i), at('bird', k, {w:d.w, h:d.h})); });
+    KIND.debris.forEach(k => { const i = KIX['debris:'+k], d = SPR.dims('debris', i);
+      add('debris:'+k+' @0deg',  SPR.debrisCv(i), at('debris', k, {w:d.w,h:d.h,rot:0}));
+      add('debris:'+k+' @45deg', SPR.debrisCv(i), at('debris', k, {w:d.w,h:d.h,rot:Math.PI/4})); });
+    for (let i=0;i<SPACE.astCount();i++){ const b = SPACE.astBox(i);
+      add('asteroid '+i+' @0deg',  SPACE.astCv(i), at('asteroid', i, {w:b.w,h:b.h,rot:0}));
+      add('asteroid '+i+' @45deg', SPACE.astCv(i), at('asteroid', i, {w:b.w,h:b.h,rot:Math.PI/4})); }
+    for (let i=0;i<SPACE.fragCount();i++){ const b = SPACE.fragBox(i);
+      add('satfrag '+i+' @45deg', SPACE.fragCv(i), at('satfrag', i, {w:b.w,h:b.h,rot:Math.PI/4})); }
+    for (let i=0;i<SPACE.satCount();i++){ const b = SPACE.satBox(i);
+      add('sat '+i+' @0deg',  SPACE.satCv(i), at('sat', i, {w:b.w,h:b.h,rot:0}));
+      add('sat '+i+' @45deg', SPACE.satCv(i), at('sat', i, {w:b.w,h:b.h,rot:Math.PI/4})); }
+    const ub = SPACE.ufoBox();
+    add('ufo', SPACE.ufoCv(), at('ufo', null, {w:ub.w, h:ub.h}));
+    const mb = SPACE.metBox();
+    add('meteor (rock)', SPACE.rockCv(), at('meteor', null, {w:mb.w, h:mb.h}));
+    return rows;
+  },
   lines: () => {
     const out = [];
     const fams = { bird:KIND.bird, debris:KIND.debris, heli:KIND.heli,
