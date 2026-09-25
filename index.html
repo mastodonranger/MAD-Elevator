@@ -6784,16 +6784,22 @@ function bake(){
   /* the far pair are their own, smaller shapes - a distant cloud is
      small because it is far away, and a sprite cannot be scaled down to
      say so */
+  /* both decks carry the holes. A solid near cloud is a white slab
+     across the front of the screen: it hid the car and whatever it was
+     about to hit. The checker is the only transparency the palette
+     allows, so the near pair take it too - depth is carried by size,
+     parallax and drift instead. */
   CB = { farA:  bakeCloud(CLOUD_S1,'half'), farB:  bakeCloud(CLOUD_S2,'half'),
-         nearA: bakeCloud(CLOUD_A,'solid'), nearB: bakeCloud(CLOUD_B,'solid') };
+         nearA: bakeCloud(CLOUD_A,'half'),  nearB: bakeCloud(CLOUD_B,'half') };
   let bytes = 0, n = 0;
   for (const k in CB){ n++; bytes += CB[k].width * CB[k].height * 4; }
   stats = { ms:+(performance.now()-t0).toFixed(2), sprites:n, kb:Math.round(bytes/1024) };
   return stats;
 }
 
-/* the far layer runs slower and carries the holes; parallax and overlap
-   are the only depth cues there are, because a sprite cannot be scaled */
+/* the far layer runs slower and is built from smaller shapes; parallax,
+   size and overlap are the only depth cues there are, because a sprite
+   cannot be scaled */
 const TILE = 1180;
 /* Two decks, not one.
 
@@ -6873,7 +6879,7 @@ return {
     _g = ctx; _P = 1; OX = 0; OY = 0;
     starsAt(w, h, scroll, Math.floor(t*6) % TW_STEP.length, keep);
   },
-  /* front is the near pair, which runs faster and is solid */
+  /* front is the near pair: bigger shapes, faster parallax */
   clouds(ctx, w, h, feet, camPx, t, front){
     const lo = front ? CL_NEAR_LO : CL_FAR_LO;
     const hi = front ? CL_NEAR_HI : CL_FAR_HI;
