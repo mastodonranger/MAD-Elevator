@@ -1663,7 +1663,15 @@ function update(dt){
    ================================================================ */
 const SPR = (function(){
   let _g = null, P = 1, OX = 0, OY = 0;
-  const px  = (x,y,w,h,col) => { _g.fillStyle = col; _g.fillRect(OX+x*P, OY+y*P, w*P, h*P); };
+  /* Rasterised edge-to-edge, not position-and-size: both edges of a rect
+     are rounded and the width is the difference, so at a fractional P
+     neighbouring rects still share an exact boundary - no seams, no gaps,
+     nothing antialiased. At P = 1 this is identical to a plain fillRect. */
+  const px  = (x,y,w,h,col) => {
+    const x0 = Math.round(OX + x*P),     y0 = Math.round(OY + y*P);
+    const x1 = Math.round(OX + (x+w)*P), y1 = Math.round(OY + (y+h)*P);
+    _g.fillStyle = col; _g.fillRect(x0, y0, x1-x0, y1-y0);
+  };
   const dot = (x,y,col)     => px(x,y,1,1,col);
   const clr = (x,y,w,h)     => _g.clearRect(OX+x*P, OY+y*P, w*P, h*P);
 
@@ -1674,6 +1682,9 @@ const SPR = (function(){
   const CT='#232B42', CTL='#3A4868', CTD='#161C2E', SHT='#E6ECF6', TR='#1B2136', SHO='#0E1220';
 
   /* panoramic geometry: thin posts, glass wrapping the corners */
+  /* the cabin is drawn on its original 76x106 grid and rasterised at
+     CAR_S, so every coordinate below stays the one it was designed on */
+  const CAR_S = 1.5, CARW = Math.round(76*CAR_S), CARH = Math.round(106*CAR_S);
   const PL=8, PR=66;            /* posts, 2 cells each: 8..9 and 66..67 */
   const CL=10, CR=62;           /* chamfer (corner) glass, 4 cells each */
   const GX=15, GW=46;           /* main glass 15..60 */
@@ -2798,10 +2809,10 @@ const SPR = (function(){
   }
 
   /* ---- baking ---------------------------------------------------- */
-  function surface(w, h, ox, oy, draw){
+  function surface(w, h, ox, oy, draw, scale){
     const cv = document.createElement('canvas');
     cv.width = w; cv.height = h;
-    _g = cv.getContext('2d'); P = 1; OX = ox; OY = oy;
+    _g = cv.getContext('2d'); P = scale || 1; OX = ox; OY = oy;
     draw();
     return cv;
   }
@@ -2822,12 +2833,17 @@ const SPR = (function(){
 
   function bake(){
     const t0 = performance.now();
+    /* Measured off the published build: the car's brass body is 204 of
+       1290 across, 15.8% of the play width, which is 85 of 540. The
+       cabin is laid out on a 60-wide grid, so it is rasterised at 3/2 to
+       reach 90 - the whole car, rider included, in one pass rather than
+       six families redrawn by hand and left to drift apart. */
     cache.car = RIDER_PICK.map(i =>
-      surface(76, 106, 0, 2, () => { cabin(); RIDERS[i][1](); panelBox(); }));
+      surface(CARW, CARH, 0, 3, () => { cabin(); RIDERS[i][1](); panelBox(); }, CAR_S));
     /* the same car with nobody in it, so the intro can show an empty
        cabin being walked up to instead of one that already has its
        rider standing in it */
-    cache.carEmpty = surface(76, 106, 0, 2, () => { cabin(); panelBox(); });
+    cache.carEmpty = surface(CARW, CARH, 0, 3, () => { cabin(); panelBox(); }, CAR_S);
     cache.bird = BIRD_PICK.map(i =>
       [0,1,2].map(f => surface(48, 34, 5, 6, () => drawBird(BIRDS[i][2], f))));
     cache.debris = DEBRIS_PICK.map(i =>
@@ -6419,27 +6435,24 @@ function bake(){
 /* the far layer runs slower and carries the holes; parallax and overlap
    are the only depth cues there are, because a sprite cannot be scaled */
 const TILE = 1180;
-/* Six instances per tile, not thirteen, on a tile half again as long -
-   so the sky is mostly sky and a cloud is an event rather than a
-   texture. One per layer keeps the parallax readable. */
-const SLOT = {
-  farA:  [[-40,180,1],[290,900,-1]],
-  farB:  [[300,610,-1]],
-  nearA: [[30,420,1],[-60,1060,1]],
-  nearB: [[250,60,-1]]
-};
-function layer(ctx, bk, slots, off, drift, t){
-  const oy = ((off % TILE) + TILE) % TILE;
+/* The deck is a band in the WORLD, not a tile that follows the camera.
+   A cloud sits at a fixed altitude and you climb past it: below the band
+   you see them far above, inside it you are among them, above it they
+   are gone. The old tile wrapped with the camera and so had no altitude
+   of its own - which is why there were clouds at street level, level
+   with the pad, in front of the buildings. */
+const CL_LO = 1500, CL_HI = 5600;      /* the deck, in feet */
+const CL_STEP = 110;                   /* feet from one slot to the next */
+/* [x, layer, mirrored]; layers 0-1 are the far pair, 2-3 the near */
+const CL_SLOT = [[-40,0,1],[300,2,-1],[150,1,1],[330,3,-1],
+                 [ 20,0,-1],[240,2,1],[-10,1,-1],[290,3,1]];
+const CL_PAR  = [0.30, 0.30, 0.52, 0.52];
+function putCloud(ctx, bk, x, y, mir){
   ctx.imageSmoothingEnabled = false;
-  for (let k = -1; k <= 1; k++)
-    for (const [sx, sy, mir] of slots){
-      const x = sx + Math.sin(t*drift + sy)*6, y = sy + oy + k*TILE;
-      if (y > 1200 || y < -400) continue;
-      ctx.save();
-      if (mir < 0){ ctx.translate(x + bk.width, y); ctx.scale(-1,1); ctx.drawImage(bk,0,0); }
-      else ctx.drawImage(bk, x, y);
-      ctx.restore();
-    }
+  ctx.save();
+  if (mir < 0){ ctx.translate(x + bk.width, y); ctx.scale(-1, 1); ctx.drawImage(bk, 0, 0); }
+  else ctx.drawImage(bk, x, y);
+  ctx.restore();
 }
 
 /* a ramp of stars rather than a switch: the field fills in as the sky
@@ -6486,12 +6499,18 @@ return {
     starsAt(w, h, scroll, Math.floor(t*6) % TW_STEP.length, keep);
   },
   /* front is the near pair, which runs faster and is solid */
-  clouds(ctx, w, h, feet, scroll, t, front){
-    if (feet > 5200) return;
-    if (front){ layer(ctx, CB.nearA, SLOT.nearA, -scroll*0.44, 0.11, t);
-                layer(ctx, CB.nearB, SLOT.nearB, -scroll*0.44, 0.09, t); }
-    else      { layer(ctx, CB.farA,  SLOT.farA,  -scroll*0.26, 0.17, t);
-                layer(ctx, CB.farB,  SLOT.farB,  -scroll*0.26, 0.13, t); }
+  clouds(ctx, w, h, feet, camPx, t, front){
+    if (feet > CL_HI + 600) return;
+    const BK = [CB.farA, CB.farB, CB.nearA, CB.nearB];
+    const base = h * 0.62;
+    let i = 0;
+    for (let ft = CL_LO; ft <= CL_HI; ft += CL_STEP, i++){
+      const [sx, layer, mir] = CL_SLOT[i % CL_SLOT.length];
+      if ((layer >= 2) !== front) continue;
+      const y = base + (camPx - ft / FEET_PER_PX) * CL_PAR[layer];
+      if (y < -320 || y > h + 320) continue;
+      putCloud(ctx, BK[layer], sx + Math.sin(t * 0.12 + i) * 6, y, mir);
+    }
   },
   /* one stepped curve with five flat atmosphere bands above it, all
      following the same arc. It sinks as the climb continues. */
@@ -6522,8 +6541,16 @@ return {
    ================================================================ */
 const GND = (function(){
 let _g=null,_P=1,OX=0,OY=0;
-const px=(x,y,w,h,col)=>{_g.fillStyle=col;_g.fillRect(OX+x*_P,OY+y*_P,w*_P,h*_P);};
+/* edge to edge, so a fractional _P still tiles exactly - see SPR.px */
+const px=(x,y,w,h,col)=>{
+  const x0=Math.round(OX+x*_P), y0=Math.round(OY+y*_P);
+  const x1=Math.round(OX+(x+w)*_P), y1=Math.round(OY+(y+h)*_P);
+  _g.fillStyle=col; _g.fillRect(x0,y0,x1-x0,y1-y0);
+};
 const dot=(x,y,c)=>px(x,y,1,1,c);
+/* the ground art is laid out on the cabin's own grid, so it rasterises
+   at the same 3/2 the car does and the two cannot drift apart */
+const S_=1.5, R_=v=>Math.round(v*S_);
 function band(x,y,w,h,a,b,ph){for(let j=0;j<h;j++)for(let i=0;i<w;i++)dot(x+i,y+j,((i+j+(ph||0))%2)?b:a);}
 /* the car's own palette, copied from SPR - a door and a window have to
    be the same blue, and the rider outside has to be the rider inside */
@@ -6741,8 +6768,8 @@ function doorRetract(s){
 
 /* bake once, blit thereafter - the same rule as every other family */
 function surf(w,h,draw){
-  const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
-  _g=cv.getContext('2d'); _P=1; OX=0; OY=0; draw(); return cv;
+  const cv=document.createElement('canvas'); cv.width=R_(w); cv.height=R_(h);
+  _g=cv.getContext('2d'); _P=S_; OX=0; OY=0; draw(); return cv;
 }
 const t0=performance.now();
 const PADCV=[0,1,2,3].map(cl=>[0,1].map(lp=>surf(168,52,()=>padGantry(cl,lp))));
@@ -6854,21 +6881,21 @@ return {
   BAKE, DECK_Y, riders: WPAL.length, NSTEP,
   /* cl 0..3 is the clamp release, lamp blinks through it */
   pad(ctx,x,y,cl,lamp){ ctx.imageSmoothingEnabled=false;
-    ctx.drawImage(PADCV[cl][lamp?1:0], Math.round(x)-84, Math.round(y)-DECK_Y); },
+    ctx.drawImage(PADCV[cl][lamp?1:0], Math.round(x)-R_(84), Math.round(y)-R_(DECK_Y)); },
   /* step 0 shut .. 5 open, laid over the cabin's own aperture */
   door(ctx,x,y,step,alpha){
     if(alpha<=0.01) return;
     ctx.save(); if(alpha<1) ctx.globalAlpha=alpha;
     ctx.imageSmoothingEnabled=false;
     ctx.drawImage(DOORCV[Math.max(0,Math.min(NSTEP-1,step))],
-                  Math.round(x)-38, Math.round(y)-53);
+                  Math.round(x)-R_(38), Math.round(y)-R_(53));
     ctx.restore();
   },
   walk(ctx,i,x,y,f,alpha){
     if(alpha<=0.01) return;
     ctx.save(); if(alpha<1) ctx.globalAlpha=alpha;
     ctx.imageSmoothingEnabled=false;
-    ctx.drawImage(walkFor(i)[f&3], Math.round(x)-20, Math.round(y)-48);
+    ctx.drawImage(walkFor(i)[f&3], Math.round(x)-R_(20), Math.round(y)-R_(48));
     ctx.restore();
   }
 };
@@ -7629,10 +7656,12 @@ function draw(){
 
   drawStars();
   drawEarthLimb();
-  drawCity();
-  if (state === S.INTRO || state === S.MENU) drawPad();
+  /* the far clouds go behind the skyline: at street level a cloud is
+     something you see past the buildings, not in front of them */
   const benv = boostEnv();
   drawClouds(false, benv);
+  drawCity();
+  if (state === S.INTRO || state === S.MENU) drawPad();
   drawSpeedLines();
 
   /* F1 streaks everything that is moving past you */

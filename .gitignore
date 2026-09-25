@@ -1,0 +1,7 @@
+# scratch renders from the verification scripts
+alt.html
+alt.png
+i2.html
+i2.png
+*.png
+!docs/**/*.png
