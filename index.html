@@ -1017,24 +1017,19 @@ function rectsOf(o){
   }
   if (o.t === 'plane')
     return SPR.rectsFor(SPR.hitKey('plane', KIX['plane:'+o.kind]), o.x, o.y, o.dir);
-  if (o.t === 'ufo'){
-    return [
-      { x: o.x - o.w/2, y: o.y - 10, w: o.w, h: 22 },
-      { x: o.x - 30,    y: o.y - 34, w: 60,  h: 34 }
-    ];
-  }
+  if (o.t === 'ufo') return [{ x:o.x-o.w/2, y:o.y-o.h/2, w:o.w, h:o.h }];
   if (o.t === 'vms3' || o.t === 'f1' || o.t === 'shield'){
     return [{ x: o.x - 34, y: o.y - 34, w: 68, h: 68 }];
   }
   if (o.t === 'heli')
     return SPR.rectsFor(SPR.hitKey('heli', KIX['heli:'+o.kind]), o.x, o.y, o.dir);
-  if (o.t === 'meteor'){
-    return [{ x: o.x - o.r*0.85, y: o.y - o.r*0.85, w: o.r*1.7, h: o.r*1.7 }];
-  }
-  if (o.t === 'asteroid'){
-    return [{ x: o.x - o.r*0.82, y: o.y - o.r*0.82, w: o.r*1.64, h: o.r*1.64 }];
-  }
-  if (o.t === 'satfrag') return rotBox(o, 0.78);
+  /* w,h for these come off the baked alpha at spawn, so the old shrink
+     factors would only make the box lie the other way. The meteor's box
+     is the ROCK, not the trail - the flame is not solid. */
+  if (o.t === 'meteor')   return [{ x:o.x-o.w/2, y:o.y-o.h/2, w:o.w, h:o.h }];
+  if (o.t === 'asteroid') return rotBox(o, 1);
+  if (o.t === 'satfrag')  return rotBox(o, 1);
+  if (o.t === 'sat')      return rotBox(o, 1);
   /* The sprite IS the hitbox now - w,h come from the baked art - so the
      old shrink factors would only make it lie the other way. */
   if (o.t === 'debris')  return rotBox(o, 1);
@@ -1188,12 +1183,15 @@ function spawnPlane(){
                    passed:false, blink: 0 });
 }
 function spawnUFO(){
-  obstacles.push({ t:'ufo', x: rnd(70, W-70), y: -70, w: 136, h: 64,
+  /* w/h come off the baked alpha, so the box and the art cannot drift */
+  const b = SPACE.ufoBox();
+  obstacles.push({ t:'ufo', x: rnd(70, W-70), y: -70, w: b.w, h: b.h,
                    vx: 0, vy: rnd(34, 74), phase: rnd(0,6.28),
                    homing: rnd(36, 92), passed:false });
 }
 function spawnSat(){
-  obstacles.push({ t:'sat', x: rnd(90, W-90), y: -80, w: 176, h: 56,
+  const kind = rndi(0, SPACE.satCount() - 1), b = SPACE.satBox(kind);
+  obstacles.push({ t:'sat', kind, x: rnd(90, W-90), y: -80, w: b.w, h: b.h,
                    vx: rnd(-30, 30), vy: rnd(34, 74),
                    rot: rnd(-0.4, 0.4), spin: rnd(-0.35, 0.35), passed:false });
 }
@@ -1206,30 +1204,28 @@ function spawnHeli(){
                    bob: rnd(0, 6.28), rotor: 0, passed:false });
 }
 function spawnMeteor(){
-  /* comes in steep and fast, burning as it goes */
+  /* comes in steep and fast, burning as it goes. One size: the rock is a
+     baked sprite, and a continuous radius could only be met by scaling
+     it, which is the one thing that gives the pixel grid away. */
   const dir = Math.random() < 0.5 ? 1 : -1;
-  const r = rnd(13, 26);
-  obstacles.push({ t:'meteor', x: rnd(40, W-40), y: -90, r,
-                   w: r*2, h: r*2, tail: r * rnd(8.5, 11.5),
+  const b = SPACE.metBox();
+  obstacles.push({ t:'meteor', x: rnd(40, W-40), y: -90,
+                   w: b.w, h: b.h,
                    vx: dir * rnd(40, 125), vy: rnd(150, 260),
-                   rot: rnd(0, 6.28), spin: rnd(-3, 3),
-                   flick: rnd(0, 6.28), passed:false });
+                   passed:false });
 }
 function spawnAsteroid(){
-  const r = rnd(24, 48);
-  const lumps = Array.from({length: 11}, (_, i) =>
-    0.78 + 0.24 * Math.abs(Math.sin(i * 2.17 + r)));
-  obstacles.push({ t:'asteroid', x: rnd(60, W-60), y: -90, r, lumps,
-                   w: r*2, h: r*2, vx: rnd(-42, 42), vy: rnd(45, 110),
-                   rot: rnd(0, 6.28), spin: rnd(-1.1, 1.1), passed:false,
-                   craters: Array.from({length: rndi(2,4)}, () => ({
-                     a: rnd(0, 6.28), d: rnd(0.18, 0.52), s: rnd(0.13, 0.26) })) });
+  /* Two shapes in three size buckets each. The radius used to be
+     continuous, which a baked sprite can only follow by resampling. */
+  const kind = rndi(0, SPACE.astCount() - 1), b = SPACE.astBox(kind);
+  obstacles.push({ t:'asteroid', kind, x: rnd(60, W-60), y: -90,
+                   w: b.w, h: b.h, vx: rnd(-42, 42), vy: rnd(45, 110),
+                   rot: rnd(0, 6.28), spin: rnd(-1.1, 1.1), passed:false });
 }
 function spawnSatFrag(){
-  const kind = pick(['panel','dish','strut']);
-  const w = kind === 'panel' ? rnd(88, 130) : rnd(58, 92);
+  const kind = rndi(0, SPACE.fragCount() - 1), b = SPACE.fragBox(kind);
   obstacles.push({ t:'satfrag', kind, x: rnd(60, W-60), y: -90,
-                   w, h: kind === 'panel' ? w*0.42 : w*0.78,
+                   w: b.w, h: b.h,
                    vx: rnd(-48, 48), vy: rnd(40, 100),
                    rot: rnd(0, 6.28), spin: rnd(-1.8, 1.8), passed:false });
 }
@@ -3861,6 +3857,2110 @@ const CITY = (function(){
 })();
 
 /* ================================================================
+   12b. Space hazards
+   ----------------------------------------------------------------
+   Asteroids, the meteor, satellites, satellite fragments and the UFO,
+   baked once at boot and blitted thereafter. Its own IIFE because these
+   grew as separate files and between them own rows, band, edge, G and a
+   dozen palette names that SPR already uses; nothing leaves but SPACE.
+
+   Everything that tumbles is baked into a square big enough for any
+   angle and spun at blit time, so one surface covers every rotation and
+   the art can never fall out of step with itself. Nothing is scaled: a
+   continuous spawn radius became six asteroid buckets, because
+   resampling is the one thing that gives the pixel grid away.
+   ================================================================ */
+const SPACE = (function(){
+let _g = null, _P = 1, OX = 0, OY = 0;
+const px  = (x,y,w,h,col) => { _g.fillStyle = col; _g.fillRect(OX+x*_P, OY+y*_P, w*_P, h*_P); };
+const clr = (x,y,w,h)     => _g.clearRect(OX+x*_P, OY+y*_P, w*_P, h*_P);
+let rockCv = null, ANG = 0, IONREF = null;
+/* the rock is one baked sprite the trail draws through, so the head
+   never has to be redrawn per frame */
+function ROCK(dx,dy,pal){
+  _g.save(); _g.imageSmoothingEnabled = false;
+  _g.translate(OX+(dx+19)*_P, OY+(dy+20)*_P); _g.rotate(ANG);
+  _g.drawImage(rockCv, -24*_P, -24*_P, 48*_P, 48*_P); _g.restore();
+}
+/* ---- pixel.js -------------------------------------------------------
+   The drawing primitives every asset family shares: the 3px art grid,
+   row-table fills, the top light line and the hard outline, and the
+   routines that read a silhouette so details can be seated on it
+   instead of positioned by hand.
+
+   These used to be copied between files, which is how details ended up
+   drawn outside the shapes they belonged to. One copy now.          */
+
+const Q=3;
+
+function rows(S,c){ for(const [y,a,b] of S) px(a,y,b-a+1,1,c); }
+
+function topLight(S,c){
+  const t=new Map();
+  for(const [y,a,b] of S) for(let x=a;x<=b;x++) if(!t.has(x)) t.set(x,y);
+  const b0=S[0][2], bN=S[S.length-1][2];
+  for(const [x,y] of t){ if(x > b0+(bN-b0)*0.55) continue; px(x,y+1,1,2,c); }
+}
+
+function edge(S,c){
+  for(const [y,a,b] of S){ px(a,y,1,1,c); px(b,y,1,1,c); }
+  for(let i=1;i<S.length;i++){
+    const [y,a,b]=S[i], [,pa,pb]=S[i-1];
+    if(a<pa) px(a,y,pa-a,1,c); else if(pa<a) px(pa,y-1,a-pa,1,c);
+    if(b>pb) px(pb,y,b-pb,1,c); else if(pb>b) px(b,y-1,pb-b,1,c);
+  }
+  const f=S[0], l=S[S.length-1];
+  px(f[1],f[0],f[2]-f[1]+1,1,c); px(l[1],l[0],l[2]-l[1]+1,1,c);
+}
+
+function crater(cx,cy,rx,ry,fl,rm,ou){
+  for(let y=-ry;y<=ry;y++){
+    const w=Math.round(rx*Math.sqrt(Math.max(0,1-(y*y)/(ry*ry))));
+    if(w<1) continue;
+    px(cx-w,cy+y,w*2,1,ou);
+    if(w>2) px(cx-w+1,cy+y,w*2-2,1,fl);
+  }
+  for(let i=0;i<=24;i++){
+    const a=Math.PI*(1.06+i/24*0.56);
+    px(cx+Math.round(Math.cos(a)*rx), cy+Math.round(Math.sin(a)*ry)-1,1,2,rm);
+  }
+}
+
+function qr(v){ return Math.round(v/Q)*Q; }
+
+/* filled ellipse, centred (cx,0), rows on the grid so the edge steps */
+function blob(cx, rx, ry, col){
+  for(let y=-qr(ry); y<=qr(ry); y+=Q){
+    const t=y/ry; if(Math.abs(t)>=1) continue;
+    const w=qr(rx*Math.sqrt(1-t*t));
+    if(w<Q) continue;
+    px(cx-w, y, w*2, Q, col);
+  }
+}
+
+/* the LEADING arc of an ellipse, th thick, opening rearward - the shock
+   cap. Span keeps it off the flat top and bottom where it would thin. */
+function cap(cx, rx, ry, th, col, span){
+  span = span===undefined ? 0.92 : span;
+  for(let y=-qr(ry*span); y<=qr(ry*span); y+=Q){
+    const t=y/ry; if(Math.abs(t)>=1) continue;
+    px(cx-qr(rx*Math.sqrt(1-t*t)), y, th, Q, col);
+  }
+}
+
+/* a closed ring, th thick - left and right spans of an annulus row */
+function ringFull(cx, rx, ry, th, col){
+  const irx=rx-th, iry=ry-th;
+  for(let y=-qr(ry); y<=qr(ry); y+=Q){
+    const t=y/ry; if(Math.abs(t)>=1) continue;
+    const w=qr(rx*Math.sqrt(1-t*t));
+    const iw=(iry>0 && Math.abs(y)<iry) ? qr(irx*Math.sqrt(1-(y*y)/(iry*iry))) : 0;
+    if(w<Q) continue;
+    if(w-iw<Q){ px(cx-w,y,w*2,Q,col); continue; }
+    px(cx-w,y,w-iw,Q,col); px(cx+iw,y,w-iw,Q,col);
+  }
+}
+
+function srows(S,c){ for(const [y,a,b] of S) px(a,y,b-a+1,1,c); }
+
+/* the two-pixel light line, followed column by column down the leading
+   flank and stopped where the form turns away */
+function sTop(S,c,cut){
+  const t=new Map();
+  for(const [y,a,b] of S) for(let x=a;x<=b;x++) if(!t.has(x)) t.set(x,y);
+  const xs=[...t.keys()], x0=Math.min(...xs), x1=Math.max(...xs);
+  const stop = x0 + (x1-x0)*(cut===undefined?0.62:cut);
+  for(const [x,y] of t){ if(x>stop) continue; px(x,y,1,2,c); }
+}
+
+function sEdge(S,c){
+  for(const [y,a,b] of S){ px(a,y,1,1,c); px(b,y,1,1,c); }
+  for(let i=1;i<S.length;i++){
+    const [y,a,b]=S[i], [,pa,pb]=S[i-1];
+    if(a<pa) px(a,y,pa-a,1,c); else if(pa<a) px(pa,y-1,a-pa,1,c);
+    if(b>pb) px(pb,y,b-pb,1,c); else if(pb>b) px(b,y-1,pb-b,1,c);
+  }
+  const f=S[0], l=S[S.length-1];
+  px(f[1],f[0],f[2]-f[1]+1,1,c); px(l[1],l[0],l[2]-l[1]+1,1,c);
+}
+
+/* draw along one row, clipped to the silhouette - a rib that runs past
+   the edge reads as a scratch on the sky, which is what happened first
+   time round */
+function rib(S, y, c, inset){
+  for(const [ry,a,b] of S){
+    if(ry!==y) continue;
+    const x0=a+(inset||0), x1=b-(inset||0);
+    if(x1>=x0) px(x0,y,x1-x0+1,1,c);
+  }
+}
+
+/* expand a [y0,y1,x0,x1] block list into per-row spans */
+function band(B){ const S=[];
+  for(const [y0,y1,a,b] of B) for(let y=y0;y<=y1;y++) S.push([y,a,b]);
+  return S.sort((p,q)=>p[0]-q[0]); }
+
+/* a stepped lens: half-heights per 3px column, hand-laid, mirrored */
+function lensRows(HW, w, cy){
+  const m=new Map();
+  for(let i=0;i<HW.length;i++){
+    const x=i*G, hh=HW[i]; if(hh<1) continue;
+    for(let y=cy-hh;y<cy+hh;y++){
+      const e=m.get(y);
+      if(!e) m.set(y,[x,Math.min(x+G-1,w-1)]);
+      else { e[0]=Math.min(e[0],x); e[1]=Math.max(e[1],Math.min(x+G-1,w-1)); }
+    }
+  }
+  return [...m.entries()].sort((a,b)=>a[0]-b[0]).map(([y,ab])=>[y,ab[0],ab[1]]);
+}
+
+/* an asymmetric disc: separate half-height tables above and below the
+   waist, so a saucer can be shallow on top and deep underneath without
+   the profile being mirrored */
+function discRows(HU, HD, w, cy){
+  const m=new Map();
+  for(let i=0;i<HU.length;i++){
+    const x=i*G, up=HU[i], dn=HD[i];
+    if(up<1 && dn<1) continue;
+    for(let y=cy-up; y<cy+dn; y++){
+      const e=m.get(y), b=Math.min(x+G-1,w-1);
+      if(!e) m.set(y,[x,b]); else { e[0]=Math.min(e[0],x); e[1]=Math.max(e[1],b); }
+    }
+  }
+  return [...m.entries()].sort((a,b)=>a[0]-b[0]).map(([y,ab])=>[y,ab[0],ab[1]]);
+}
+
+/* one lamp: a flat core, a hot pip when lit, nothing when dark */
+function lamp(x,y,s,on){
+  px(x,y,s,s, on?L_B:L_O);
+  if(on){ px(x,y,s,1,L_L); px(x+1,y+1,s-2,s-2,L_L); px(x+1,y+1,1,1,L_H); }
+  else  { px(x,y,s,1,L_D); }
+}
+
+/* ---- seating the lamps ----------------------------------------------
+   Lamps typed at fixed coordinates drift off the hull wherever the
+   silhouette narrows. These read the silhouette instead: spanAt gives
+   the hull's own width at a row, edgeBottom gives the underside at a
+   column, and the lamps are distributed and seated from those. Nothing
+   below places a light by hand.                                      */
+function spanAt(S,y){
+  let a=1e9,b=-1;
+  for(const [ry,ra,rb] of S) if(ry===y){ a=Math.min(a,ra); b=Math.max(b,rb); }
+  return b<0 ? null : [a,b];
+}
+
+function edgeBottom(S,x){
+  let y=-1; for(const [ry,a,b] of S) if(x>=a && x<=b && ry>y) y=ry; return y;
+}
+
+function widestRow(S){
+  let best=S[0][0], w=-1;
+  for(const [y,a,b] of S) if(b-a>w){ w=b-a; best=y; }
+  return best;
+}
+
+/* the hull tapers to a pixel or two at the tips, which cannot carry a
+   lamp - so the spread is bounded by where it is actually thick enough */
+function thickSpan(S,size){
+  const top=new Map(), bot=new Map();
+  for(const [y,a,b] of S) for(let x=a;x<=b;x++){
+    if(!top.has(x)||y<top.get(x)) top.set(x,y);
+    if(!bot.has(x)||y>bot.get(x)) bot.set(x,y);
+  }
+  const xs=[...top.keys()].sort((a,b)=>a-b).filter(x=>bot.get(x)-top.get(x)+1 >= size+1);
+  return xs.length ? [xs[0], xs[xs.length-1]] : null;
+}
+
+/* n lamps spread across the hull's real width, each seated on the
+   underside at its own column so the row follows the curve */
+function rimLamps(S,n,size,f,lift){
+  const sp=thickSpan(S,size); if(!sp) return;
+  const x0=sp[0]+1, x1=sp[1]-1-size;
+  for(let i=0;i<n;i++){
+    const x=Math.round(x0+(x1-x0)*(n===1?0.5:i/(n-1)));
+    const b=edgeBottom(S, x+((size/2)|0));
+    if(b<0) continue;
+    lamp(x, b-size+1+(lift||0), size, (i%4)===f);
+  }
+}
+
+/* n lamps along a row, clipped to the hull's width at that row */
+function bandLamps(S,n,size,f,y,pairs){
+  const sp=spanAt(S,y), tk=thickSpan(S,size); if(!sp||!tk) return;
+  const x0=Math.max(sp[0]+2, tk[0]+1), x1=Math.min(sp[1]-2-size, tk[1]-1-size);
+  for(let i=0;i<n;i++){
+    const x=Math.round(x0+(x1-x0)*(n===1?0.5:i/(n-1)));
+    lamp(x, y, size, pairs ? ((i%4)===f || ((i+2)%4)===f) : (i%4)===f);
+  }
+}
+
+/* lamps down a leading or trailing FLANK: spread over the rows the hull
+   occupies there, each seated against that row's own edge */
+function flankLamps(S,n,size,f,side){
+  const rows=new Map();
+  for(const [y,a,b] of S){
+    const e=rows.get(y);
+    if(!e) rows.set(y,[a,b]); else { e[0]=Math.min(e[0],a); e[1]=Math.max(e[1],b); }
+  }
+  const ys=[...rows.keys()].sort((a,b)=>a-b).filter(y=>rows.get(y)[1]-rows.get(y)[0] >= size);
+  if(!ys.length) return;
+  const y0=ys[0]+1, y1=ys[ys.length-1]-size-1;
+  for(let i=0;i<n;i++){
+    const y=Math.round(y0+(y1-y0)*(n===1?0.5:i/(n-1)));
+    const r=rows.get(y) || rows.get(ys[0]);
+    const x = side<0 ? r[0]+1 : r[1]-size;
+    lamp(x, y, size, (i%4)===f);
+  }
+}
+
+/* sEdge walks the row table assuming one span per row and fills the step
+   between consecutive rows. A torus has two spans per row, which makes
+   that fill swallow the hole - so a shape with a gap gets a plain
+   per-span outline instead. */
+function sEdgeSplit(S,c){
+  const byY=new Map();
+  for(const r of S){ if(!byY.has(r[0])) byY.set(r[0],[]); byY.get(r[0]).push(r); }
+  const ys=[...byY.keys()].sort((a,b)=>a-b);
+  for(const y of ys) for(const [,a,b] of byY.get(y)){ px(a,y,1,1,c); px(b,y,1,1,c); }
+  for(const y of [ys[0], ys[ys.length-1]])
+    for(const [,a,b] of byY.get(y)) px(a,y,b-a+1,1,c);
+}
+
+/* a port: socket, shadowed head, lens, lit sill. Never a bare square. */
+function port(x,y,w,h,on){
+  px(x,y,w,h,U_O);
+  px(x,y,w,1,U_D);
+  px(x+1,y+1,w-2,h-2, on?L_B:L_O);
+  if(on){ px(x+1,y+1,w-2,1,L_L); px(x+1,y+1,1,1,L_H); }
+  px(x,y+h-1,w,1,U_L);
+}
+
+/* n ports spread across the hull's own width at row y, each one with
+   real hull left between it and the next */
+function fitsAt(S,x,w,y,h){
+  for(let cx=x; cx<x+w; cx++){
+    let top=1e9, bot=-1;
+    for(const [ry,a,b] of S) if(cx>=a && cx<=b){ if(ry<top) top=ry; if(ry>bot) bot=ry; }
+    if(bot<0 || top>y || bot<y+h-1) return false;
+  }
+  return true;
+}
+
+function portRow(S,n,w,h,y,lit){
+  const sp=spanAt(S,y); if(!sp) return [];
+  const x0=sp[0]+2, x1=sp[1]-2-w;
+  const out=[];
+  for(let i=0;i<n;i++){
+    const x=Math.round(x0+(x1-x0)*(n===1?0.5:i/(n-1)));
+    if(!fitsAt(S,x,w,y,h)){ out.push(undefined); continue; }
+    port(x,y,w,h, lit(i));
+    out.push(x);
+  }
+  return out;
+}
+
+/* two names survive for the same thing because the meteor and fragment
+   families grew separately; kept as aliases rather than touching every
+   call site. */
+const qg = qr;
+const G  = Q;
+/* ---- meteors: candidates -------------------------------------------
+   Two sprites per meteor, because the rock tumbles on its own while the
+   trail must point along the track. Fire therefore belongs on the
+   TRAIL, not baked onto a spinning rock.
+   Cells: rock 30-54 square, trail 138-258 long. Drawn pointing right.  */
+
+const M_O='#0D0B0A', M_D='#3A332C', M_B='#574C41', M_L='#6F6153', M_H='#8F7F6C';
+const I_O='#0A0E12', I_D='#2A3440', I_B='#44515E', I_L='#5E6E7E', I_H='#8496A6';
+const F0='#3A0C06', F1='#8C2A0A', F2='#D4560E', F3='#F59220', F4='#FFC94A', F5='#FFF3C0';
+const G0='#062A1E', G1='#0E6A46', G2='#18A86E', G3='#3ADC96', G4='#96FFC8', G5='#E0FFEE';
+
+
+/* the rock, 42x41 - shared by every candidate so the trails are the
+   only thing being compared */
+const RS=[[0,12,29], [1,12,29], [2,12,29], [3,9,32], [4,9,32], [5,9,32], [6,6,35],
+          [7,6,35], [8,6,35], [9,3,35], [10,3,35], [11,3,35], [12,3,38], [13,3,38],
+          [14,3,38], [15,0,38], [16,0,38], [17,0,38], [18,0,38], [19,0,38], [20,0,38],
+          [21,0,38], [22,0,38], [23,0,38], [24,0,38], [25,0,38], [26,0,38], [27,0,35],
+          [28,0,35], [29,0,35], [30,3,35], [31,3,35], [32,3,35], [33,3,32], [34,3,32],
+          [35,3,32], [36,6,29], [37,6,29], [38,6,29], [39,12,26], [40,12,26]];
+const RSH=[[0,21,29],[1,21,29],[2,21,29],[3,21,32],[4,21,32],[5,21,32],[6,21,35],
+          [7,21,35],[8,21,35],[9,21,35],[10,21,35],[11,21,35],[12,21,38],[13,21,38],
+          [14,21,38],[15,21,38],[16,21,38],[17,21,38],[18,24,38],[19,24,38],[20,24,38],
+          [21,21,38],[22,21,38],[23,21,38],[24,18,38],[25,18,38],[26,18,38],[27,15,35],
+          [28,15,35],[29,15,35],[30,18,35],[31,18,35],[32,18,35],[33,18,32],[34,18,32],
+          [35,18,32],[36,21,29],[37,21,29],[38,21,29],[39,21,26],[40,21,26]];
+function rock(pal){
+  const [o,d,b,l,h]=pal;
+  rows(RS,b); rows(RSH,d); topLight(RS,h); edge(RS,o);
+  crater(14,19, 5,4, o, h, o);
+  crater(27,29, 3,2, o, h, o);
+}
+/* flame builder: nested flat wedges, hard stepped edges */
+function wedge(L, HW, spec, pal, taper){
+  for(let k=0;k<spec.length;k++){
+    const [lf,wf]=spec[k], Ln=L*lf;
+    for(let x=0;x<Ln;x+=Q){
+      const h=Math.round(HW*wf*Math.pow(1-x/Ln, taper)/Q)*Q;
+      if(h<Q) break;
+      px(x,-h,Q,h*2,pal[k]);
+    }
+  }
+}
+/* The envelope. A meteor is a rock INSIDE a plasma shell, so the fire has
+   to surround it - but the shell is not a ball. It is a teardrop: a
+   blunt nose where the air is being compressed ahead of the rock, its
+   widest point just forward of centre, then a taper that MERGES into the
+   trail rather than stopping against it. Travel is toward -x.
+   Per-column half-heights, quantised to the grid, four nested bands. */
+function envelope(R, pal, tailHW, k){
+  k = k === undefined ? 1 : k;
+  const NOSE=-1.55*R*k, TAIL=2.6*R, HMAX=1.22*R*k;
+  const prof = x => {
+    if (x < NOSE) return 0;
+    if (x < -0.45*R*k){                       /* the nose, opening up fast */
+      const t=(x-NOSE)/(-0.45*R*k-NOSE);
+      return HMAX*(0.30+0.70*Math.pow(t,0.55));
+    }
+    if (x < 0.45*R*k) return HMAX;            /* the shoulder */
+    const t=(x-0.45*R*k)/(TAIL-0.45*R*k);       /* taper down onto the trail */
+    return HMAX+(tailHW-HMAX)*Math.pow(t,0.55);
+  };
+  const SC=[1.00,0.80,0.60,0.38];
+  for(let k=0;k<SC.length;k++)
+    for(let x=Math.round(NOSE/Q)*Q; x<=TAIL; x+=Q){
+      const h=Math.round(prof(x)*SC[k]/Q)*Q;
+      if(h<Q) continue;
+      px(x,-h,Q,h*2,pal[k]);
+    }
+  /* flame shedding off the shoulder - stepped blocks, parts not fuzz */
+  const T=[[0.25,-1.05,5,3],[0.55,0.98,4,3],[-0.30,-1.18,4,3]];
+  for(const [fx,fy,w,h] of T){
+    px(Math.round(R*fx), Math.round(R*fy), Math.round(R*w/10), Math.round(R*h/10), pal[1]);
+    px(Math.round(R*fx), Math.round(R*fy), Math.round(R*w/18), Math.round(R*h/18), pal[2]);
+  }
+}
+function embers(L,H,pal,n){
+  const E=[[0.50,-H/5,3],[0.62,H/6,3],[0.72,-H/7,2],[0.83,H/5,2],[0.90,-H/6,2]];
+  for(let i=0;i<Math.min(n,E.length);i++){
+    const [f,y,s]=E[i];
+    px(Math.round(L*f), Math.round(y), s, s, pal[3]);
+    px(Math.round(L*f), Math.round(y), 1, 1, pal[5]);
+  }
+}
+const MET=[];
+const FIRE=[F0,F1,F2,F3,F4,F5];
+const ION =[G0,G1,G2,G3,G4,G5];
+
+MET.push(['Streak','the long one - 1:12, thins fast, five embers',
+  (L=198)=>{ wedge(L,15,[[1,1],[0.70,0.70],[0.46,0.47],[0.26,0.30],[0.12,0.17]],
+                   [F0,F1,F2,F3,F5], 1.15);
+             envelope(21, [F1,F2,F3,F4], 15); embers(L,36,FIRE,5); }]);
+
+MET.push(['Stub','half the length, blunter - reads at a glance, less sky taken',
+  (L=104)=>{ wedge(L,17,[[1,1],[0.68,0.72],[0.44,0.50],[0.24,0.32],[0.11,0.18]],
+                   [F0,F1,F2,F3,F5], 0.85);
+             envelope(21, [F1,F2,F3,F4], 17); embers(L,40,FIRE,3); }]);
+
+MET.push(['Forked','the trail splits - one body, two tongues of flame',
+  (L=198)=>{ wedge(L,15,[[1,1],[0.70,0.70]],[F0,F1],1.15);
+             for(const s of [-1,1]){
+               for(let x=0;x<L*0.52;x+=Q){
+                 const t=x/(L*0.52);
+                 const h=Math.round(7*(1-t)/Q)*Q;
+                 if(h<Q) break;
+                 const off=Math.round(s*(3+x*0.05)/Q)*Q;
+                 px(x,off-h,Q,h*2, x<L*0.24?F3:F2);
+               }
+             }
+             envelope(21, [F1,F2,F3,F4], 15); embers(L,36,FIRE,4); }]);
+
+MET.push(['Segmented','flame breaks into plates as it cools - most Genesis of the four',
+  (L=198)=>{ wedge(L,15,[[1,1],[0.70,0.70],[0.46,0.47]],[F0,F1,F2],1.15);
+             let x=0, k=0;
+             while(x < L*0.86){
+               const t=x/L, len=Math.round((12 - t*7)/Q)*Q;
+               const h=Math.round(13*Math.pow(1-t,1.1)/Q)*Q;
+               if(h<Q) break;
+               px(x, -h, len, h*2, k%2 ? F3 : F4);
+               px(x, -h, len, Q, F5);
+               x += len + Q*(1 + (k%2));
+               k++;
+             }
+             envelope(21, [F1,F2,F3,F4], 15); embers(L,36,FIRE,5); }]);
+
+MET.push(['Ion','cold blue-green instead of fire - a different object entirely',
+  (L=198)=>{ wedge(L,15,[[1,1],[0.70,0.70],[0.46,0.47],[0.26,0.30],[0.12,0.17]],
+                   [G0,G1,G2,G3,G5], 1.15);
+             envelope(21, [G1,G2,G3,G4], 15); embers(L,36,ION,5); }]);
+
+/* ---- meteors, round two ---------------------------------------------
+   One axis, six points on it: how much of the rock the fire leaves
+   showing, and what the trail is actually made of. Everything else is
+   held constant - same rock, same palettes, same Q=3 grid, flat fills,
+   no ramps, no grit. Drawn pointing right; travel is toward -x.      */
+
+
+/* tongues shedding off the shoulder. The x is given as a fraction of the
+   head's own ellipse, and the block is laid against that ellipse's edge,
+   so the flame is attached to the form instead of floating beside it. */
+function tongues(rx, ry, two, spec){
+  for(const [xf, s, L, T] of spec){
+    const x=qr(rx*xf), t=x/rx;
+    if(Math.abs(t)>=1) continue;
+    const hy=qr(ry*Math.sqrt(1-t*t)), th=Math.max(Q,qr(T)), l=Math.max(Q,qr(L));
+    const y = s<0 ? -hy-th+Q : hy-Q;
+    px(x, y, l, th, two[0]);
+    px(x, y, Math.max(Q,qr(l*0.5)), th>Q ? th-Q : th, two[1]);
+  }
+}
+/* The trail. Colour runs along the LENGTH - hot at the head, cooling
+   rearward - and nests across the width, three passes from a cool
+   sheath down to a hot core. Flat fills, stepped on the Q grid.      */
+function tail(L, HW, F, taper, pulse){
+  pulse = pulse===undefined ? 1 : pulse;
+  const pass=[[1.00, 1.00, taper,      [F[2],F[1],F[0]], [0.30,0.62]],
+              [0.74, 0.62, taper*0.90, [F[4],F[3],F[2]], [0.26,0.58]],
+              [0.42*pulse, 0.32*pulse, taper*0.80, [F[5],F[4],F[3]], [0.38,0.74]]];
+  for(const [lf, wf, tp, col, brk] of pass){
+    const Ln=L*lf;
+    for(let x=0;x<Ln;x+=Q){
+      const t=x/Ln, h=qr(HW*wf*Math.pow(1-t,tp));
+      if(h<Q) break;
+      px(x,-h,Q,h*2, t<brk[0]?col[0]:(t<brk[1]?col[1]:col[2]));
+    }
+  }
+}
+/* hard four-point glint: nested plus signs, each shorter and fatter.
+   No blur, no alpha - the taper is the step table.                   */
+function glint(cx, cy, r, col, hot){
+  const S=[[1.00,1],[0.62,2]];
+  for(const [f,ht] of S){
+    const L=qr(r*f), T=ht*Q;
+    px(cx-L, cy-T, L*2, T*2, col);
+    px(cx-T, cy-L, T*2, L*2, col);
+  }
+  const H=[[0.32,1]];
+  for(const [f,ht] of H){
+    const L=qr(r*f), T=ht*Q;
+    px(cx-L, cy-T, L*2, T*2, hot);
+    px(cx-T, cy-L, T*2, L*2, hot);
+  }
+}
+
+const R0 = 21;                       /* the rock's half width */
+const MET2 = [];
+
+/* 1 -- what was on the last sheet, shell pulled back to 0.80 */
+MET2.push(['Shell','the last sheet with the shell at 0.80: rock inside a teardrop of plasma',
+ (rp, F)=>{
+   tail(198, 15, F, 1.15);
+   envelope(R0,[F[1],F[2],F[3],F[4]],15,0.80);
+   ROCK(-21,-20,rp);
+   embers(198,36,F,5);
+ }]);
+
+/* 2 -- the fire is a BALL the rock sits in, packed forward of it */
+MET2.push(['Fireball','a nested flame ball, hottest ahead of the rock; most fire of the six',
+ (rp, F)=>{
+   tail(168, 19, F, 0.95);
+   blob(qr( R0*0.10), R0*1.62, R0*1.46, F[0]);
+   blob(qr( R0*0.08), R0*1.50, R0*1.34, F[1]);
+   blob(qr(-R0*0.10), R0*1.26, R0*1.12, F[2]);
+   ROCK(-21,-20,rp);
+   cap(qr(-R0*0.02), R0*1.16, R0*1.02, Q*3, F[3], 0.88);
+   cap(qr(-R0*0.06), R0*1.04, R0*0.90, Q*2, F[4], 0.80);
+   cap(qr(-R0*0.10), R0*0.92, R0*0.76, Q,   F[5], 0.62);
+   tongues(R0*1.50, R0*1.34, [F[2],F[4]],
+     [[ 0.46,-1,0.55,0.16],[ 0.62, 1,0.50,0.16],[-0.30,-1,0.34,0.13]]);
+   embers(168,40,F,4);
+ }]);
+
+/* 3 -- the rock stays crisp; fire is a shock cap and two tongues */
+MET2.push(['Capped','the rock reads first - fire is a shock cap on the leading face only',
+ (rp, F)=>{
+   tail(186, 13, F, 1.20);
+   cap(0, R0*1.50, R0*1.32, Q*3, F[0], 0.95);
+   cap(0, R0*1.45, R0*1.27, Q*3, F[1], 0.92);
+   cap(0, R0*1.32, R0*1.14, Q*2, F[3], 0.84);
+   cap(0, R0*1.22, R0*1.02, Q,   F[5], 0.68);
+   ROCK(-21,-20,rp);
+   tongues(R0*1.45, R0*1.27, [F[1],F[3]],
+     [[-0.16,-1,0.90,0.14],[-0.04, 1,0.85,0.14]]);
+   embers(186,34,F,4);
+ }]);
+
+/* 4 -- concentric rings round the head, trail of receding chevrons */
+MET2.push(['Banded','rings round the head, trail made of discrete chevrons - the 8-bit read',
+ (rp, F)=>{
+   ringFull(0, R0*1.72, R0*1.56, Q*2, F[0]);
+   ringFull(0, R0*1.60, R0*1.44, Q*3, F[1]);
+   ringFull(0, R0*1.38, R0*1.22, Q*2, F[3]);
+   ROCK(-21,-20,rp);
+   ringFull(0, R0*1.24, R0*1.08, Q,   F[5]);
+   for(let i=0;i<7;i++){
+     const s=1-i*0.112, cx=qr(R0*3.05 + i*R0*1.18);
+     cap(cx,   R0*1.34*s, R0*1.40*s, Q*2, i<2?F[5]:(i<4?F[4]:F[3]), 0.90);
+     cap(cx+Q, R0*1.26*s, R0*1.30*s, Q*2, i<4?F[2]:F[1],            0.90);
+   }
+ }]);
+
+/* 5 -- compact hot head, hard star glint, thin fast streak */
+MET2.push(['Sparkle','a small hot head with a hard star glint - the shiny-comet read',
+ (rp, F)=>{
+   tail(214, 11, F, 1.35);
+   blob(qr( R0*0.04), R0*1.30, R0*1.16, F[0]);
+   blob(qr( R0*0.02), R0*1.20, R0*1.06, F[1]);
+   blob(qr(-R0*0.12), R0*0.98, R0*0.86, F[2]);
+   ROCK(-21,-20,rp);
+   cap(qr(-R0*0.04), R0*1.02, R0*0.88, Q*2, F[3], 0.82);
+   cap(qr(-R0*0.08), R0*0.90, R0*0.74, Q,   F[5], 0.62);
+   glint(qr(-R0*1.24), 0, qr(R0*1.05), F[4], F[5]);
+   embers(214,32,F,5);
+ }]);
+
+/* 6 -- the cold one, built as Fireball so only the palette differs */
+MET2.push(['Ion','the Fireball build in ion blue-green: a different object, not a meteor',
+ (rp, F)=>{ MET2[1][2](rp, F); }]);
+
+/* ---- Shell variants --------------------------------------------------
+   The rock and the trail are identical in every row. The only thing
+   changing is the plasma shell: where its nose reaches, where its
+   widest point sits, how it merges into the trail, and how its bands
+   are stacked. Travel is toward -x, so the nose is at negative x.
+   The shell is a per-column half-height table, quantised to the Q grid,
+   which is what keeps the edge stepping instead of curving.          */
+
+/* opts:
+     nose  how far ahead the shell reaches, in rock half-widths
+     hmax  half-height at the shoulder
+     sh0   where the shoulder starts    (-ve is ahead of the rock)
+     sh1   where the shoulder ends
+     tail  how far back the shell runs before it is just trail
+     tailW half-height where it merges into the trail
+     nz    half-height at the very tip, as a fraction of hmax
+     rise  exponent on the nose opening  (low = blunt, high = pointed)
+     fall  exponent on the taper onto the trail
+     step  if set, half-heights snap to this, giving flat plateaus
+     bands [[scale, colour] | [scale, colour, xmaxInR], ...] outermost first */
+function shell(R, o){
+  const NOSE=-o.nose*R, TAIL=o.tail*R, HMAX=o.hmax*R;
+  const S0=o.sh0*R, S1=o.sh1*R, TW=o.tailW*R;
+  const prof = x => {
+    if (x < NOSE) return 0;
+    if (x < S0){ const t=(x-NOSE)/(S0-NOSE);
+                 return HMAX*(o.nz + (1-o.nz)*Math.pow(t,o.rise)); }
+    if (x < S1) return HMAX;
+    const t=(x-S1)/(TAIL-S1);
+    return HMAX + (TW-HMAX)*Math.pow(t,o.fall);
+  };
+  for(const [sc,col,xm] of o.bands){
+    const stop = xm===undefined ? TAIL : xm*R;
+    for(let x=qr(NOSE); x<=stop; x+=Q){
+      let h = prof(x)*sc;
+      if(o.step) h = Math.round(h/o.step)*o.step;
+      h = qr(h);
+      if(h<Q) continue;
+      px(x,-h,Q,h*2,col);
+    }
+  }
+}
+
+const SH=[];   /* [name, note, draw(rockPal, F)] */
+const TRAIL = F => tail(198, 15, F, 1.15);
+const BASE  = {nose:1.24, hmax:0.98, sh0:-0.36, sh1:0.36, tail:2.60,
+               tailW:0.71, nz:0.30, rise:0.55, fall:0.55};
+const B4 = F => [[1.00,F[1]],[0.80,F[2]],[0.60,F[3]],[0.38,F[4]]];
+
+SH.push(['Current','the 0.80 shell off the last sheet, for reference',
+ (rp,F)=>{ TRAIL(F); shell(R0, {...BASE, bands:B4(F)}); ROCK(-21,-20,rp);
+           embers(198,36,F,5); }]);
+
+SH.push(['Blunt','short nose, wide shoulder - the air piling up ahead reads as a cushion',
+ (rp,F)=>{ TRAIL(F);
+   shell(R0, {...BASE, nose:0.86, hmax:1.32, sh0:-0.55, sh1:0.50,
+                       nz:0.56, rise:0.38, bands:B4(F)});
+   ROCK(-21,-20,rp); embers(198,36,F,5); }]);
+
+SH.push(['Lance','long pointed nose - the whole object becomes a dart',
+ (rp,F)=>{ TRAIL(F);
+   shell(R0, {...BASE, nose:2.45, hmax:1.02, sh0:-0.22, sh1:0.30,
+                       nz:0.05, rise:1.15, bands:B4(F)});
+   ROCK(-21,-20,rp); embers(198,36,F,5); }]);
+
+SH.push(['Rimmed','a bright bow shock standing off the shell with a dark gap behind it',
+ (rp,F)=>{ TRAIL(F);
+   shell(R0, {...BASE, nose:1.34, hmax:0.94, bands:
+     [[1.24,F[4],0.62],[1.13,F[0],0.62],
+      [1.00,F[1]],[0.80,F[2]],[0.58,F[3]],[0.34,F[5]]]});
+   ROCK(-21,-20,rp); embers(198,36,F,5); }]);
+
+SH.push(['Tiered','the same shell snapped to flat plateaus - hard risers, no curve at all',
+ (rp,F)=>{ TRAIL(F);
+   shell(R0, {...BASE, hmax:1.06, step:Q*3, bands:B4(F)});
+   ROCK(-21,-20,rp); embers(198,36,F,5); }]);
+
+SH.push(['Open','shell only on the leading half - the back of the rock is bare sky',
+ (rp,F)=>{ TRAIL(F);
+   shell(R0, {...BASE, nose:1.32, hmax:1.04, bands:
+     [[1.00,F[1],0.55],[0.80,F[2],0.30],[0.60,F[3],0.05],[0.38,F[4],-0.25]]});
+   ROCK(-21,-20,rp); embers(198,36,F,5); }]);
+
+SH.push(['Double','two shells: a tight white-hot skin, and a wide cool one standing off it',
+ (rp,F)=>{ TRAIL(F);
+   shell(R0, {...BASE, nose:1.74, hmax:1.30, sh0:-0.30, sh1:0.55,
+                       nz:0.20, rise:0.62, bands:[[1.00,F[1]],[0.88,F[2]]]});
+   shell(R0, {...BASE, nose:1.02, hmax:0.94, sh0:-0.40, sh1:0.40,
+                       nz:0.40, rise:0.50, tail:1.90,
+                       bands:[[1.00,F[0]],[0.90,F[3]],[0.66,F[4]],[0.40,F[5]]]});
+   ROCK(-21,-20,rp); embers(198,36,F,5); }]);
+
+SH.push(['Swept','widest point pushed behind the rock - it reads as being blown backwards',
+ (rp,F)=>{ TRAIL(F);
+   shell(R0, {...BASE, nose:1.70, hmax:1.10, sh0:0.10, sh1:0.80,
+                       nz:0.14, rise:0.72, fall:0.80, bands:B4(F)});
+   ROCK(-21,-20,rp); embers(198,36,F,5); }]);
+
+/* ---- Shell, round two -----------------------------------------------
+   Eight more envelopes on the same rock and the same trail. The first
+   eight varied one thing each - how far the nose reached, where the
+   widest point sat. These vary the KIND of form the shell is: whether
+   it is symmetric, whether its edge is smooth, whether it is one body
+   or several, whether it is curved at all.                           */
+
+/* shell() with three additions: independent top and bottom scaling, a
+   repeating notch on the edge, and a hand-laid polygon profile in place
+   of the analytic one. Everything still lands on the Q grid. */
+function shellA(R, o){
+  const NOSE=-o.nose*R, TAIL=o.tail*R, HMAX=o.hmax*R;
+  const S0=o.sh0*R, S1=o.sh1*R, TW=o.tailW*R;
+  const analytic = x => {
+    if (x < NOSE) return 0;
+    if (x < S0){ const t=(x-NOSE)/(S0-NOSE);
+                 return HMAX*(o.nz + (1-o.nz)*Math.pow(t,o.rise)); }
+    if (x < S1) return HMAX;
+    const t=(x-S1)/(TAIL-S1);
+    return HMAX + (TW-HMAX)*Math.pow(t,o.fall);
+  };
+  /* a hand-laid polygon: straight runs between named points, so the
+     silhouette has corners instead of a curve */
+  const poly = x => {
+    const P=o.poly;
+    if (x < P[0][0]*R || x > P[P.length-1][0]*R) return 0;
+    for(let i=1;i<P.length;i++){
+      const x0=P[i-1][0]*R, x1=P[i][0]*R;
+      if (x<=x1){ const t=(x-x0)/(x1-x0 || 1);
+                  return R*(P[i-1][1] + (P[i][1]-P[i-1][1])*t); }
+    }
+    return 0;
+  };
+  const prof = o.poly ? poly : analytic;
+  const up = o.up===undefined?1:o.up, dn = o.dn===undefined?1:o.dn;
+  for(const [sc,col,xm] of o.bands){
+    const stop = xm===undefined ? TAIL : xm*R;
+    for(let x=qr(NOSE); x<=stop; x+=Q){
+      let h = prof(x)*sc;
+      if(o.flute) h *= 1 - o.flute[0]*(1+Math.cos(2*Math.PI*x/(o.flute[1]*R)))/2;
+      if(o.step)  h = Math.round(h/o.step)*o.step;
+      const ht=qr(h*up), hb=qr(h*dn);
+      if(ht<Q && hb<Q) continue;
+      if(ht>=Q) px(x,-ht,Q,ht,col);
+      if(hb>=Q) px(x, 0, Q,hb,col);
+    }
+  }
+}
+/* a tapering lobe: columns from x0 to x1, half-height falling h0 -> h1,
+   with a hotter core inside it */
+function lobe(R, x0, x1, yc, h0, h1, c1, c2){
+  const X0=qr(R*x0), X1=qr(R*x1), Y=qr(R*yc);
+  for(let x=X0;x<=X1;x+=Q){
+    const t=(x-X0)/((X1-X0)||1), h=qr(R*(h0+(h1-h0)*t));
+    if(h<Q) continue;
+    px(x, Y-h, Q, h*2, c1);
+    if(h>Q) px(x, Y-h+Q, Q, (h-Q)*2, c2);
+  }
+}
+/* flat bars running fore-aft: compression streaks built as parts */
+function ribs(R, lanes){
+  for(const [yf,x0,x1,th,col] of lanes)
+    px(qr(R*x0), qr(R*yf), qr(R*(x1-x0)), qr(R*th), col);
+}
+
+const SH2=[];
+const T2 = F => tail(198, 15, F, 1.15);
+const BS = {nose:0.86, hmax:1.32, sh0:-0.55, sh1:0.50, tail:2.60,
+            tailW:0.71, nz:0.56, rise:0.38, fall:0.55};
+const B42 = F => [[1.00,F[1]],[0.80,F[2]],[0.60,F[3]],[0.38,F[4]]];
+
+SH2.push(['Blunt','the incumbent, for reference - the one with frames designed',
+ (rp,F)=>{ T2(F); shellA(R0,{...BS,bands:B42(F)}); ROCK(-21,-20,rp);
+           embers(198,36,F,5); }]);
+
+SH2.push(['Ribbed','flat streaks running fore-aft across the shell - compression as parts',
+ (rp,F)=>{ T2(F);
+   shellA(R0,{...BS,nose:0.98,hmax:1.40,bands:B42(F)});
+   ROCK(-21,-20,rp);
+   ribs(R0,[[-1.30,-0.42,0.86,0.13,F[4]],[-1.06,-0.72,0.30,0.11,F[5]],
+            [ 0.95,-0.70,0.28,0.11,F[5]],[ 1.19,-0.40,0.84,0.13,F[4]]]);
+   embers(198,36,F,5); }]);
+
+SH2.push(['Standoff','a thin bow shock detached from the shell with real sky between',
+ (rp,F)=>{ T2(F);
+   shellA(R0,{...BS,nose:0.52,hmax:1.06,sh0:-0.34,sh1:0.44,nz:0.62,bands:B42(F)});
+   cap(qr(-R0*0.62), R0*1.46, R0*1.20, Q*2, F[1], 0.90);
+   cap(qr(-R0*0.66), R0*1.40, R0*1.14, Q,   F[5], 0.74);
+   ROCK(-21,-20,rp); embers(198,36,F,5); }]);
+
+SH2.push(['Cowl','fire on the lit side only - the underside stays bare, light from upper left',
+ (rp,F)=>{ T2(F);
+   shellA(R0,{...BS,nose:1.02,hmax:1.40,up:1.00,dn:0.34,bands:B42(F)});
+   ROCK(-21,-20,rp); embers(198,36,F,5); }]);
+
+SH2.push(['Fluted','the edge steps in regular scallops instead of running smooth',
+ (rp,F)=>{ T2(F);
+   shellA(R0,{...BS,nose:1.00,hmax:1.34,flute:[0.26,0.62],bands:B42(F)});
+   ROCK(-21,-20,rp); embers(198,36,F,5); }]);
+
+SH2.push(['Petal','the nose splits into three tongues opening rearward',
+ (rp,F)=>{ T2(F);
+   shellA(R0,{...BS,nose:0.60,hmax:1.18,sh0:-0.40,sh1:0.46,nz:0.66,bands:B42(F)});
+   lobe(R0,-1.34,-0.16,-1.12, 0.14, 0.34, F[2], F[4]);
+   lobe(R0,-1.62,-0.20, 0.00, 0.16, 0.30, F[3], F[5]);
+   lobe(R0,-1.34,-0.16, 1.12, 0.14, 0.34, F[2], F[4]);
+   ROCK(-21,-20,rp); embers(198,36,F,5); }]);
+
+SH2.push(['Nested','seven thin bands one grid step apart instead of four thick ones',
+ (rp,F)=>{ T2(F);
+   shellA(R0,{...BS,nose:0.98,hmax:1.34, bands:
+     [[1.00,F[0]],[0.90,F[1]],[0.79,F[2]],[0.67,F[1]],
+      [0.55,F[3]],[0.42,F[2]],[0.28,F[5]]]});
+   ROCK(-21,-20,rp); embers(198,36,F,5); }]);
+
+SH2.push(['Bell','tight at the nose, flaring into a bell behind the rock',
+ (rp,F)=>{ T2(F);
+   shellA(R0,{...BS,nose:0.70,hmax:1.02,sh0:-0.44,sh1:-0.10,
+              tailW:1.05,fall:1.50,tail:2.20,nz:0.64,bands:B42(F)});
+   ROCK(-21,-20,rp); embers(198,36,F,5); }]);
+
+SH2.push(['Chiselled','a hand-laid polygon - straight runs and hard corners, no curve at all',
+ (rp,F)=>{ T2(F);
+   shellA(R0,{...BS, poly:[[-1.42,0.00],[-1.20,0.52],[-0.58,0.74],[-0.10,1.46],
+                           [0.34,1.46],[0.60,0.98],[1.40,0.86],[2.60,0.71]],
+              bands:B42(F)});
+   ROCK(-21,-20,rp); embers(198,36,F,5); }]);
+
+/* ---- Blunt, animated -------------------------------------------------
+   Only the shell sprite animates. The rock does not: it is one baked
+   sprite that the game rotates, so its tumble costs nothing and never
+   goes out of step with the flame.
+
+   Two things move, and both are made of PARTS rather than noise. The
+   shell breathes one grid step in and out on a hand-tabled cycle, and
+   the shed tongues and the embers march rearward and recycle at the
+   head. Nothing is reseeded per frame, so the loop reads identically
+   every time it comes round - which is what stops it looking like
+   static.                                                            */
+
+const BLUNT = {nose:0.86, hmax:1.32, sh0:-0.55, sh1:0.50, tail:2.60,
+               tailW:0.71, nz:0.56, rise:0.38, fall:0.55};
+const NF = 6;
+
+/* per frame: [shoulder, nose, hot core, trail pulse] - one grid step
+   of travel at most, so the silhouette never jumps a whole block */
+const BREATHE = [[1.00, 1.00, 1.00, 1.00],
+                 [1.06, 1.05, 1.14, 1.10],
+                 [1.09, 1.08, 1.02, 1.04],
+                 [1.03, 1.02, 0.86, 0.92],
+                 [0.96, 0.96, 0.92, 0.96],
+                 [0.95, 0.97, 1.08, 1.06]];
+
+/* tongues on fixed lanes, each stepping rearward and recycling */
+function tongueRun(rx, ry, two, ph){
+  const LANE=[[-0.34,-1],[-0.06, 1],[ 0.22,-1],[ 0.48, 1]];
+  for(let i=0;i<LANE.length;i++){
+    const [x0, sd] = LANE[i];
+    const t = ((i/LANE.length) + ph) % 1;
+    const xf = x0 + t*0.62;
+    if(xf > 0.93 || xf < -0.93) continue;
+    tongues(rx, ry, two, [[xf, sd, 0.62*(1-t)+0.16, 0.17*(1-0.45*t)]]);
+  }
+}
+/* embers on fixed lanes, marching rearward and cooling as they go */
+function emberRun(L, H, F, ph){
+  const LANE=[[-0.34,3],[0.26,3],[-0.20,2],[0.40,2],[-0.44,2],[0.14,2]];
+  for(let i=0;i<LANE.length;i++){
+    const [yf, s] = LANE[i];
+    const t = ((i/LANE.length) + ph) % 1;
+    const x = qr(L*(0.14 + 0.82*t)), y = qr(H*yf);
+    px(x, y, s, s, t<0.42 ? F[4] : F[3]);
+    if(t < 0.28) px(x, y, 1, 1, F[5]);
+  }
+}
+/* one frame of the shell sprite: trail, shell, shed flame, embers.
+   The rock is NOT part of this - it is blitted separately. */
+function bluntFrame(i, F){
+  const k = i % NF, ph = k/NF;
+  const [hm, ns, cs, tp] = BREATHE[k];
+  tail(198, 15, F, 1.15, tp);
+  shell(R0, {...BLUNT, hmax:BLUNT.hmax*hm, nose:BLUNT.nose*ns,
+             bands:[[1.00,F[1]],[0.80,F[2]],[0.60,F[3]],[0.38*cs,F[4]]]});
+  tongueRun(R0*BLUNT.hmax*hm*0.98, R0*BLUNT.hmax*hm, [F[2],F[4]], ph);
+  emberRun(198, 36, F, ph);
+}
+
+/* The rock does not turn. It is a separate sprite from the shell, but
+   it holds a fixed attitude — only the six shell frames animate. That
+   also sidesteps the raggedness rotating pixel art off the square
+   introduces, since the hand-laid outline is never resampled. */
+const CONF = (function(){
+/* Confirmed art, lifted out of index.html and held here until the whole
+   asset set is signed off. Re-apply with the bake/blit wiring then. */
+
+/* ---- asteroids ---------------------------------------------------
+   Matched to the planes, cranes and elevator, which are the sprites
+   this game is judged by. Those are crisp: bright flat fills, edges
+   stepping on a coarse grid, a light line along the top, and detail
+   made of distinct PARTS rather than surface texture. Their high
+   colour counts come from part count, not from shading one shape
+   richly - a plane has a fuselage, a window row, a tail, an engine and
+   a stripe. There is not one noisy pixel in that set, so there is none
+   here either.
+
+   Silhouettes are hand-laid row tables stepping on a 3px grid. Two
+   shapes, three size buckets each, because spawn radius used to be a
+   continuous 24-48 and a baked sprite cannot follow that without
+   resampling - which is the one thing that gives the grid away.     */
+const K_O='#1C1410', K_D='#7A5330', K_B='#A8763F', K_L='#C89354', K_H='#F2CC93';
+const K_F='#3E2A18', K_R='#E8BE85';
+const C_O='#12100E', C_D='#4A443C', C_B='#6E655A', C_L='#8C8274', C_H='#B4A897';
+
+function rows(spans, col){ for (const [y,a,b] of spans) px(a, y, b-a+1, 1, col); }
+/* The light sits ON the top edge and follows it down the flanks, the
+   way the boom's top chord does. Column by column - filling the first
+   third of the rows instead just bleaches the rock. */
+function astTop(S, col){
+  const top = new Map();
+  for (const [y,a,b] of S)
+    for (let x = a; x <= b; x++) if (!top.has(x)) top.set(x, y);
+  const b0 = S[0][2], bN = S[S.length-1][2];
+  for (const [x, y] of top){
+    if (x > b0 + (bN - b0) * 0.55) continue;
+    px(x, y + 1, 1, 2, col);
+  }
+}
+function astEdge(S, col){
+  for (const [y,a,b] of S){ px(a, y, 1, 1, col); px(b, y, 1, 1, col); }
+  for (let i = 1; i < S.length; i++){
+    const [y,a,b] = S[i], [,pa,pb] = S[i-1];
+    if (a < pa) px(a, y, pa - a, 1, col); else if (pa < a) px(pa, y-1, a - pa, 1, col);
+    if (b > pb) px(pb, y, b - pb, 1, col); else if (pb > b) px(b, y-1, pb - b, 1, col);
+  }
+  const f = S[0], l = S[S.length-1];
+  px(f[1], f[0], f[2]-f[1]+1, 1, col);
+  px(l[1], l[0], l[2]-l[1]+1, 1, col);
+}
+/* a crater is its own part - flat floor, hard outline, bright rim on
+   the sunward arc. Built like a cockpit window, not shaded like a dent. */
+function crater(cx, cy, rx, ry, floor, rim, out){
+  for (let y = -ry; y <= ry; y++){
+    const w = Math.round(rx * Math.sqrt(Math.max(0, 1 - (y*y)/(ry*ry))));
+    if (w < 1) continue;
+    px(cx - w, cy + y, w*2, 1, out);
+    if (w > 2) px(cx - w + 1, cy + y, w*2 - 2, 1, floor);
+  }
+  for (let i = 0; i <= 24; i++){
+    const a = Math.PI * (1.06 + i/24 * 0.56);
+    px(cx + Math.round(Math.cos(a)*rx), cy + Math.round(Math.sin(a)*ry) - 1, 1, 2, rim);
+  }
+}
+const AST_BOX = [[52,48],[66,60],[86,78],[56,52],[72,66],[92,84]];
+const AST_DRAW = [
+  /* chunk, bucket 0 - 52x48 */
+  () => {
+    const S =[[0,18,35], [1,18,35], [2,18,35], [3,15,41], [4,15,41], [5,15,41], [6,12,44],
+             [7,12,44], [8,12,44], [9,9,47], [10,9,47], [11,9,47], [12,6,50], [13,6,50],
+             [14,6,50], [15,3,50], [16,3,50], [17,3,50], [18,3,50], [19,3,50], [20,3,50],
+             [21,0,50], [22,0,50], [23,0,50], [24,0,47], [25,0,47], [26,0,47], [27,0,47],
+             [28,0,47], [29,0,47], [30,0,47], [31,0,47], [32,0,47], [33,0,47], [34,0,47],
+             [35,0,47], [36,0,47], [37,0,47], [38,0,47], [39,6,41], [40,6,41], [41,6,41],
+             [42,12,38], [43,12,38], [44,12,38], [45,21,29], [46,21,29]];
+    const SH=[[0,27,35], [1,27,35], [2,27,35], [3,30,41], [4,30,41], [5,30,41], [6,30,44],
+             [7,30,44], [8,30,44], [9,30,47], [10,30,47], [11,30,47], [12,30,50], [13,30,50],
+             [14,30,50], [15,27,50], [16,27,50], [17,27,50], [18,30,50], [19,30,50], [20,30,50],
+             [21,27,50], [22,27,50], [23,27,50], [24,27,47], [25,27,47], [26,27,47], [27,24,47],
+             [28,24,47], [29,24,47], [30,24,47], [31,24,47], [32,24,47], [33,18,47], [34,18,47],
+             [35,18,47], [36,18,47], [37,18,47], [38,18,47], [39,18,41], [40,18,41], [41,18,41],
+             [42,21,38], [43,18,38], [44,18,38], [45,26,29], [46,26,29]];
+    rows(S,  K_B); rows(SH, K_D);
+    astTop(S, K_H); astEdge(S, K_O);
+crater(19,21, 6,5, K_F, K_R, K_O);
+crater(35,30, 5,4, K_F, K_R, K_O);
+crater(13,35, 4,3, K_F, K_R, K_O);
+  },
+  /* chunk, bucket 1 - 66x60 */
+  () => {
+    const S =[[0,24,44], [1,24,44], [2,24,44], [3,18,50], [4,18,50], [5,18,50], [6,15,56],
+             [7,15,56], [8,15,56], [9,12,59], [10,12,59], [11,12,59], [12,9,59], [13,9,59],
+             [14,9,59], [15,6,62], [16,6,62], [17,6,62], [18,6,62], [19,6,62], [20,6,62],
+             [21,3,62], [22,3,62], [23,3,62], [24,3,62], [25,3,62], [26,3,62], [27,3,62],
+             [28,3,62], [29,3,62], [30,0,62], [31,0,62], [32,0,62], [33,0,62], [34,0,62],
+             [35,0,62], [36,0,62], [37,0,62], [38,0,62], [39,0,62], [40,0,62], [41,0,62],
+             [42,0,62], [43,0,62], [44,0,62], [45,0,59], [46,0,59], [47,0,59], [48,6,56],
+             [49,6,56], [50,6,56], [51,12,50], [52,12,50], [53,12,50], [54,21,44], [55,21,44],
+             [56,21,44], [57,30,38], [58,30,38]];
+    const SH=[[0,36,44], [1,36,44], [2,36,44], [3,36,50], [4,36,50], [5,36,50], [6,39,56],
+             [7,39,56], [8,39,56], [9,39,59], [10,39,59], [11,39,59], [12,36,59], [13,36,59],
+             [14,36,59], [15,36,62], [16,36,62], [17,36,62], [18,39,62], [19,39,62], [20,39,62],
+             [21,36,62], [22,36,62], [23,36,62], [24,36,62], [25,36,62], [26,36,62], [27,36,62],
+             [28,36,62], [29,36,62], [30,33,62], [31,33,62], [32,33,62], [33,27,62], [34,27,62],
+             [35,27,62], [36,27,62], [37,27,62], [38,27,62], [39,24,62], [40,24,62], [41,24,62],
+             [42,24,62], [43,24,62], [44,24,62], [45,33,59], [46,30,59], [47,30,59], [48,33,56],
+             [49,33,56], [50,33,56], [51,33,50], [52,33,50], [53,33,50], [54,36,44], [55,36,44],
+             [56,36,44], [57,35,38], [58,35,38]];
+    rows(S,  K_B); rows(SH, K_D);
+    astTop(S, K_H); astEdge(S, K_O);
+crater(24,26, 8,6, K_F, K_R, K_O);
+crater(45,38, 6,4, K_F, K_R, K_O);
+crater(16,44, 5,4, K_F, K_R, K_O);
+  },
+  /* chunk, bucket 2 - 86x78 */
+  () => {
+    const S =[[0,33,56], [1,33,56], [2,33,56], [3,24,62], [4,24,62], [5,24,62], [6,21,68],
+             [7,21,68], [8,21,68], [9,18,71], [10,18,71], [11,18,71], [12,15,74], [13,15,74],
+             [14,15,74], [15,12,77], [16,12,77], [17,12,77], [18,12,80], [19,12,80], [20,12,80],
+             [21,9,80], [22,9,80], [23,9,80], [24,6,83], [25,6,83], [26,6,83], [27,6,83],
+             [28,6,83], [29,6,83], [30,3,83], [31,3,83], [32,3,83], [33,3,83], [34,3,83],
+             [35,3,83], [36,3,80], [37,3,80], [38,3,80], [39,3,80], [40,3,80], [41,3,80],
+             [42,0,80], [43,0,80], [44,0,80], [45,0,80], [46,0,80], [47,0,80], [48,0,80],
+             [49,0,80], [50,0,80], [51,0,83], [52,0,83], [53,0,83], [54,0,80], [55,0,80],
+             [56,0,80], [57,0,80], [58,0,80], [59,0,80], [60,3,77], [61,3,77], [62,3,77],
+             [63,9,74], [64,9,74], [65,9,74], [66,15,68], [67,15,68], [68,15,68], [69,21,62],
+             [70,21,62], [71,21,62], [72,30,56], [73,30,56], [74,30,56], [75,39,47], [76,39,47]];
+    const SH=[[0,48,56], [1,48,56], [2,48,56], [3,45,62], [4,45,62], [5,45,62], [6,48,68],
+             [7,48,68], [8,48,68], [9,48,71], [10,48,71], [11,48,71], [12,48,74], [13,48,74],
+             [14,48,74], [15,48,77], [16,48,77], [17,48,77], [18,51,80], [19,51,80], [20,51,80],
+             [21,51,80], [22,51,80], [23,51,80], [24,51,83], [25,51,83], [26,51,83], [27,48,83],
+             [28,48,83], [29,48,83], [30,48,83], [31,48,83], [32,48,83], [33,42,83], [34,39,83],
+             [35,39,83], [36,39,80], [37,39,80], [38,39,80], [39,39,80], [40,39,80], [41,36,80],
+             [42,36,80], [43,36,80], [44,36,80], [45,45,80], [46,45,80], [47,42,80], [48,42,80],
+             [49,42,80], [50,42,80], [51,45,83], [52,45,83], [53,42,83], [54,42,80], [55,42,80],
+             [56,42,80], [57,42,80], [58,42,80], [59,42,80], [60,42,77], [61,42,77], [62,39,77],
+             [63,36,74], [64,36,74], [65,36,74], [66,36,68], [67,36,68], [68,36,68], [69,39,62],
+             [70,39,62], [71,36,62], [72,39,56], [73,39,56], [74,39,56], [75,42,47], [76,42,47]];
+    rows(S,  K_B); rows(SH, K_D);
+    astTop(S, K_H); astEdge(S, K_O);
+crater(31,34,10,8, K_F, K_R, K_O);
+crater(58,49, 8,5, K_F, K_R, K_O);
+crater(21,57, 6,5, K_F, K_R, K_O);
+  },
+  /* cratered, bucket 0 - 56x52 */
+  () => {
+    const S =[[0,21,38], [1,21,38], [2,21,38], [3,18,41], [4,18,41], [5,18,41], [6,15,44],
+             [7,15,44], [8,15,44], [9,12,47], [10,12,47], [11,12,47], [12,9,50], [13,9,50],
+             [14,9,50], [15,3,53], [16,3,53], [17,3,53], [18,0,53], [19,0,53], [20,0,53],
+             [21,0,53], [22,0,53], [23,0,53], [24,0,53], [25,0,53], [26,0,53], [27,0,53],
+             [28,0,53], [29,0,53], [30,0,53], [31,0,53], [32,0,53], [33,0,53], [34,0,53],
+             [35,0,53], [36,0,50], [37,0,50], [38,0,50], [39,6,47], [40,6,47], [41,6,47],
+             [42,12,44], [43,12,44], [44,12,44], [45,15,41], [46,15,41], [47,15,41], [48,21,35],
+             [49,21,35], [50,21,35], [51,27,32]];
+    const SH=[[0,30,38], [1,30,38], [2,30,38], [3,33,41], [4,30,41], [5,30,41], [6,33,44],
+             [7,33,44], [8,30,44], [9,33,47], [10,33,47], [11,30,47], [12,33,50], [13,30,50],
+             [14,30,50], [15,30,53], [16,30,53], [17,30,53], [18,30,53], [19,30,53], [20,30,53],
+             [21,30,53], [22,30,53], [23,30,53], [24,30,53], [25,30,53], [26,30,53], [27,30,53],
+             [28,30,53], [29,27,53], [30,27,53], [31,27,53], [32,27,53], [33,21,53], [34,21,53],
+             [35,21,53], [36,18,50], [37,18,50], [38,18,50], [39,21,47], [40,21,47], [41,21,47],
+             [42,24,44], [43,21,44], [44,21,44], [45,33,41], [46,33,41], [47,30,41], [48,32,35],
+             [49,32,35], [50,32,35], [51,30,32]];
+    rows(S,  C_B); rows(SH, C_D);
+    astTop(S, C_H); astEdge(S, C_O);
+crater(22,20, 8,6, C_O, C_H, C_O);
+crater(41,17, 5,3, C_O, C_H, C_O);
+crater(14,35, 5,4, C_O, C_H, C_O);
+crater(35,38, 6,4, C_O, C_H, C_O);
+crater(45,30, 3,2, C_O, C_H, C_O);
+  },
+  /* cratered, bucket 1 - 72x66 */
+  () => {
+    const S =[[0,30,47], [1,30,47], [2,30,47], [3,24,53], [4,24,53], [5,24,53], [6,21,56],
+             [7,21,56], [8,21,56], [9,18,59], [10,18,59], [11,18,59], [12,15,62], [13,15,62],
+             [14,15,62], [15,12,62], [16,12,62], [17,12,62], [18,6,65], [19,6,65], [20,6,65],
+             [21,3,68], [22,3,68], [23,3,68], [24,0,71], [25,0,71], [26,0,71], [27,0,71],
+             [28,0,71], [29,0,71], [30,0,71], [31,0,71], [32,0,71], [33,0,71], [34,0,71],
+             [35,0,71], [36,0,71], [37,0,71], [38,0,71], [39,0,68], [40,0,68], [41,0,68],
+             [42,0,68], [43,0,68], [44,0,68], [45,0,65], [46,0,65], [47,0,65], [48,6,62],
+             [49,6,62], [50,6,62], [51,9,59], [52,9,59], [53,9,59], [54,15,56], [55,15,56],
+             [56,15,56], [57,21,53], [58,21,53], [59,21,53], [60,24,50], [61,24,50], [62,24,50],
+             [63,30,44], [64,30,44], [65,30,44]];
+    const SH=[[0,39,47], [1,39,47], [2,39,47], [3,42,53], [4,42,53], [5,42,53], [6,42,56],
+             [7,42,56], [8,42,56], [9,42,59], [10,42,59], [11,42,59], [12,42,62], [13,42,62],
+             [14,42,62], [15,39,62], [16,39,62], [17,39,62], [18,42,65], [19,42,65], [20,39,65],
+             [21,39,68], [22,39,68], [23,39,68], [24,39,71], [25,39,71], [26,39,71], [27,39,71],
+             [28,39,71], [29,39,71], [30,39,71], [31,39,71], [32,39,71], [33,33,71], [34,33,71],
+             [35,30,71], [36,30,71], [37,30,71], [38,30,71], [39,30,68], [40,30,68], [41,30,68],
+             [42,27,68], [43,27,68], [44,27,68], [45,36,65], [46,36,65], [47,36,65], [48,36,62],
+             [49,36,62], [50,36,62], [51,36,59], [52,36,59], [53,36,59], [54,39,56], [55,39,56],
+             [56,39,56], [57,39,53], [58,39,53], [59,39,53], [60,39,50], [61,39,50], [62,39,50],
+             [63,36,44], [64,36,44], [65,36,44]];
+    rows(S,  C_B); rows(SH, C_D);
+    astTop(S, C_H); astEdge(S, C_O);
+crater(28,26,11,8, C_O, C_H, C_O);
+crater(52,22, 6,4, C_O, C_H, C_O);
+crater(18,44, 7,5, C_O, C_H, C_O);
+crater(45,48, 8,5, C_O, C_H, C_O);
+crater(57,38, 4,3, C_O, C_H, C_O);
+  },
+  /* cratered, bucket 2 - 92x84 */
+  () => {
+    const S =[[0,36,59], [1,36,59], [2,36,59], [3,30,65], [4,30,65], [5,30,65], [6,27,68],
+             [7,27,68], [8,27,68], [9,24,71], [10,24,71], [11,24,71], [12,21,74], [13,21,74],
+             [14,21,74], [15,18,77], [16,18,77], [17,18,77], [18,15,80], [19,15,80], [20,15,80],
+             [21,12,83], [22,12,83], [23,12,83], [24,6,86], [25,6,86], [26,6,86], [27,3,89],
+             [28,3,89], [29,3,89], [30,0,89], [31,0,89], [32,0,89], [33,0,89], [34,0,89],
+             [35,0,89], [36,0,91], [37,0,91], [38,0,91], [39,0,89], [40,0,89], [41,0,89],
+             [42,0,89], [43,0,89], [44,0,89], [45,0,89], [46,0,89], [47,0,89], [48,0,89],
+             [49,0,89], [50,0,89], [51,0,89], [52,0,89], [53,0,89], [54,0,89], [55,0,89],
+             [56,0,89], [57,0,86], [58,0,86], [59,0,86], [60,6,83], [61,6,83], [62,6,83],
+             [63,9,80], [64,9,80], [65,9,80], [66,15,74], [67,15,74], [68,15,74], [69,18,71],
+             [70,18,71], [71,18,71], [72,24,68], [73,24,68], [74,24,68], [75,27,65], [76,27,65],
+             [77,27,65], [78,33,59], [79,33,59], [80,33,59], [81,39,56], [82,39,56], [83,39,56]];
+    const SH=[[0,51,59], [1,51,59], [2,51,59], [3,51,65], [4,51,65], [5,51,65], [6,51,68],
+             [7,51,68], [8,51,68], [9,51,71], [10,51,71], [11,51,71], [12,51,74], [13,51,74],
+             [14,51,74], [15,51,77], [16,51,77], [17,51,77], [18,54,80], [19,54,80], [20,54,80],
+             [21,54,83], [22,54,83], [23,54,83], [24,51,86], [25,51,86], [26,51,86], [27,51,89],
+             [28,51,89], [29,51,89], [30,48,89], [31,48,89], [32,48,89], [33,42,89], [34,42,89],
+             [35,42,89], [36,42,91], [37,42,91], [38,42,91], [39,42,89], [40,42,89], [41,42,89],
+             [42,42,89], [43,39,89], [44,39,89], [45,48,89], [46,48,89], [47,48,89], [48,48,89],
+             [49,48,89], [50,48,89], [51,48,89], [52,48,89], [53,48,89], [54,48,89], [55,48,89],
+             [56,45,89], [57,45,86], [58,45,86], [59,45,86], [60,45,83], [61,45,83], [62,45,83],
+             [63,39,80], [64,39,80], [65,39,80], [66,39,74], [67,39,74], [68,39,74], [69,39,71],
+             [70,39,71], [71,39,71], [72,42,68], [73,42,68], [74,42,68], [75,42,65], [76,42,65],
+             [77,42,65], [78,42,59], [79,42,59], [80,42,59], [81,45,56], [82,45,56], [83,45,56]];
+    rows(S,  C_B); rows(SH, C_D);
+    astTop(S, C_H); astEdge(S, C_O);
+crater(36,33,14,10,C_O, C_H, C_O);
+crater(66,28, 8,5, C_O, C_H, C_O);
+crater(23,56, 9,6, C_O, C_H, C_O);
+crater(57,61,10,6, C_O, C_H, C_O);
+crater(73,48, 5,4, C_O, C_H, C_O);
+  },
+];
+
+/* ---- meteors -----------------------------------------------------
+   Two sprites, because the rock tumbles on its own while the trail has
+   to point along the track. So the fire lives on the TRAIL, not baked
+   onto a spinning rock - otherwise the hot face rotates away from the
+   direction of travel, which is the giveaway on most pixel meteors.
+
+   The flame is nested flat wedges with hard stepped edges, the way a
+   Genesis exhaust is built, not an alpha ramp. Embers at the tail are
+   separate blocks - parts, not grit.                                */
+const M_O='#0D0B0A', M_D='#3A332C', M_B='#574C41', M_L='#6F6153', M_H='#8F7F6C';
+const F0='#3A0C06', F1='#8C2A0A', F2='#D4560E', F3='#F59220',
+      F4='#FFC94A', F5='#FFF3C0';
+const MET_FIRE = [F0, F1, F2, F3, F5];
+const MET_BOX = [[30,30],[42,42],[54,54]];
+const MET_DRAW = [
+  /* meteor rock, bucket 0 - 30x30 */
+  () => {
+    const S =[[0,9,23], [1,9,23], [2,9,23], [3,6,26], [4,6,26], [5,6,26], [6,6,26],
+           [7,6,26], [8,6,26], [9,3,26], [10,3,26], [11,3,26], [12,0,29], [13,0,29],
+           [14,0,29], [15,0,29], [16,0,29], [17,0,29], [18,0,26], [19,0,26], [20,0,26],
+           [21,0,26], [22,0,26], [23,0,26], [24,3,23], [25,3,23], [26,3,23], [27,12,20],
+           [28,12,20]];
+    const SH=[[0,18,23], [1,18,23], [2,18,23], [3,18,26], [4,18,26], [5,18,26], [6,18,26],
+           [7,18,26], [8,18,26], [9,15,26], [10,15,26], [11,15,26], [12,15,29], [13,15,29],
+           [14,15,29], [15,15,29], [16,15,29], [17,15,29], [18,15,26], [19,15,26], [20,15,26],
+           [21,15,26], [22,15,26], [23,15,26], [24,15,23], [25,15,23], [26,15,23], [27,17,20],
+           [28,17,20]];
+    rows(S, M_B); rows(SH, M_D);
+    astTop(S, M_H); astEdge(S, M_O);
+    crater(10,13, 3,2, M_O, M_H, M_O);
+  },
+  /* meteor rock, bucket 1 - 42x42 */
+  () => {
+    const S =[[0,15,29], [1,15,29], [2,15,29], [3,9,35], [4,9,35], [5,9,35], [6,6,35],
+           [7,6,35], [8,6,35], [9,6,35], [10,6,35], [11,6,35], [12,3,35], [13,3,35],
+           [14,3,35], [15,0,38], [16,0,38], [17,0,38], [18,0,38], [19,0,38], [20,0,38],
+           [21,0,41], [22,0,41], [23,0,41], [24,0,41], [25,0,41], [26,0,41], [27,0,38],
+           [28,0,38], [29,0,38], [30,3,38], [31,3,38], [32,3,38], [33,6,38], [34,6,38],
+           [35,6,38], [36,12,32], [37,12,32], [38,12,32], [39,18,26], [40,18,26]];
+    const SH=[[0,24,29], [1,24,29], [2,24,29], [3,24,35], [4,24,35], [5,24,35], [6,21,35],
+           [7,21,35], [8,21,35], [9,21,35], [10,21,35], [11,21,35], [12,21,35], [13,21,35],
+           [14,18,35], [15,18,38], [16,18,38], [17,18,38], [18,21,38], [19,21,38], [20,21,38],
+           [21,24,41], [22,21,41], [23,21,41], [24,21,41], [25,21,41], [26,21,41], [27,21,38],
+           [28,21,38], [29,21,38], [30,21,38], [31,21,38], [32,21,38], [33,18,38], [34,15,38],
+           [35,15,38], [36,18,32], [37,18,32], [38,18,32], [39,21,26], [40,21,26]];
+    rows(S, M_B); rows(SH, M_D);
+    astTop(S, M_H); astEdge(S, M_O);
+    crater(14,19, 4,3, M_O, M_H, M_O);
+  },
+  /* meteor rock, bucket 2 - 54x54 */
+  () => {
+    const S =[[0,18,38], [1,18,38], [2,18,38], [3,12,41], [4,12,41], [5,12,41], [6,9,44],
+           [7,9,44], [8,9,44], [9,6,44], [10,6,44], [11,6,44], [12,6,44], [13,6,44],
+           [14,6,44], [15,3,44], [16,3,44], [17,3,44], [18,3,47], [19,3,47], [20,3,47],
+           [21,0,50], [22,0,50], [23,0,50], [24,0,53], [25,0,53], [26,0,53], [27,0,53],
+           [28,0,53], [29,0,53], [30,0,53], [31,0,53], [32,0,53], [33,0,53], [34,0,53],
+           [35,0,53], [36,3,53], [37,3,53], [38,3,53], [39,6,50], [40,6,50], [41,6,50],
+           [42,6,50], [43,6,50], [44,6,50], [45,12,44], [46,12,44], [47,12,44], [48,18,38],
+           [49,18,38], [50,18,38], [51,24,32], [52,24,32]];
+    const SH=[[0,30,38], [1,30,38], [2,30,38], [3,27,41], [4,27,41], [5,27,41], [6,30,44],
+           [7,27,44], [8,27,44], [9,27,44], [10,27,44], [11,27,44], [12,27,44], [13,27,44],
+           [14,27,44], [15,24,44], [16,24,44], [17,24,44], [18,30,47], [19,27,47], [20,27,47],
+           [21,27,50], [22,27,50], [23,27,50], [24,30,53], [25,30,53], [26,30,53], [27,27,53],
+           [28,27,53], [29,27,53], [30,27,53], [31,27,53], [32,27,53], [33,21,53], [34,21,53],
+           [35,21,53], [36,21,53], [37,21,53], [38,21,53], [39,21,50], [40,21,50], [41,21,50],
+           [42,21,50], [43,21,50], [44,21,50], [45,30,44], [46,30,44], [47,30,44], [48,33,38],
+           [49,33,38], [50,33,38], [51,29,32], [52,29,32]];
+    rows(S, M_B); rows(SH, M_D);
+    astTop(S, M_H); astEdge(S, M_O);
+    crater(18,25, 6,4, M_O, M_H, M_O);
+  },
+];
+const MET_TAIL_BOX = [[138,28],[198,36],[258,46]];
+const Q_ = 3;
+const MET_TAIL = [
+  /* trail, bucket 0 - 138 long, head at x=0 */
+  () => {
+    const B = [
+      [[0,12], [3,12], [6,9], [9,9], [12,9], [15,9], [18,9], [21,9], [24,9],
+           [27,9], [30,9], [33,9], [36,9], [39,9], [42,6], [45,6], [48,6], [51,6],
+           [54,6], [57,6], [60,6], [63,6], [66,6], [69,6], [72,6], [75,3], [78,3],
+           [81,3], [84,3], [87,3], [90,3], [93,3], [96,3], [99,3], [102,3], [105,3],
+           [108,3], [111,3]],
+      [[0,9], [3,6], [6,6], [9,6], [12,6], [15,6], [18,6], [21,6], [24,6],
+           [27,6], [30,6], [33,6], [36,6], [39,3], [42,3], [45,3], [48,3], [51,3],
+           [54,3], [57,3], [60,3], [63,3], [66,3], [69,3], [72,3]],
+      [[0,6], [3,6], [6,6], [9,3], [12,3], [15,3], [18,3], [21,3], [24,3],
+           [27,3], [30,3], [33,3], [36,3], [39,3]],
+      [[0,3], [3,3], [6,3], [9,3], [12,3], [15,3]],
+      [[0,3]]];
+    for (let k = 0; k < B.length; k++)
+      for (const [x, h] of B[k]) px(x, -h, Q_, h*2, MET_FIRE[k]);
+    /* the hot head: two flat discs, the inner one white. It sits over
+       the rock's leading edge rather than ringing it. */
+    for (let y = -10; y <= 10; y++){
+      const w = Math.round(10 * Math.sqrt(Math.max(0, 1 - (y*y)/100)));
+      if (w > 0) px(-w + 2, y, w*2, 1, F4);
+    }
+    for (let y = -7; y <= 7; y++){
+      const w = Math.round(7 * Math.sqrt(Math.max(0, 1 - (y*y)/49)));
+      if (w > 0) px(-w + 2, y, w*2, 1, F5);
+    }
+    const E = [[69,-5,3],[85,4,3],[99,-4,2],
+               [114,5,2],[124,-4,2]];
+    for (const [x,y,s] of E){ px(x, y, s, s, F3); px(x, y, 1, 1, F5); }
+  },
+  /* trail, bucket 1 - 198 long, head at x=0 */
+  () => {
+    const B = [
+      [[0,15], [3,15], [6,15], [9,15], [12,15], [15,15], [18,12], [21,12], [24,12],
+           [27,12], [30,12], [33,12], [36,12], [39,12], [42,12], [45,12], [48,12], [51,12],
+           [54,9], [57,9], [60,9], [63,9], [66,9], [69,9], [72,9], [75,9], [78,9],
+           [81,9], [84,9], [87,9], [90,6], [93,6], [96,6], [99,6], [102,6], [105,6],
+           [108,6], [111,6], [114,6], [117,6], [120,6], [123,6], [126,6], [129,3], [132,3],
+           [135,3], [138,3], [141,3], [144,3], [147,3], [150,3], [153,3], [156,3], [159,3],
+           [162,3], [165,3], [168,3], [171,3]],
+      [[0,12], [3,9], [6,9], [9,9], [12,9], [15,9], [18,9], [21,9], [24,9],
+           [27,9], [30,9], [33,9], [36,6], [39,6], [42,6], [45,6], [48,6], [51,6],
+           [54,6], [57,6], [60,6], [63,6], [66,6], [69,6], [72,6], [75,3], [78,3],
+           [81,3], [84,3], [87,3], [90,3], [93,3], [96,3], [99,3], [102,3], [105,3],
+           [108,3], [111,3]],
+      [[0,6], [3,6], [6,6], [9,6], [12,6], [15,6], [18,6], [21,6], [24,6],
+           [27,6], [30,3], [33,3], [36,3], [39,3], [42,3], [45,3], [48,3], [51,3],
+           [54,3], [57,3], [60,3], [63,3], [66,3]],
+      [[0,6], [3,3], [6,3], [9,3], [12,3], [15,3], [18,3], [21,3], [24,3],
+           [27,3], [30,3]],
+      [[0,3], [3,3], [6,3]]];
+    for (let k = 0; k < B.length; k++)
+      for (const [x, h] of B[k]) px(x, -h, Q_, h*2, MET_FIRE[k]);
+    /* the hot head: two flat discs, the inner one white. It sits over
+       the rock's leading edge rather than ringing it. */
+    for (let y = -14; y <= 14; y++){
+      const w = Math.round(14 * Math.sqrt(Math.max(0, 1 - (y*y)/196)));
+      if (w > 0) px(-w + 2, y, w*2, 1, F4);
+    }
+    for (let y = -9; y <= 9; y++){
+      const w = Math.round(9 * Math.sqrt(Math.max(0, 1 - (y*y)/81)));
+      if (w > 0) px(-w + 2, y, w*2, 1, F5);
+    }
+    const E = [[99,-7,3],[122,6,3],[142,-5,2],
+               [164,7,2],[178,-6,2]];
+    for (const [x,y,s] of E){ px(x, y, s, s, F3); px(x, y, 1, 1, F5); }
+  },
+  /* trail, bucket 2 - 258 long, head at x=0 */
+  () => {
+    const B = [
+      [[0,21], [3,21], [6,18], [9,18], [12,18], [15,18], [18,18], [21,18], [24,18],
+           [27,18], [30,18], [33,18], [36,18], [39,18], [42,15], [45,15], [48,15], [51,15],
+           [54,15], [57,15], [60,15], [63,15], [66,15], [69,15], [72,15], [75,12], [78,12],
+           [81,12], [84,12], [87,12], [90,12], [93,12], [96,12], [99,12], [102,12], [105,12],
+           [108,12], [111,9], [114,9], [117,9], [120,9], [123,9], [126,9], [129,9], [132,9],
+           [135,9], [138,9], [141,9], [144,9], [147,9], [150,6], [153,6], [156,6], [159,6],
+           [162,6], [165,6], [168,6], [171,6], [174,6], [177,6], [180,6], [183,6], [186,6],
+           [189,3], [192,3], [195,3], [198,3], [201,3], [204,3], [207,3], [210,3], [213,3],
+           [216,3], [219,3], [222,3], [225,3], [228,3]],
+      [[0,15], [3,15], [6,12], [9,12], [12,12], [15,12], [18,12], [21,12], [24,12],
+           [27,12], [30,12], [33,12], [36,12], [39,12], [42,9], [45,9], [48,9], [51,9],
+           [54,9], [57,9], [60,9], [63,9], [66,9], [69,9], [72,9], [75,9], [78,6],
+           [81,6], [84,6], [87,6], [90,6], [93,6], [96,6], [99,6], [102,6], [105,6],
+           [108,6], [111,6], [114,3], [117,3], [120,3], [123,3], [126,3], [129,3], [132,3],
+           [135,3], [138,3], [141,3], [144,3], [147,3], [150,3], [153,3]],
+      [[0,9], [3,9], [6,9], [9,9], [12,9], [15,9], [18,9], [21,9], [24,6],
+           [27,6], [30,6], [33,6], [36,6], [39,6], [42,6], [45,6], [48,6], [51,6],
+           [54,6], [57,3], [60,3], [63,3], [66,3], [69,3], [72,3], [75,3], [78,3],
+           [81,3], [84,3], [87,3], [90,3], [93,3]],
+      [[0,6], [3,6], [6,6], [9,6], [12,6], [15,3], [18,3], [21,3], [24,3],
+           [27,3], [30,3], [33,3], [36,3], [39,3], [42,3], [45,3]],
+      [[0,3], [3,3], [6,3], [9,3], [12,3], [15,3]]];
+    for (let k = 0; k < B.length; k++)
+      for (const [x, h] of B[k]) px(x, -h, Q_, h*2, MET_FIRE[k]);
+    /* the hot head: two flat discs, the inner one white. It sits over
+       the rock's leading edge rather than ringing it. */
+    for (let y = -19; y <= 19; y++){
+      const w = Math.round(19 * Math.sqrt(Math.max(0, 1 - (y*y)/361)));
+      if (w > 0) px(-w + 2, y, w*2, 1, F4);
+    }
+    for (let y = -11; y <= 11; y++){
+      const w = Math.round(11 * Math.sqrt(Math.max(0, 1 - (y*y)/121)));
+      if (w > 0) px(-w + 2, y, w*2, 1, F5);
+    }
+    const E = [[129,-9,3],[159,7,3],[185,-6,2],
+               [214,9,2],[232,-7,2]];
+    for (const [x,y,s] of E){ px(x, y, s, s, F3); px(x, y, 1, 1, F5); }
+  },
+];
+
+return {AST_BOX, AST_DRAW, MET_BOX, MET_DRAW, MET_TAIL_BOX, MET_TAIL};
+})();
+/* ---- satellite fragments -------------------------------------------
+   Matched to the planes, cranes and elevator car. Those carry their
+   colour counts because they are made of PARTS - a fuselage, a window
+   row, a tail, a stripe - each flat filled with two or three tones.
+   A satellite fragment has the same kind of vocabulary: a cell field,
+   a frame rail, a torn edge, a foil face, a lattice. So the parts do
+   the work and the colour count follows.
+
+   Every silhouette below is a hand-laid row table stepping on 3px, and
+   every tear is a hand-laid step table - nothing is a noise function.
+   Light comes from the upper left. Drawn flat; the game tumbles these
+   by rotating the baked sprite, the way it already does for debris. */
+
+
+/* metal, shared by every fragment so the family reads as one material */
+const N_O='#0A0D12', N_D='#343B46', N_B='#5A6472', N_L='#8792A0', N_H='#BFC8D3';
+/* solar cells - the window-row analogue, and the one blue in the set */
+const V_O='#070B14', V_D='#16233E', V_B='#22355C', V_L='#33507F', V_H='#5C7FB8';
+/* thermal foil - the one colour beat, used on a single face per sprite */
+const Y_D='#8A6118', Y_B='#C0902E', Y_L='#E6B54A', Y_H='#F7DA92';
+/* white thermal blanket */
+const W_D='#727C8A', W_B='#A6AFBB', W_L='#D2D9E2', W_H='#F0F4F8';
+
+
+/* a field of solar cells: flat cells on a rail lattice, clipped to the
+   silhouette. Cells are parts, like a plane's window row. */
+function cells(S, x0, y0, x1, y1, px0, py0){
+  const lim=new Map(); for(const [y,a,b] of S) lim.set(y,[a,b]);
+  for(let cy=y0; cy+py0-G<=y1; cy+=py0)
+    for(let cx=x0; cx+px0-G<=x1; cx+=px0){
+      for(let y=cy; y<cy+py0-G; y++){
+        const L=lim.get(y); if(!L) continue;
+        const a=Math.max(cx, L[0]+1), b=Math.min(cx+px0-G-1, L[1]-1);
+        if(b<a) continue;
+        const shade = (y-cy < 2) ? V_L : ((cx/px0|0)%2 ? V_B : V_D);
+        px(a,y,b-a+1,1,shade);
+      }
+    }
+}
+
+const SAT=[];   /* [name, note, w, h, draw] */
+
+/* 1 -- a torn section of solar array ------------------------------- */
+const PANEL_TEAR=[[0,59],[3,56],[6,59],[9,50],[12,56],[15,44],[18,47],
+                  [21,53],[24,41],[27,50],[30,38],[33,44]];
+const PANEL=(()=>{ const S=[]; 
+  for(let i=0;i<PANEL_TEAR.length;i++){
+    const [y0,b]=PANEL_TEAR[i];
+    const y1=(i+1<PANEL_TEAR.length?PANEL_TEAR[i+1][0]:36)-1;
+    for(let y=y0;y<=y1;y++) S.push([y,0,b]);
+  } return S; })();
+SAT.push(['Panel shard','a torn section of solar array - cell field, frame rail, stepped tear',60,36,
+ ()=>{ srows(PANEL,N_D);
+   cells(PANEL, 3, 6, 57, 34, 12, 9);
+   px(0,0,60,5,N_B); px(0,0,60,2,N_L);            /* the frame rail */
+   px(0,5,60,1,N_D);
+   px(3,30,18,3,Y_B); px(3,30,18,1,Y_L);          /* foil tape, the one beat */
+   sTop(PANEL,N_H,0.55); sEdge(PANEL,N_O); }]);
+
+/* 2 -- a broken quadrant of a dish --------------------------------- */
+const DISH=band([[0,2,14,30],[3,5,9,36],[6,8,6,32],[9,11,4,42],[12,14,3,37],
+                 [15,17,3,44],[18,20,4,29],[21,23,6,34],[24,26,9,23],
+                 [27,29,12,21],[30,32,15,18]]);
+/* a hard rim on the intact arc only - the torn side gets none, which is
+   what separates a broken dish from a lens */
+function rim(S,c,frac){
+  const n=Math.round(S.length*(frac===undefined?0.72:frac));
+  for(let i=0;i<n;i++){ const [y,a]=S[i]; px(a+1,y,2,1,c); }
+}
+SAT.push(['Dish shard','a snapped-off dish quadrant - flat pan, hard rim, feed stub',48,34,
+ ()=>{ srows(DISH,N_B);
+   srows(DISH.filter(r=>r[0]>=15),N_D);           /* the shaded lower pan */
+   for(let y=3;y<=29;y+=6) rib(DISH,y,N_L,2);      /* ribs, clipped to the pan */
+   px(20,0,9,3,N_H); px(21,3,6,9,N_L); px(22,12,3,6,N_B);  /* feed stub */
+   px(3,12,4,6,Y_B); px(3,12,4,2,Y_L);            /* foil patch */
+   rim(DISH,N_H,0.78);
+   sTop(DISH,N_H,0.50); sEdge(DISH,N_O); }]);
+
+/* 3 -- a corner of the spacecraft bus ------------------------------ */
+const BUS=band([[0,2,9,35],[3,29,6,38],[30,32,6,32],[33,35,9,26],[36,38,12,21]]);
+SAT.push(['Bus corner','a foil-wrapped box corner with a panel seam and a snapped strut',44,39,
+ ()=>{ srows(BUS,Y_B);
+   srows(BUS.filter(r=>r[0]>=18),Y_D);            /* the turned-away face */
+   px(6,6,33,3,Y_L); px(6,21,33,2,Y_D);           /* seams, two of them */
+   px(24,3,14,27,W_B); px(24,3,14,2,W_H);         /* blanket panel */
+   px(24,18,14,12,W_D);
+   px(9,30,6,9,N_B); px(9,30,6,2,N_L);            /* the snapped strut */
+   px(9,36,6,3,N_O);
+   sTop(BUS,Y_H,0.60); sEdge(BUS,N_O); }]);
+
+/* 4 -- a length of lattice, the closest thing to the crane boom ---- */
+const TRUSS=band([[0,26,0,65]]);
+SAT.push(['Truss','a length of lattice with an end node - built like the crane boom',66,27,
+ ()=>{ px(0,0,66,4,N_B); px(0,0,66,2,N_H);        /* top chord */
+   px(0,23,66,4,N_B); px(0,25,66,2,N_D);          /* bottom chord */
+   /* three diagonals meeting the chords, alternating, with real sky
+      between them - members, not hatching */
+   for(let d=0;d<3;d++){
+     const x0=3+d*18, up=(d%2===0);
+     for(let k=0;k<6;k++){
+       const x=x0+k*3, y=up ? 4+k*3 : 19-k*3;
+       px(x,y,3,4, up?N_L:N_D);
+     }
+   }
+   for(const vx of [0,21,39,57]) px(vx,4,3,19,N_B);   /* posts */
+   px(57,4,9,19,N_B); px(57,4,9,2,N_L);               /* the end node */
+   px(60,9,6,9,Y_B); px(60,9,6,2,Y_L);                /* foil collar */
+   px(0,0,3,27,N_O); }]);
+
+/* 5 -- a thin boom with a stub dish and a counterweight ------------ */
+const BOOM=band([[0,2,12,44],[3,5,6,50],[6,14,0,56],[15,17,6,50],[18,20,12,44]]);
+SAT.push(['Antenna boom','a thin rod between a stub dish and a counterweight - mostly silhouette',57,21,
+ ()=>{ px(12,8,33,5,N_B); px(12,8,33,2,N_L);      /* the rod */
+   px(0,3,12,15,N_B); px(0,3,12,2,N_H);           /* stub dish */
+   px(3,6,6,9,V_B); px(3,6,6,3,V_L);
+   px(45,0,12,21,N_B); px(45,0,12,2,N_H);         /* counterweight */
+   px(48,6,6,9,Y_B); px(48,6,6,3,Y_L);            /* foil face */
+   px(45,15,12,6,N_D);
+   sEdge(band([[0,2,45,56],[3,5,0,56],[6,14,0,56],[15,17,0,56],[18,20,45,56]]),N_O); }]);
+
+/* ---- satellite fragments: the rest of the family --------------------
+   The panel shard stays at 60x36. These are the other kinds of debris,
+   each laid out again at three sizes rather than scaled - a baked
+   sprite cannot be resampled without giving the grid away.
+
+   Four types, chosen so no two share a silhouette: an open lattice, a
+   compact gold box, a thin barbell, and a round-ended cylinder. At 1:1
+   you should be able to tell which is which from the outline alone. */
+
+/* --- lattice ------------------------------------------------------ */
+function truss(w,h,bays,bayW,chord,node){
+  const web=h-chord*2;
+  px(0,0,w,chord,N_B); px(0,0,w,2,N_L);              /* top chord */
+  px(0,h-chord,w,chord,N_B); px(0,h-2,w,2,N_D);      /* bottom chord */
+  for(let d=0; d<bays; d++){
+    const x0=G+d*bayW, up=(d%2===0), n=Math.floor(web/G);
+    for(let k=0;k<n;k++){
+      const x=x0+k*G, y=up ? chord+k*G : h-chord-G-k*G;
+      if(x+G>w-node) break;
+      px(x,y,G,G+1, up?N_L:N_D);
+    }
+  }
+  for(let vx=0; vx<=bays*bayW; vx+=bayW) px(Math.min(vx,w-node-G),chord,G,web,N_B);
+  px(w-node,chord,node,web,N_B); px(w-node,chord,node,2,N_L);
+  px(w-node+G,chord+G,node-G*2,web-G*2,Y_B);         /* foil collar */
+  px(w-node+G,chord+G,node-G*2,2,Y_L);
+  px(0,0,G,h,N_O); px(w-G,0,G,h,N_O);
+}
+/* the small lattice, laid out by hand: two posts, one diagonal, a node.
+   Anything denser turns to noise at this size. */
+function trussS(){
+  px(0,0,30,3,N_B); px(0,0,30,2,N_L);
+  px(0,12,30,3,N_B); px(0,13,30,2,N_D);
+  px(0,3,3,9,N_B); px(9,3,3,9,N_B);
+  for(let k=0;k<3;k++) px(12+k*3,3+k*3,3,4,N_L);
+  px(21,3,3,9,N_B);
+  px(24,3,6,9,N_B); px(24,3,6,2,N_L);
+  px(25,6,4,3,Y_B);
+  px(0,0,3,15,N_O); px(27,0,3,15,N_O);
+}
+/* --- gold box corner ---------------------------------------------- */
+function busBox(w,h,T,blanket,strut){
+  const S=band(T); srows(S,Y_B);
+  srows(S.filter(r=>r[0]>=Math.round(h*0.46)),Y_D);
+  px(G,G*2,w-G*2,G,Y_L); px(G,Math.round(h*0.52),w-G*2,2,Y_D);  /* two seams */
+  px(blanket[0],blanket[1],blanket[2],blanket[3],W_B);
+  px(blanket[0],blanket[1],blanket[2],2,W_H);
+  px(blanket[0],blanket[1]+Math.round(blanket[3]*0.55),blanket[2],
+     blanket[3]-Math.round(blanket[3]*0.55),W_D);
+  px(strut[0],strut[1],strut[2],strut[3],N_B);
+  px(strut[0],strut[1],strut[2],2,N_L);
+  px(strut[0],strut[1]+strut[3]-G,strut[2],G,N_O);   /* the snapped end */
+  sTop(S,Y_H,0.60); sEdge(S,N_O);
+}
+/* --- barbell ------------------------------------------------------ */
+function boom(w,h,endW,rodH){
+  const ry=Math.round((h-rodH)/2/G)*G;
+  px(endW,ry,w-endW*2,rodH,N_B); px(endW,ry,w-endW*2,2,N_L);
+  px(0,G,endW,h-G*2,N_B); px(0,G,endW,2,N_H);        /* stub dish */
+  px(G,G*2,endW-G*2,h-G*4,V_B); px(G,G*2,endW-G*2,2,V_L);
+  px(w-endW,0,endW,h,N_B); px(w-endW,0,endW,2,N_H);  /* counterweight */
+  px(w-endW+G,G*2,endW-G*2,h-G*4,Y_B); px(w-endW+G,G*2,endW-G*2,2,Y_L);
+  px(w-endW,h-G,endW,G,N_D);
+  px(0,G,G,h-G*2,N_O); px(w-G,0,G,h,N_O);
+}
+/* --- cylinder ------------------------------------------------------ */
+function tank(w,h,HW){            /* HW: hand-laid half-heights, per 3px column */
+  const S=[], cy=Math.round(h/2/G)*G;
+  for(let i=0;i<HW.length;i++){
+    const x=i*G, hh=HW[i]; if(hh<G) continue;
+    for(let y=cy-hh;y<cy+hh;y++) S.push([y,x,Math.min(x+G-1,w-1)]);
+  }
+  const R=[]; const m=new Map();
+  for(const [y,a,b] of S){ const e=m.get(y); if(!e) m.set(y,[a,b]);
+    else { e[0]=Math.min(e[0],a); e[1]=Math.max(e[1],b); } }
+  for(const [y,ab] of [...m.entries()].sort((p,q)=>p[0]-q[0])) R.push([y,ab[0],ab[1]]);
+  srows(R,N_B);
+  srows(R.filter(r=>r[0]>=cy+G),N_D);
+  for(const bx of [Math.round(w*0.26/G)*G, Math.round(w*0.62/G)*G])
+    for(const [y,a,b] of R) if(bx>=a&&bx<=b) px(bx,y,G,1,N_L);   /* strap bands */
+  px(Math.round(w*0.40/G)*G, cy-G*2, G*3, G, Y_B);               /* foil patch */
+  px(w-G*2, cy-G, G*2, G*2, N_L);                                /* nozzle stub */
+  sTop(R,N_H,0.58); sEdge(R,N_O);
+}
+
+const FRAG=[];   /* [type, note, [ [name,w,h,draw], ... ] ] */
+
+FRAG.push(['Truss','open lattice - the only silhouette you can see sky through',[
+  ['L 66×27',66,27,()=>truss(66,27,3,18,4,12)],
+  ['M 45×21',45,21,()=>truss(45,21,2,15,3,9)],
+  ['S 30×15',30,15,()=>trussS()],
+]]);
+
+FRAG.push(['Bus corner','a compact gold box - carries the colour beat as its whole body',[
+  ['L 44×39',44,39,()=>busBox(44,39,[[0,2,9,35],[3,29,6,38],[30,32,6,32],
+                                     [33,35,9,26],[36,38,12,21]],[24,3,14,27],[9,30,6,9])],
+  ['M 32×27',32,27,()=>busBox(32,27,[[0,2,6,26],[3,20,3,28],[21,23,3,23],
+                                     [24,26,6,17]],[18,3,10,18],[6,21,6,6])],
+  ['S 21×18',21,18,()=>busBox(21,18,[[0,2,3,17],[3,14,0,19],[15,17,3,13]],
+                              [12,3,6,12],[3,12,6,6])],
+]]);
+
+FRAG.push(['Antenna boom','a thin barbell - almost all silhouette, reads as a line',[
+  ['L 57×21',57,21,()=>boom(57,21,12,6)],
+  ['M 42×15',42,15,()=>boom(42,15,9,5)],
+  ['S 30×12',30,12,()=>boom(30,12,9,4)],
+]]);
+
+FRAG.push(['Tank','a round-ended cylinder - the only curved outline in the set',[
+  ['L 39×27',39,27,()=>tank(39,27,[3,9,12,12,12,12,12,12,12,9,3,0,0])],
+  ['M 30×21',30,21,()=>tank(30,21,[3,6,9,9,9,9,9,6,3,0])],
+  ['S 21×15',21,15,()=>tank(21,15,[3,6,6,6,6,6,3])],
+]]);
+
+/* ---- panel shard, size ladder ---------------------------------------
+   A baked sprite cannot be scaled without resampling, so a smaller
+   shard is not the big one shrunk - it is laid out again at its own
+   size, with a cell pitch that still reads at that size. Below about
+   30px wide a 12x9 cell no longer fits twice, so the pitch tightens
+   rather than the cells getting cropped.
+
+   Every tear is a hand-laid step table on the 3px grid.             */
+
+/* [y, xFrom, xTo] - the silhouette, stepped every 3 rows */
+function panelRows(T, h){
+  const S=[];
+  for(let i=0;i<T.length;i++){
+    const [y0,a,b]=T[i];
+    const y1=(i+1<T.length ? T[i+1][0] : h)-1;
+    for(let y=y0;y<=y1;y++) S.push([y,a,b]);
+  }
+  return S;
+}
+/* one shard: cell field clipped to the silhouette, frame rail along the
+   intact edge, foil tape as the single colour beat */
+function panel(w, h, T, cpx, cpy, rail, foil){
+  const S=panelRows(T,h);
+  srows(S,N_D);
+  const lim=new Map(); for(const [y,a,b] of S) lim.set(y,[a,b]);
+  for(let cy=rail+G; cy+cpy-G<=h; cy+=cpy)
+    for(let cx=G; cx+cpx-G<=w; cx+=cpx)
+      for(let y=cy; y<cy+cpy-G; y++){
+        const L=lim.get(y); if(!L) continue;
+        const a=Math.max(cx,L[0]+1), b=Math.min(cx+cpx-G-1,L[1]-1);
+        if(b<a) continue;
+        px(a,y,b-a+1,1, (y-cy<2) ? V_L : (((cx/cpx)|0)%2 ? V_B : V_D));
+      }
+  px(0,0,w,rail,N_B); px(0,0,w,2,N_L); px(0,rail,w,1,N_D);
+  if(foil){ px(foil[0],foil[1],foil[2],3,Y_B); px(foil[0],foil[1],foil[2],1,Y_L); }
+  sTop(S,N_H,0.55); sEdge(S,N_O);
+}
+
+const PAN=[];   /* [name, note, w, h, draw] */
+
+PAN.push(['A — 60×36','the one you picked, for scale',60,36,
+ ()=>panel(60,36,panelRows0(),12,9,5,[3,30,18])]);
+function panelRows0(){ return [[0,0,59],[3,0,56],[6,0,59],[9,0,50],[12,0,56],
+  [15,0,44],[18,0,47],[21,0,53],[24,0,41],[27,0,50],[30,0,38],[33,0,44]]; }
+
+PAN.push(['B — 45×30','one cell column narrower, same 12×9 pitch',45,30,
+ ()=>panel(45,30,[[0,0,44],[3,0,41],[6,0,44],[9,0,35],[12,0,41],
+                  [15,0,32],[18,0,38],[21,0,29],[24,0,35],[27,0,32]],12,9,5,[3,24,15])]);
+
+PAN.push(['C — 36×24','two cell columns; the tear takes a bigger bite',36,24,
+ ()=>panel(36,24,[[0,0,35],[3,0,32],[6,0,35],[9,0,26],[12,0,32],
+                  [15,0,23],[18,0,29],[21,0,26]],12,9,4,[3,18,12])]);
+
+PAN.push(['D — 27×18','pitch tightens to 9×9 so the cells still read',27,18,
+ ()=>panel(27,18,[[0,0,26],[3,0,23],[6,0,26],[9,0,20],[12,0,23],
+                  [15,0,17]],9,9,4,[3,12,9])]);
+
+PAN.push(['E — 21×15','the floor: one cell wide, rail, and a snapped corner',21,15,
+ ()=>panel(21,15,[[0,0,20],[3,0,17],[6,0,20],[9,0,14],[12,0,17]],9,6,3,null)]);
+
+PAN.push(['F — 48×15','a different proportion: one cell row, torn at both ends',48,15,
+ ()=>panel(48,15,[[0,3,47],[3,0,44],[6,3,47],[9,6,41],[12,0,44]],12,6,4,[15,9,12])]);
+/* ---- the intact satellite -------------------------------------------
+   Bigger than the fragments and built from more parts, which is where
+   the colour count comes from - a bus, a wing, a cell field, a dish, a
+   boom, a foil face. Same metal ramp and same gold beat as the fragment
+   family, so the two read as one material world.
+
+   Every silhouette steps on 3px. Light from the upper left.         */
+
+/* a rectangular field of cells - the window-row analogue */
+function cellRect(x,y,w,h,cw,ch){
+  px(x,y,w,h,N_D);                       /* the frame, metal not black */
+  px(x,y,w,2,N_L);                       /* light line along the top */
+  for(let cy=y+G; cy+ch<=y+h; cy+=ch+G)
+    for(let cx=x+G; cx+cw<=x+w; cx+=cw+G){
+      px(cx,cy,cw,ch, ((cx/(cw+G))|0)%2 ? V_B : V_D);
+      px(cx,cy,cw,2, V_L);
+    }
+  px(x,y,1,h,N_O); px(x+w-1,y,1,h,N_O); px(x,y+h-1,w,1,N_O);
+}
+/* a dish seen edge-on: a hard pan, a rim and a feed stub */
+function dish(x,y,w,h,face){
+  const n=Math.max(3,Math.round(h/G)), mid=(n-1)/2;
+  for(let i=0;i<n;i++){
+    const t=1-Math.abs(i-mid)/(mid+0.6);
+    const ww=Math.max(G,Math.round(w*t/G)*G);
+    px(x+Math.round((w-ww)/2/G)*G, y+i*G, ww, G, face);
+  }
+  for(let i=0;i<n;i++){                              /* rim on the lit arc */
+    const t=1-Math.abs(i-mid)/(mid+0.6);
+    const ww=Math.max(G,Math.round(w*t/G)*G);
+    if(i<=mid) px(x+Math.round((w-ww)/2/G)*G, y+i*G, 2, G, N_H);
+  }
+  px(x+Math.round(w/2/G)*G, y+Math.round(h/2/G)*G, G+1, G, N_L);   /* feed */
+  px(x+Math.round(w/2/G)*G, y+h-G, G, G, N_D);
+}
+function boomBar(x,y,w,h){ px(x,y,w,h,N_B); px(x,y,w,2,N_L); px(x,y+h-1,w,1,N_O); }
+
+const FULL=[];   /* [name, note, w, h, draw] */
+
+/* 1 -- the classic comsat: gold bus, two wings, dish forward -------- */
+FULL.push(['Boxsat','gold bus, two wings on booms, dish forward - the shape everyone reads as a satellite',87,45,
+ ()=>{
+   boomBar(21,21,12,4); boomBar(54,21,12,4);
+   cellRect(0,6,21,33,6,6); cellRect(66,6,21,33,6,6);
+   px(33,9,21,27,Y_B); px(33,9,21,3,Y_L); px(33,27,21,9,Y_D);
+   px(36,15,15,2,Y_L);                                  /* seam */
+   dish(24,12,12,15,W_B);
+   px(45,3,3,9,N_L); px(42,0,9,3,N_B);                  /* antenna mast */
+   px(33,9,1,27,N_O); px(53,9,1,27,N_O);
+ }]);
+
+/* 2 -- spin-stabilised drum, no wings ------------------------------ */
+FULL.push(['Drum','a spin-stabilised cylinder skinned in cells - no wings at all',45,48,
+ ()=>{
+   px(6,9,33,33,N_D); px(3,12,3,27,N_D); px(39,12,3,27,N_D);
+   px(0,15,3,21,N_D); px(42,15,3,21,N_D);               /* chamfered barrel */
+   for(let cx=6; cx<=36; cx+=6){
+     const inset = (cx<=6||cx>=36) ? 6 : (cx<=12||cx>=30) ? 3 : 0;
+     px(cx,15+inset,4,21-inset*2, (cx/6)%2 ? V_B : V_D);
+     px(cx,15+inset,4,3, V_L);
+   }
+   px(6,9,33,3,N_L); px(6,39,33,3,N_O);                 /* rim top and bottom */
+   px(12,3,21,6,Y_B); px(12,3,21,2,Y_L);                /* foil cap */
+   dish(15,0,15,6,W_B);
+   px(0,12,G,27,N_O); px(42,12,G,27,N_O);
+ }]);
+
+/* 3 -- long body, one wing, dish at the end ------------------------ */
+FULL.push(['Tube','a long body with a single wing above it - the least symmetric of the five',84,36,
+ ()=>{
+   px(12,18,57,15,N_B); px(12,18,57,3,N_L); px(12,30,57,3,N_D);
+   px(30,21,21,2,Y_B);                                  /* foil strap */
+   boomBar(36,12,4,6);
+   cellRect(15,0,54,12,6,6);
+   dish(0,15,12,18,W_B);
+   px(69,21,9,9,N_B); px(69,21,9,2,N_L);                /* engine block */
+   px(78,24,6,3,N_D);
+   px(12,18,1,15,N_O); px(68,18,1,15,N_O);
+ }]);
+
+/* 4 -- compact body, four short panels ----------------------------- */
+FULL.push(['Cluster','a compact body with four short panels - busy, and the widest at every angle',63,63,
+ ()=>{
+   cellRect(0,6,21,15,6,6); cellRect(42,6,21,15,6,6);
+   cellRect(0,42,21,15,6,6); cellRect(42,42,21,15,6,6);
+   boomBar(21,12,6,3); boomBar(36,12,6,3);
+   boomBar(21,48,6,3); boomBar(36,48,6,3);
+   px(24,21,15,21,Y_B); px(24,21,15,3,Y_L); px(24,36,15,6,Y_D);
+   dish(27,12,9,9,W_B);
+   px(30,42,3,12,N_B); px(27,54,9,3,N_L);               /* boom below */
+   px(24,21,1,21,N_O); px(38,21,1,21,N_O);
+ }]);
+
+/* 5 -- the same craft dead: one wing snapped, cells cold ----------- */
+FULL.push(['Derelict','Boxsat after a hit - one wing snapped short, cells gone cold, foil scorched',87,45,
+ ()=>{
+   boomBar(21,21,12,4); boomBar(54,21,9,4);
+   cellRect(0,6,21,33,6,6);
+   /* the snapped wing: a stepped tear instead of a clean edge */
+   /* the snapped wing: one silhouette with a stepped tear, filled as a
+      frame and then given cold cells clipped to it */
+   const T=[[6,63,86],[9,63,80],[12,63,86],[15,63,77],[18,63,83],
+            [21,63,86],[24,63,74],[27,63,83],[30,63,77],[33,63,71]];
+   const lim=new Map();
+   for(const [y0,a,b] of T) for(let y=y0;y<y0+3;y++){ lim.set(y,[a,b]); px(a,y,b-a+1,1,N_D); }
+   px(63,6,18,2,N_B);                                   /* what is left of the rail */
+   for(let cy=9; cy<36; cy+=6)
+     for(let cx=66; cx<84; cx+=6)
+       for(let yy=cy; yy<cy+4; yy++){
+         const L=lim.get(yy); if(!L) continue;
+         const a=Math.max(cx,L[0]), b=Math.min(cx+3,L[1]);
+         if(b<a) continue;
+         px(a,yy,b-a+1,1, yy===cy ? V_B : V_D);         /* cold cells */
+       }
+   for(const [y0,a,b] of T) for(let y=y0;y<y0+3;y++) px(b,y,1,1,N_O);
+   px(33,9,21,27,Y_D); px(33,9,21,3,Y_B); px(33,27,21,9,'#5A4212');
+   px(36,18,12,3,N_O);                                   /* the scorch */
+   dish(24,12,12,15,W_D);
+   px(45,3,3,6,N_D);
+   px(33,9,1,27,N_O); px(53,9,1,27,N_O);
+ }]);
+/* ---- UFO -------------------------------------------------------------
+   A craft, not debris, so it does not tumble - it holds an attitude and
+   flies. That means the animation is a light cycle rather than rotation,
+   and it means facing matters: drawn heading right, mirrored on vx<0
+   the way the birds and helicopters already are.
+
+   Parts: a hull, a dome, a light ring. The lights are the one colour
+   beat - the only saturated hue on the sprite, and nothing else in the
+   asset set is green, so a UFO on screen is unambiguous.            */
+
+const U_O='#080B10', U_D='#2E3642', U_B='#4E5A6B', U_L='#7C8899', U_H='#B4C0CD';
+const D_D='#12414B', D_B='#1E6B7A', D_L='#35A8BA', D_H='#8FE4EF';   /* dome */
+const L_O='#0C2A08', L_D='#1E5C14', L_B='#3A9A28', L_L='#6FE04A', L_H='#C8FF9E';
+
+
+
+
+
+const UFO=[];   /* [name, note, w, h, draw(frame)] */
+
+/* 1 -- the classic disc -------------------------------------------- */
+UFO.push(['Saucer','hull disc, dome on top, five lamps chasing round the rim',66,27,
+ (f)=>{
+   const HW=[1,2,4,5,6,7,7,7,7,7,7,7,7,7,7,6,5,4,2,1,0,0];
+   const S=lensRows(HW,66,15);
+   srows(S,U_B); srows(S.filter(r=>r[0]>=15),U_D);
+   rib(S,12,U_H,2); rib(S,13,U_H,2);                   /* seam, clipped to the hull */
+   const DS=lensRows([0,0,0,0,0,2,4,5,5,5,5,4,2,0,0,0,0,0,0,0,0,0],66,10);
+   srows(DS,D_B); srows(DS.filter(r=>r[0]>=8),D_D);
+   for(const [y,a,b] of DS) if(y<8) px(a,y,Math.min(4,b-a+1),1,D_H);
+   sTop(S,U_H,0.55); sEdge(S,U_O);
+   rimLamps(S,5,4,f,-1);
+ }]);
+
+/* 2 -- a bell, flange at the base ----------------------------------- */
+UFO.push(['Bell','a tapered bell with a lamp flange at the base - tallest of the five',48,39,
+ (f)=>{
+   const T=band([[0,2,18,29],[3,5,15,32],[6,11,12,35],[12,17,9,38],
+                 [18,23,6,41],[24,29,3,44],[30,32,0,47]]);
+   srows(T,U_B); srows(T.filter(r=>r[0]>=18),U_D);
+   px(15,6,18,2,U_H); px(9,18,30,2,U_L);               /* two seams */
+   px(18,0,12,4,D_B); px(18,0,12,2,D_H);               /* the dome cap */
+   sTop(T,U_H,0.58); sEdge(T,U_O);
+   const base=spanAt(T,32) || [0,47];
+   const fx0=Math.max(0,base[0]-3), fw=Math.min(48,base[1]+4)-fx0;
+   px(fx0,33,fw,6,U_D); px(fx0,33,fw,2,U_L);           /* the flange */
+   for(let i=0;i<4;i++){
+     const x=Math.round(fx0+3+(fw-10)*i/3);
+     lamp(x, 34, 4, (i%4)===f);
+   }
+   px(fx0,33,1,6,U_O); px(fx0+fw-1,33,1,6,U_O);
+ }]);
+
+/* 3 -- a torus with a pod slung inside ------------------------------ */
+UFO.push(['Ring','a torus with a pod slung inside it - you can see sky through the middle',72,27,
+ (f)=>{
+   const O=lensRows([1,3,5,6,7,7,7,7,7,7,7,7,7,7,7,6,5,3,1,0,0,0,0,0],72,13);
+   const I=lensRows([0,0,0,0,0,0,4,4,4,4,4,4,4,4,0,0,0,0,0,0,0,0,0,0],72,13);
+   /* the ring is the outer rows MINUS the inner rows, so the middle is
+      genuinely empty rather than painted the colour of one background */
+   const hole=new Map(); for(const [y,a,b] of I) hole.set(y,[a,b]);
+   const RING=[];
+   for(const [y,a,b] of O){
+     const H=hole.get(y);
+     if(!H){ RING.push([y,a,b]); continue; }
+     if(H[0]>a) RING.push([y,a,H[0]-1]);
+     if(H[1]<b) RING.push([y,H[1]+1,b]);
+   }
+   srows(RING,U_B); srows(RING.filter(r=>r[0]>=13),U_D);
+   px(30,10,12,7,U_B); px(30,10,12,2,U_H);              /* the pod, slung inside */
+   px(33,13,6,4,D_B); px(33,13,6,2,D_H);
+   sTop(O,U_H,0.52); sEdgeSplit(RING,U_O);
+   rimLamps(RING.filter(r=>r[0]>=13),4,4,f,-1);
+ }]);
+
+/* 4 -- a delta, lights along the trailing edge ---------------------- */
+UFO.push(['Wedge','a delta hull with lamps down the trailing edge - reads as a direction',69,24,
+ (f)=>{
+   const S=lensRows([10,10,9,9,8,8,7,7,6,6,5,5,4,4,3,3,3,2,2,2,2,2,2],69,12);
+   srows(S,U_B); srows(S.filter(r=>r[0]>=12),U_D);
+   px(45,6,15,3,D_B); px(45,6,15,2,D_H);                /* canopy strip */
+   rib(S,10,U_H,2); rib(S,11,U_H,2);                    /* chine, clipped */
+   sTop(S,U_H,0.60); sEdge(S,U_O);
+   flankLamps(S,4,4,f,-1);                              /* trailing edge */
+ }]);
+
+/* 5 -- a sphere with an equatorial band ----------------------------- */
+UFO.push(['Orb','a sphere banded with lamps - no dome, no rim, smallest of the five',39,39,
+ (f)=>{
+   const HW=[3,6,8,9,9,9,9,8,6,3,0,0,0];
+   const S=lensRows(HW,39,19);
+   srows(S,U_B); srows(S.filter(r=>r[0]>=19),U_D);
+   for(let y=16;y<21;y++) rib(S,y,U_O,1);                /* band, clipped */
+   sTop(S,U_H,0.55); sEdge(S,U_O);
+   bandLamps(S,4,4,f,17,false);
+   px(12,6,9,3,D_B); px(12,6,9,2,D_H);                   /* a single port */
+ }]);
+
+/* ---- saucer, alternates ---------------------------------------------
+   The disc stays: hull, dome, lamp cycle. What varies is the profile
+   (how deep the belly runs against how shallow the top), what the dome
+   is, and where the lamps sit. All on the same hull ramp and the same
+   green beat as the first sheet.                                     */
+
+const SAUCE=[];   /* [name, note, w, h, draw(frame)] */
+
+/* 0 -- the one off the last sheet, for reference -------------------- */
+SAUCE.push(['Original','the saucer off the last sheet, for reference',66,27,
+ (f)=>{
+   const S=lensRows([1,2,4,5,6,7,7,7,7,7,7,7,7,7,7,6,5,4,2,1,0,0],66,15);
+   srows(S,U_B); srows(S.filter(r=>r[0]>=15),U_D);
+   rib(S,12,U_H,2); rib(S,13,U_H,2);
+   const DS=lensRows([0,0,0,0,0,2,4,5,5,5,5,4,2,0,0,0,0,0,0,0,0,0],66,10);
+   srows(DS,D_B); srows(DS.filter(r=>r[0]>=8),D_D);
+   for(const [y,a,b] of DS) if(y<8) px(a,y,Math.min(4,b-a+1),1,D_H);
+   sTop(S,U_H,0.55); sEdge(S,U_O);
+   rimLamps(S,5,4,f,-1);
+ }]);
+
+/* 1 -- shallow above, deep below ------------------------------------ */
+SAUCE.push(['Deep belly','shallow on top, a real hull underneath - the only one with volume',60,33,
+ (f)=>{
+   const U=[1,2,3,4,4,5,5,5,5,5,5,5,5,4,4,3,2,1,0,0];
+   const D=[1,3,6,9,11,13,14,14,14,14,14,14,13,11,9,6,3,1,0,0];
+   const S=discRows(U,D,60,14);
+   srows(S,U_B); srows(S.filter(r=>r[0]>=14),U_D);
+   rib(S,13,U_H,2); rib(S,14,U_H,2);
+   const DS=lensRows([0,0,0,0,0,2,4,5,5,5,4,2,0,0,0,0,0,0,0,0],60,10);
+   srows(DS,D_B); srows(DS.filter(r=>r[0]>=8),D_D);
+   for(const [y,a,b] of DS) if(y<8) px(a,y,Math.min(4,b-a+1),1,D_H);
+   sTop(S,U_H,0.55); sEdge(S,U_O);
+   rimLamps(S,4,4,f,-1);
+   /* the belly light sits at the hull's lowest point, found not typed */
+   const mid=Math.round((spanAt(S,widestRow(S))[0]+spanAt(S,widestRow(S))[1])/2);
+   px(mid-3, edgeBottom(S,mid)-2, 6, 3, f===0?L_L:L_D);
+ }]);
+
+/* 2 -- a wide thin disc with a hard flat brim ----------------------- */
+SAUCE.push(['Wide brim','a thin disc with a hard flat brim - widest and flattest of the set',78,21,
+ (f)=>{
+   const U=[1,1,2,3,3,4,4,4,4,4,4,4,4,4,4,4,4,3,3,2,1,1,0,0,0,0];
+   const D=[1,1,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,2,2,1,1,0,0,0,0];
+   const S=discRows(U,D,78,11);
+   srows(S,U_B); srows(S.filter(r=>r[0]>=11),U_D);
+   rib(S,10,U_L,0); rib(S,11,U_L,0); rib(S,12,U_L,0);  /* the brim, edge to edge */
+   rib(S,10,U_H,0);
+   const DS=lensRows([0,0,0,0,0,0,0,2,3,4,4,4,3,2,0,0,0,0,0,0,0,0,0,0,0,0],78,7);
+   srows(DS,D_B); srows(DS.filter(r=>r[0]>=6),D_D);
+   for(const [y,a,b] of DS) if(y<6) px(a,y,Math.min(4,b-a+1),1,D_H);
+   sTop(S,U_H,0.55); sEdge(S,U_O);
+   rimLamps(S,5,4,f,-1);
+ }]);
+
+/* 3 -- a full bubble canopy, the way the news helicopter is built --- */
+SAUCE.push(['Bubble','a glass canopy over the whole top, like the news helicopter',63,27,
+ (f)=>{
+   const U=[1,2,3,4,4,4,4,4,4,4,4,4,4,4,4,4,3,2,1,0,0];
+   const D=[1,3,5,6,7,8,8,8,8,8,8,8,7,6,5,3,1,0,0,0,0];
+   const S=discRows(U,D,63,13);
+   srows(S,U_B); srows(S.filter(r=>r[0]>=13),U_D);
+   const DS=lensRows([0,0,2,4,6,7,8,8,8,8,8,8,7,6,4,2,0,0,0,0,0],63,9);
+   srows(DS,D_B); srows(DS.filter(r=>r[0]>=8),D_D);
+   for(const [y,a,b] of DS) if(y<6) px(a,y,Math.min(6,b-a+1),1,D_H);
+   px(15,3,9,2,D_H);                                   /* the highlight */
+   sTop(S,U_H,0.50); sEdge(S,U_O);
+   rimLamps(S,4,4,f,-1);
+ }]);
+
+/* 4 -- two discs stacked, stepped like a tiered cake ---------------- */
+SAUCE.push(['Stacked','two discs, the upper set back - steps instead of a curve',66,30,
+ (f)=>{
+   const U=[1,2,3,4,4,4,4,4,4,4,4,4,4,4,4,4,4,3,2,1,0,0];
+   const D=[1,3,5,7,8,9,9,9,9,9,9,9,9,8,7,5,3,1,0,0,0,0];
+   const S=discRows(U,D,66,16);
+   srows(S,U_B); srows(S.filter(r=>r[0]>=16),U_D);
+   px(15,6,36,6,U_B); px(15,6,36,2,U_H); px(15,12,36,1,U_D);   /* upper disc */
+   px(15,6,1,6,U_O); px(50,6,1,6,U_O);
+   px(24,0,18,6,D_B); px(24,0,18,2,D_H);               /* dome on top */
+   px(24,0,1,6,U_O); px(41,0,1,6,U_O);
+   rib(S,15,U_H,2);
+   sTop(S,U_H,0.55); sEdge(S,U_O);
+   rimLamps(S,5,4,f,-1);
+ }]);
+
+/* 5 -- lit portholes round the waist instead of lamps beneath ------- */
+SAUCE.push(['Portholes','lit ports round the waist instead of lamps underneath',69,24,
+ (f)=>{
+   const U=[1,2,4,5,6,6,6,6,6,6,6,6,6,6,6,5,4,2,1,0,0,0,0];
+   const D=[1,3,4,5,6,6,6,6,6,6,6,6,6,6,6,5,4,3,1,0,0,0,0];
+   const S=discRows(U,D,69,12);
+   srows(S,U_B); srows(S.filter(r=>r[0]>=12),U_D);
+   for(let y=9;y<14;y++) rib(S,y,U_O,1);                /* the port recess */
+   const DS=lensRows([0,0,0,0,0,0,2,4,5,5,5,4,2,0,0,0,0,0,0,0,0,0,0],69,5);
+   srows(DS,D_B); for(const [y,a,b] of DS) if(y<4) px(a,y,Math.min(4,b-a+1),1,D_H);
+   sTop(S,U_H,0.55); sEdge(S,U_O);
+   bandLamps(S,6,3,f,10,true);
+ }]);
+
+/* 6 -- the lamps become a ring underneath --------------------------- */
+SAUCE.push(['Under-ring','the lamps become a ring slung under the hull',63,30,
+ (f)=>{
+   const U=[1,2,4,5,5,6,6,6,6,6,6,6,6,6,5,5,4,2,1,0,0];
+   const D=[1,2,3,4,5,5,6,6,6,6,6,6,5,5,4,3,2,1,0,0,0];
+   const S=discRows(U,D,63,12);
+   srows(S,U_B); srows(S.filter(r=>r[0]>=12),U_D);
+   rib(S,11,U_H,2);
+   const DS=lensRows([0,0,0,0,0,2,4,5,5,5,5,4,2,0,0,0,0,0,0,0,0],63,7);
+   srows(DS,D_B); srows(DS.filter(r=>r[0]>=6),D_D);
+   for(const [y,a,b] of DS) if(y<5) px(a,y,Math.min(4,b-a+1),1,D_H);
+   sTop(S,U_H,0.55); sEdge(S,U_O);
+   /* the ring spans the hull's own underside rather than a typed width */
+   const bs=spanAt(S,widestRow(S)), rx0=bs[0]+6, rw=(bs[1]-6)-rx0;
+   const ry=edgeBottom(S,Math.round((bs[0]+bs[1])/2))+1;
+   px(rx0,ry,rw,4,U_D); px(rx0,ry,rw,1,U_L);
+   px(rx0,ry,1,4,U_O); px(rx0+rw-1,ry,1,4,U_O);
+   for(let i=0;i<4;i++){
+     const x=Math.round(rx0+3+(rw-9)*i/3);
+     lamp(x, ry+1, 3, (i%4)===f);
+   }
+   px(Math.round(rx0+rw/2)-4, ry+5, 9, 3, f===2?L_B:L_O);   /* the beam stub */
+ }]);
+
+/* ---- Portholes, refined ----------------------------------------------
+   The note on the first pass was that at 1:1 the ports smeared into one
+   green line. The cause was that each port was a coloured square with
+   nothing between them - no socket, no rim, no hull showing through.
+
+   So a port is built as a part now: a recess cut into the hull, a dark
+   surround, a lens that lights, and a sill that catches the light from
+   upper left. The hull is identical in every row below, so the port
+   treatment is the only thing being compared.                        */
+
+/* the shared hull: slightly deeper below the waist than above it */
+const PH_U=[1,2,4,5,6,6,6,6,6,6,6,6,6,6,6,5,4,2,1,0,0,0,0];
+const PH_D=[1,3,5,6,7,7,7,7,7,7,7,7,7,7,7,6,5,3,1,0,0,0,0];
+function phHull(){
+  const S=discRows(PH_U,PH_D,69,12);
+  srows(S,U_B); srows(S.filter(r=>r[0]>=12),U_D);
+  return S;
+}
+function phDome(){
+  const DS=lensRows([0,0,0,0,0,0,2,4,5,5,5,4,2,0,0,0,0,0,0,0,0,0,0],69,5);
+  srows(DS,D_B);
+  for(const [y,a,b] of DS) if(y<4) px(a,y,Math.min(4,b-a+1),1,D_H);
+}
+const PORT=[];   /* [name, note, w, h, draw(frame)] */
+
+PORT.push(['Reference','the first pass - flat squares, no socket, no hull between them',69,24,
+ (f)=>{ const S=phHull();
+   for(let y=9;y<14;y++) rib(S,y,U_O,1);
+   phDome(); sTop(S,U_H,0.55); sEdge(S,U_O);
+   bandLamps(S,6,3,f,10,true); }]);
+
+PORT.push(['Deep sockets','five big ports cut into the hull, one lit at a time',69,24,
+ (f)=>{ const S=phHull(); phDome(); sTop(S,U_H,0.55); sEdge(S,U_O);
+   portRow(S,5,6,6,10,(i)=>((i%5)===f)); }]);
+
+PORT.push(['Channel','the whole waist is an inset channel, the ports sit inside it',69,24,
+ (f)=>{ const S=phHull();
+   for(let y=9;y<16;y++) rib(S,y,U_O,2);              /* the channel */
+   for(let y=9;y<10;y++) rib(S,y,U_D,2);
+   rib(S,15,U_L,2);                                   /* its lit sill */
+   phDome(); sTop(S,U_H,0.55); sEdge(S,U_O);
+   portRow(S,4,7,5,10,(i)=>((i%4)===f)); }]);
+
+PORT.push(['Twin row','two staggered rows, the upper and lower alternating',69,24,
+ (f)=>{ const S=phHull(); phDome(); sTop(S,U_H,0.55); sEdge(S,U_O);
+   portRow(S,4,5,4,8,(i)=>(f%2===0) && ((i%2)===(f>>1)));
+   portRow(S,3,5,4,14,(i)=>(f%2===1) && ((i%2)===(f>>1))); }]);
+
+PORT.push(['Spill','a lit port throws one flat bar onto the hull below it',69,24,
+ (f)=>{ const S=phHull(); phDome(); sTop(S,U_H,0.55); sEdge(S,U_O);
+   const xs=portRow(S,4,7,6,9,(i)=>((i%4)===f));
+   const x=xs[f]; if(x!==undefined){
+     const b=edgeBottom(S,x+3);
+     if(b>16) px(x+1,16,5,1,L_D);
+     if(b>18) px(x+2,18,3,1,L_O);
+   } }]);
+
+/* five ports means FIVE frames. Run on four and the last port is never
+   the lit index, so it stays dim for the whole loop. */
+PORT.push(['Sweep','all ports dim, one bright - the cycle reads as a scan',69,24,
+ (f)=>{ const S=phHull(); phDome(); sTop(S,U_H,0.55); sEdge(S,U_O);
+   const sp=spanAt(S,10), tk=thickSpan(S,5);
+   const x0=Math.max(sp[0]+3,tk[0]+2), x1=Math.min(sp[1]-8,tk[1]-7);
+   for(let i=0;i<5;i++){
+     const x=Math.round(x0+(x1-x0)*i/4);
+     px(x,10,5,5,U_O); px(x,10,5,1,U_D);
+     px(x+1,11,3,3, (i%5)===f ? L_L : L_D);
+     if((i%5)===f) px(x+1,11,3,1,L_H);
+     px(x,14,5,1,U_L);
+   } }]);
+
+/* ---- bake ----------------------------------------------------------- */
+function surf(w,h,ox,oy,fn){
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const pg=_g, pp=_P, px0=OX, py0=OY;
+  _g = cv.getContext('2d'); _P = 1; OX = ox; OY = oy; fn();
+  _g = pg; _P = pp; OX = px0; OY = py0;
+  return cv;
+}
+/* a tumbling sprite goes into a square whose side is the diagonal, so
+   no angle clips a corner, and its anchor is that square's centre */
+function spun(w,h,fn){
+  const D = Math.ceil(Math.hypot(w,h)) + 2;
+  return surf(D, D, Math.round((D-w)/2), Math.round((D-h)/2), fn);
+}
+function boxOf(cv){
+  const d = cv.getContext('2d').getImageData(0,0,cv.width,cv.height).data;
+  let x0=1e9,y0=1e9,x1=-1,y1=-1;
+  for (let y=0;y<cv.height;y++) for (let x=0;x<cv.width;x++)
+    if (d[(y*cv.width+x)*4+3] > 8){
+      if (x<x0) x0=x; if (x>x1) x1=x; if (y<y0) y0=y; if (y>y1) y1=y; }
+  return { x:x0, y:y0, w:x1-x0+1, h:y1-y0+1 };
+}
+function edgeTouched(cv){
+  const c = cv.getContext('2d'), W2 = cv.width, H2 = cv.height;
+  const rows = [c.getImageData(0,0,W2,1).data, c.getImageData(0,H2-1,W2,1).data];
+  const cols = [c.getImageData(0,0,1,H2).data, c.getImageData(W2-1,0,1,H2).data];
+  for (const d of rows.concat(cols))
+    for (let k=3;k<d.length;k+=4) if (d[k] > 8) return true;
+  return false;
+}
+function blit(ctx, cv, anc, x, y, rot){
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.translate(Math.round(x), Math.round(y));
+  if (rot) ctx.rotate(rot);
+  ctx.drawImage(cv, -anc[0], -anc[1]);
+  ctx.restore();
+}
+const mid = cv => [cv.width/2, cv.height/2];
+
+const ROCKPAL = [M_O,M_D,M_B,M_L,M_H];
+const FIRE6   = [F0,F1,F2,F3,F4,F5];
+/* the three fragments and the two satellites that were picked */
+const FRAGPICK = [
+  ['panel', 60,36, ()=>panel(60,36,panelRows0(),12,9,5,[3,30,18])],
+  ['corner',32,27, ()=>busBox(32,27,[[0,2,6,26],[3,20,3,28],[21,23,3,23],
+                                     [24,26,6,17]],[18,3,10,18],[6,21,6,6])],
+  ['boom',  30,12, ()=>boom(30,12,9,4)]
+];
+const SATPICK = [FULL[3], FULL[4]];              /* Cluster, Derelict */
+const MSHELL = 6, MW = 306, MH = 88, MAX = 86, MAY = 44;
+const UFOF = 5;
+
+const cvs = {}, box = {}, anc = {};
+let stats = null;
+
+function bake(){
+  const t0 = performance.now();
+  rockCv   = surf(48,48,5,4, ()=>rock(ROCKPAL));
+  cvs.ast  = CONF.AST_DRAW.map((d,i)=>spun(CONF.AST_BOX[i][0], CONF.AST_BOX[i][1], d));
+  cvs.frag = FRAGPICK.map(f => spun(f[1], f[2], f[3]));
+  cvs.sat  = SATPICK.map(s => spun(s[2], s[3], s[4]));
+  cvs.ufo  = [0,1,2,3,4].map(f => surf(96,48,12,14, ()=>PORT[5][4](f)));
+  /* only the shell has frames. The rock is one sprite, so the head costs
+     nothing per frame and can never drift out of step with the flame. */
+  ANG = 0;
+  cvs.met  = Array.from({length:MSHELL},(_,f)=>surf(MW,MH,MAX,MAY,()=>bluntFrame(f,FIRE6)));
+
+  box.ast  = cvs.ast.map(boxOf);
+  box.frag = cvs.frag.map(boxOf);
+  box.sat  = cvs.sat.map(boxOf);
+  box.ufo  = boxOf(cvs.ufo[0]);
+  box.rock = boxOf(rockCv);
+  anc.ast  = cvs.ast.map(mid);
+  anc.frag = cvs.frag.map(mid);
+  anc.sat  = cvs.sat.map(mid);
+  anc.ufo  = [box.ufo.x + box.ufo.w/2, box.ufo.y + box.ufo.h/2];
+  anc.rock = [box.rock.x + box.rock.w/2, box.rock.y + box.rock.h/2];
+
+  let n = 1, bytes = rockCv.width*rockCv.height*4, clipped = 0;
+  const where = {};
+  const add = tag => cv => { n++; bytes += cv.width*cv.height*4;
+    if (edgeTouched(cv)){ clipped++; where[tag] = (where[tag]||0)+1; } };
+  cvs.ast.forEach(add('ast')); cvs.frag.forEach(add('frag'));
+  cvs.sat.forEach(add('sat')); cvs.ufo.forEach(add('ufo'));
+  cvs.met.forEach(add('met'));
+  stats = { ms:+(performance.now()-t0).toFixed(2), sprites:n,
+            kb:Math.round(bytes/1024), clipped, where };
+  return stats;
+}
+
+return {
+  bake, stats: () => stats,
+  astCount:  () => cvs.ast.length,
+  astBox:    i  => box.ast[i],
+  ast:  (ctx,i,x,y,rot) => blit(ctx, cvs.ast[i],  anc.ast[i],  x, y, rot),
+  fragCount: () => cvs.frag.length,
+  fragKind:  i  => FRAGPICK[i][0],
+  fragBox:   i  => box.frag[i],
+  frag: (ctx,i,x,y,rot) => blit(ctx, cvs.frag[i], anc.frag[i], x, y, rot),
+  satCount:  () => cvs.sat.length,
+  satBox:    i  => box.sat[i],
+  sat:  (ctx,i,x,y,rot) => blit(ctx, cvs.sat[i],  anc.sat[i],  x, y, rot),
+  ufoBox:    () => box.ufo,
+  ufoFrames: () => UFOF,
+  ufo:  (ctx,x,y,f) => blit(ctx, cvs.ufo[f], anc.ufo, x, y, 0),
+  metBox:    () => box.rock,
+  metFrames: () => MSHELL,
+  /* the shell is turned to lie along the track; the rock is not turned
+     at all, because it is the flame that is moving, not the stone */
+  meteor: (ctx,x,y,f,ang) => {
+    blit(ctx, cvs.met[f], [MAX,MAY], x, y, ang);
+    blit(ctx, rockCv, anc.rock, x, y, 0);
+  }
+};
+})();
+
+/* ================================================================
    13. Rendering
    ================================================================ */
 function drawSky(){
@@ -4175,70 +6275,14 @@ function drawPlane(o){
 }
 
 function drawUFO(o){
-  const pulse = 0.5 + 0.5 * Math.sin(runTime * 5 + o.phase);
-  ctx.save();
-  ctx.translate(o.x, o.y);
-  /* tractor glow */
-  const bg = ctx.createLinearGradient(0, 10, 0, 150);
-  bg.addColorStop(0, 'rgba(126,255,196,' + (0.30 + 0.16*pulse) + ')');
-  bg.addColorStop(1, 'rgba(126,255,196,0)');
-  ctx.fillStyle = bg;
-  ctx.beginPath();
-  ctx.moveTo(-26, 8); ctx.lineTo(26, 8); ctx.lineTo(74, 150); ctx.lineTo(-74, 150);
-  ctx.closePath(); ctx.fill();
-  /* dome */
-  ctx.fillStyle = 'rgba(168,240,255,.72)';
-  ctx.beginPath(); ctx.ellipse(0, -8, 34, 30, 0, Math.PI, 0); ctx.fill();
-  ctx.fillStyle = '#1E3A2E';
-  ctx.beginPath(); ctx.ellipse(0, -12, 12, 14, 0, 0, 6.2832); ctx.fill();
-  ctx.fillStyle = '#8DF7B8';
-  ctx.beginPath(); ctx.arc(-5, -16, 3.4, 0, 6.2832); ctx.fill();
-  ctx.beginPath(); ctx.arc(6, -16, 3.4, 0, 6.2832); ctx.fill();
-  /* hull */
-  const hg = ctx.createLinearGradient(0, -10, 0, 18);
-  hg.addColorStop(0, '#E4ECF5');
-  hg.addColorStop(0.5, '#9AA9BC');
-  hg.addColorStop(1, '#5C6A7E');
-  ctx.fillStyle = hg;
-  ctx.beginPath(); ctx.ellipse(0, 0, 68, 18, 0, 0, 6.2832); ctx.fill();
-  ctx.strokeStyle = 'rgba(40,50,66,.8)'; ctx.lineWidth = 2.5; ctx.stroke();
-  /* lamps */
-  for (let i = -2; i <= 2; i++){
-    const lit = (Math.floor(runTime * 6) + i + 5) % 5 === 0;
-    ctx.fillStyle = lit ? '#FFE66D' : 'rgba(120,255,200,.8)';
-    ctx.beginPath(); ctx.arc(i * 24, 7, 5.5, 0, 6.2832); ctx.fill();
-  }
-  ctx.restore();
+  /* five baked frames, one per port, with the hull byte-identical across
+     all five - the lamp cycle is the whole animation, because a craft
+     holds an attitude and does not tumble. */
+  SPACE.ufo(ctx, o.x, o.y, Math.floor(runTime * 8) % SPACE.ufoFrames());
 }
 
 function drawSat(o){
-  ctx.save();
-  ctx.translate(o.x, o.y);
-  ctx.rotate(o.rot);
-  /* panels */
-  for (const s of [-1, 1]){
-    ctx.fillStyle = '#1E3A7A';
-    ctx.fillRect(s * 30, -22, s * 58, 44);
-    ctx.strokeStyle = '#8FB4F0'; ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    for (let i = 1; i < 4; i++){ ctx.moveTo(s*(30 + i*14), -22); ctx.lineTo(s*(30 + i*14), 22); }
-    ctx.moveTo(s*30, 0); ctx.lineTo(s*88, 0);
-    ctx.stroke();
-    ctx.strokeStyle = '#C9D6E8'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(s*18, 0); ctx.lineTo(s*30, 0); ctx.stroke();
-  }
-  /* body wrapped in gold foil */
-  ctx.fillStyle = '#D9A62C';
-  roundRect(ctx, -20, -26, 40, 52, 5); ctx.fill();
-  ctx.strokeStyle = '#7A5C12'; ctx.lineWidth = 2.5; ctx.stroke();
-  ctx.fillStyle = 'rgba(255,240,190,.45)';
-  ctx.fillRect(-16, -20, 8, 40);
-  /* dish */
-  ctx.fillStyle = '#E8EEF6';
-  ctx.beginPath(); ctx.ellipse(0, -34, 17, 9, 0, 0, 6.2832); ctx.fill();
-  ctx.strokeStyle = '#95A3B6'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(0, -26); ctx.lineTo(0, -34); ctx.stroke();
-  ctx.restore();
+  SPACE.sat(ctx, o.kind, o.x, o.y, o.rot);
 }
 
 
@@ -4331,157 +6375,21 @@ function drawHeli(o){
 
 /* ---- meteor: rock on the way in, burning ---------------------------- */
 function drawMeteor(o){
-  const m = Math.hypot(o.vx, o.vy) || 1;
-  const ux = -o.vx/m, uy = -o.vy/m;          /* back along the track */
-  const len = o.tail;
-  ctx.save();
-
-  /* the burn: a tapered streak plus a hot bloom at the head */
-  const tg = ctx.createLinearGradient(o.x, o.y, o.x + ux*len, o.y + uy*len);
-  tg.addColorStop(0,    'rgba(255,244,204,.92)');
-  tg.addColorStop(0.18, 'rgba(255,186,66,.72)');
-  tg.addColorStop(0.55, 'rgba(232,96,28,.34)');
-  tg.addColorStop(1,    'rgba(150,40,10,0)');
-  ctx.fillStyle = tg;
-  const px2 = -uy, py2 = ux;                  /* perpendicular */
-  ctx.beginPath();
-  ctx.moveTo(o.x + px2*o.r*0.95, o.y + py2*o.r*0.95);
-  ctx.lineTo(o.x + ux*len + px2*o.r*0.16, o.y + uy*len + py2*o.r*0.16);
-  ctx.lineTo(o.x + ux*len - px2*o.r*0.16, o.y + uy*len - py2*o.r*0.16);
-  ctx.lineTo(o.x - px2*o.r*0.95, o.y - py2*o.r*0.95);
-  ctx.closePath(); ctx.fill();
-
-  const bloom = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, o.r*1.05);
-  bloom.addColorStop(0,   'rgba(255,238,190,.85)');
-  bloom.addColorStop(0.5, 'rgba(255,156,52,.34)');
-  bloom.addColorStop(1,   'rgba(255,120,30,0)');
-  ctx.fillStyle = bloom;
-  ctx.beginPath(); ctx.arc(o.x, o.y, o.r*1.05, 0, 6.2832); ctx.fill();
-
-  /* sparks shedding off the back */
-  for (let i = 0; i < 5; i++){
-    const t = ((i * 0.21 + o.flick * 0.06) % 1);
-    const sx = o.x + ux*len*t + px2 * Math.sin(o.flick + i*2.4) * o.r * 0.7;
-    const sy = o.y + uy*len*t + py2 * Math.sin(o.flick + i*2.4) * o.r * 0.7;
-    ctx.fillStyle = 'rgba(255,' + (170 + ((i*37)%70)) + ',90,' + (0.75*(1-t)) + ')';
-    ctx.beginPath(); ctx.arc(sx, sy, (1 - t) * o.r * 0.26 + 1, 0, 6.2832); ctx.fill();
-  }
-
-  /* the rock itself, white hot on the leading face */
-  ctx.translate(o.x, o.y);
-  ctx.rotate(o.rot);
-  const rg = ctx.createLinearGradient(-o.r*0.4, -o.r*0.4, o.r*0.7, o.r*0.7);
-  rg.addColorStop(0, '#5A4238');
-  rg.addColorStop(0.55, '#3A2A24');
-  rg.addColorStop(1, '#FFD9A0');
-  ctx.fillStyle = rg;
-  ctx.beginPath();
-  for (let i = 0; i < 9; i++){
-    const a = i/9 * 6.2832;
-    const rr = o.r * (0.8 + 0.22*Math.abs(Math.sin(i*2.3 + o.r)));
-    const x = Math.cos(a)*rr, y = Math.sin(a)*rr;
-    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-  }
-  ctx.closePath(); ctx.fill();
-  ctx.restore();
+  /* the shell lies along the track - the art points toward -x, so the
+     angle is the velocity turned half a turn - and the rock does not
+     turn at all: it is the flame that is moving, not the stone. */
+  const ang = Math.atan2(o.vy, o.vx) + Math.PI;
+  SPACE.meteor(ctx, o.x, o.y, Math.floor(runTime * 12) % SPACE.metFrames(), ang);
 }
 
 /* ---- asteroid ------------------------------------------------------- */
 function drawAsteroid(o){
-  ctx.save();
-  ctx.translate(o.x, o.y);
-  ctx.rotate(o.rot);
-  const g = ctx.createLinearGradient(-o.r*0.6, -o.r*0.8, o.r*0.7, o.r*0.8);
-  g.addColorStop(0, '#B9AC9E');
-  g.addColorStop(0.45, '#8A7E72');
-  g.addColorStop(1, '#4A423C');
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  for (let i = 0; i < o.lumps.length; i++){
-    const a = i / o.lumps.length * 6.2832;
-    const rr = o.r * o.lumps[i];
-    const x = Math.cos(a)*rr, y = Math.sin(a)*rr;
-    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-  }
-  ctx.closePath(); ctx.fill();
-  ctx.strokeStyle = 'rgba(38,32,28,.6)'; ctx.lineWidth = 2.4; ctx.stroke();
-  ctx.save(); ctx.clip();
-  for (const c of o.craters){
-    const cx = Math.cos(c.a)*o.r*c.d, cy = Math.sin(c.a)*o.r*c.d;
-    ctx.fillStyle = 'rgba(58,50,44,.55)';
-    ctx.beginPath(); ctx.arc(cx, cy, o.r*c.s, 0, 6.2832); ctx.fill();
-    ctx.fillStyle = 'rgba(214,204,192,.35)';
-    ctx.beginPath(); ctx.arc(cx - o.r*c.s*0.22, cy - o.r*c.s*0.26, o.r*c.s*0.72, 0, 6.2832); ctx.fill();
-  }
-  ctx.restore();
-  ctx.restore();
+  SPACE.ast(ctx, o.kind, o.x, o.y, o.rot);
 }
 
 /* ---- satellite wreckage --------------------------------------------- */
 function drawSatFrag(o){
-  ctx.save();
-  ctx.translate(o.x, o.y);
-  ctx.rotate(o.rot);
-  const w = o.w, h = o.h;
-
-  if (o.kind === 'panel'){
-    /* a solar wing torn off at the root */
-    const pg = ctx.createLinearGradient(-w/2, -h/2, w/2, h/2);
-    pg.addColorStop(0, '#3C63C0');
-    pg.addColorStop(0.5, '#1E3A86');
-    pg.addColorStop(1, '#101F4E');
-    ctx.fillStyle = pg;
-    ctx.beginPath();
-    ctx.moveTo(-w/2, -h/2); ctx.lineTo(w/2 - 9, -h/2 + 4);
-    ctx.lineTo(w/2, h/2); ctx.lineTo(-w/2 + 6, h/2 - 3);
-    ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = 'rgba(150,180,240,.6)'; ctx.lineWidth = 1.6;
-    for (let i = 1; i < 5; i++){
-      const t = i/5;
-      ctx.beginPath();
-      ctx.moveTo(-w/2 + w*t, -h/2 + 3); ctx.lineTo(-w/2 + w*t - 3, h/2 - 3);
-      ctx.stroke();
-    }
-    ctx.beginPath(); ctx.moveTo(-w/2, 0); ctx.lineTo(w/2 - 4, 2); ctx.stroke();
-    ctx.strokeStyle = '#C8CFD8'; ctx.lineWidth = 4;          /* bent strut */
-    ctx.beginPath();
-    ctx.moveTo(-w/2 + 16, -2); ctx.lineTo(-w/2 + 6, 8); ctx.lineTo(-w/2 + 1, 2);
-    ctx.stroke();
-  } else if (o.kind === 'dish'){
-    /* a crumpled antenna dish */
-    const dg = ctx.createLinearGradient(0, -h/2, 0, h/2);
-    dg.addColorStop(0, '#EDF1F6');
-    dg.addColorStop(0.6, '#A8B2BE');
-    dg.addColorStop(1, '#5E6874');
-    ctx.fillStyle = dg;
-    ctx.beginPath(); ctx.ellipse(0, 0, w/2, h/2, 0, 0, 6.2832); ctx.fill();
-    ctx.fillStyle = 'rgba(52,60,70,.5)';
-    ctx.beginPath(); ctx.ellipse(4, 3, w/2 - 9, h/2 - 8, 0.2, 0, 6.2832); ctx.fill();
-    ctx.strokeStyle = '#3C444E'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(w*0.34, -h*0.42); ctx.stroke();
-    ctx.fillStyle = '#D6DCE4';
-    ctx.beginPath(); ctx.arc(w*0.34, -h*0.42, 5.5, 0, 6.2832); ctx.fill();
-    ctx.strokeStyle = 'rgba(40,46,54,.55)'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.ellipse(0, 0, w/2, h/2, 0, 0, 6.2832); ctx.stroke();
-  } else {
-    /* a length of truss with foil still on it */
-    ctx.fillStyle = '#9BA5B2';
-    ctx.fillRect(-w/2, -h*0.16, w, h*0.32);
-    ctx.strokeStyle = '#5C6672'; ctx.lineWidth = 2.6;
-    ctx.beginPath();
-    for (let i = 0; i < 5; i++){
-      const x0 = -w/2 + (w/5)*i;
-      ctx.moveTo(x0, -h*0.16); ctx.lineTo(x0 + w/5, h*0.16);
-      ctx.moveTo(x0, h*0.16);  ctx.lineTo(x0 + w/5, -h*0.16);
-    }
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(244,206,120,.9)';                  /* gold foil */
-    ctx.beginPath();
-    ctx.moveTo(w*0.16, -h*0.16); ctx.lineTo(w*0.46, -h*0.44);
-    ctx.lineTo(w*0.5, -h*0.06); ctx.lineTo(w*0.22, h*0.16);
-    ctx.closePath(); ctx.fill();
-  }
-  ctx.restore();
+  SPACE.frag(ctx, o.kind, o.x, o.y, o.rot);
 }
 
 /* ---- power-ups ------------------------------------------------
@@ -4958,10 +6866,12 @@ function frame(t){
 resize();
 buildSkyline();
 const _spr = SPR.bake();
+const _spc = SPACE.bake();
 /* Test hooks, only with ?debug - the sprite measurement harness and the
    hitbox/coverage checks run against these. */
 if (location.search.indexOf('debug') >= 0){
 window.SPRDBG = SPR;
+window.SPACEDBG = SPACE;
 window.DBG = {
   live: () => obstacles.map(o => o.t + (o.kind ? ':'+o.kind : '')),
   boxes: () => obstacles.map(o => ({ t:o.t, k:o.kind, n:rectsOf(o).length })),
@@ -4977,6 +6887,22 @@ window.DBG = {
   city: i => { cityIx = i % CITY.count(); CITY.build(cityIx); return CITY.names()[cityIx]; },
   cities: () => CITY.names(),
   clear: () => { obstacles.length = 0; },
+  /* park one hazard where it can be looked at, held still */
+  park: (t, x, y, kind) => {
+    SPAWNERS[t]();
+    const o = obstacles[obstacles.length - 1];
+    o.x = x; o.y = y; o.vx = 0; o.vy = 0; o.spin = 0;
+    if (kind !== undefined && kind !== null){
+      o.kind = kind;
+      const b = t === 'asteroid' ? SPACE.astBox(kind)
+              : t === 'satfrag'  ? SPACE.fragBox(kind)
+              : t === 'sat'      ? SPACE.satBox(kind) : null;
+      if (b){ o.w = b.w; o.h = b.h; }
+    }
+    if (t === 'meteor'){ o.vx = 60; o.vy = 200; }
+    player.mercy = 99;
+    return { t:o.t, k:o.kind, w:o.w, h:o.h };
+  },
   introAt: () => +introT.toFixed(2),
   /* raise the dome and clear the sky, so it can be looked at */
   dome: () => { player.shield = true; player.bubble = 1;
@@ -5006,6 +6932,8 @@ window.DBG = {
 }
 console.log('[sprites] ' + _spr.sprites + ' baked in ' + _spr.ms + 'ms, ' +
             _spr.kb + ' KB, ' + _spr.clipped + ' clipped ' + JSON.stringify(_spr.where));
+console.log('[space]   ' + _spc.sprites + ' baked in ' + _spc.ms + 'ms, ' +
+            _spc.kb + ' KB, ' + _spc.clipped + ' clipped ' + JSON.stringify(_spc.where));
 document.getElementById('titleBest').textContent = commas(best) + ' FT';
 requestAnimationFrame(frame);
 })();
