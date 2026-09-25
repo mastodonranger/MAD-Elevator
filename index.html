@@ -910,11 +910,12 @@ let shownZone = '';
    cars. Deadpan, present tense, never explains the joke. Keys fall back
    base-first, so a family always has a line even if its kind does not. */
 const CRASH_LINES = {
-  bird: ['That pigeon had right of way.',
+  bird: ["It's a bird, it's a pla- nope, it's just a bird.",
+         "That's one strong bird.",
+         'You wing some, you lose some.',
+         'That pigeon had right of way.',
          'The bird did not move. You did not either.',
-         'Bird strike. The bird is fine.',
-         'It looked you right in the eye and kept flying.',
-         'Wildlife encountered at the eleventh floor.'],
+         'It looked you right in the eye and kept flying.'],
   'bird:pigeon':  ['The pigeon was not insured. Neither were you.',
                    'It has hit three elevators this year.'],
   'bird:crow':    ['The crow saw it coming and chose not to mention it.',
@@ -994,11 +995,12 @@ const CRASH_LINES = {
   'satfrag:boom':   ['A length of antenna boom, foil and all.',
                      'Thin, light, and entirely sufficient.'],
 
-  ufo: ['Abducted. Briefly.',
+  ufo: ['They came in peace. You left in pieces.',
+        'Take me to your technician.',
+        'More like Unidentified Falling Object.',
+        'Abducted. Briefly.',
         'First contact. Went badly.',
-        'They were not expecting an elevator either.',
-        'The lights went round once and then it hit you.',
-        'They have never seen a lift before and they still won.'],
+        'They were not expecting an elevator either.'],
 
   first: ['Is this thing going up?',
           'Out of the shaft and straight into it.',
@@ -1007,9 +1009,15 @@ const CRASH_LINES = {
             'Service interrupted.',
             'Please use the stairs.']
 };
+/* A kind's lines AND its family's, pooled. Every bird, debris chunk,
+   helicopter, aircraft, asteroid, satellite and fragment spawns with a
+   kind, so the specific key always matched and the family arrays under
+   them had never once been seen. */
 function crashLine(key){
   const base = String(key || '').split(':')[0];
-  return pick(CRASH_LINES[key] || CRASH_LINES[base] || CRASH_LINES.default);
+  const own  = CRASH_LINES[key] || [];
+  const pool = base === key ? own : own.concat(CRASH_LINES[base] || []);
+  return pick(pool.length ? pool : CRASH_LINES.default);
 }
 
 if (matchMedia('(hover:none)').matches){
@@ -8065,7 +8073,10 @@ window.DBG = {
                    asteroid:[0,1,2,3,4,5], sat:[0,1], satfrag:[0,1,2] };
     for (const t in fams) for (const k of fams[t]){
       const key = hazardKey({ t, kind: k });
-      out.push({ key, own: !!CRASH_LINES[key], line: crashLine(key) });
+      const base = key.split(':')[0];
+      const own = (CRASH_LINES[key] || []).length;
+      const fam = base === key ? 0 : (CRASH_LINES[base] || []).length;
+      out.push({ key, own: own + fam, kindOwn: own, line: crashLine(key) });
     }
     return out;
   },
