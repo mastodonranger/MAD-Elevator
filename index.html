@@ -7413,8 +7413,13 @@ function drawClouds(front, smear){
   BD.clouds(ctx, W, H, feet, px, runTime, front);
 }
 
+/* The chevrons belong to the F1 boost and nothing else. They were gated
+   on raw speed, which climbs with altitude, so they came on somewhere in
+   the stratosphere and never went off again - streaking the sky for the
+   whole back half of a run with no boost anywhere near it. */
 function drawSpeedLines(){
-  if (speed < 560) return;
+  const env = boostEnv();
+  if (env <= 0.02) return;
   FX.speed(ctx, px * 0.0024, W, H);
 }
 
@@ -7875,7 +7880,9 @@ function draw(){
                    w < 1 ? introT * 7.5 : 1, 1 - b);
       }
     }
-    if (player.shield || player.bubble > 0) drawBubble(player.x, carY + bob);
+    /* the shield blinks with the car it is on: drawn through the blink it
+       left an empty bubble hanging in the sky after a hit */
+    if (!blink && (player.shield || player.bubble > 0)) drawBubble(player.x, carY + bob);
   }
 
   drawBits();
@@ -7954,6 +7961,8 @@ window.DBG = {
   },
   introAt: () => +introT.toFixed(2),
   bits: () => bits.length,
+  /* light the F1 boost, so the wake and the chevrons can be looked at */
+  boost: () => { player.boost = F1_TIME; setLabels(); },
   state: () => Object.keys(S).find(k => S[k] === state),
   /* run the real crash path, so the burst is the one the game throws */
   boom: () => { player.mercy = 0; obstacles.length = 0;
