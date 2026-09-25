@@ -527,7 +527,7 @@ const W = 540, H = 960;
    couple of seconds. */
 const FEET_PER_PX   = 0.07;   // one logical pixel of travel, in feet
 const RAMP_FEET     = 9000;   // altitude at which difficulty maxes out
-const SPEED_MIN     = 240;    // px/s of climb at launch
+const SPEED_MIN     = 175;    // px/s of climb at launch
 const SPEED_MAX     = 620;    // px/s of climb once fully ramped
 const PLAYER_Y      = H * 0.70;
 /* The near skyline stands on H*0.94, so that is the street. The pad sits
@@ -962,8 +962,14 @@ if (matchMedia('(hover:none)').matches){
   document.getElementById('resumeCta').textContent = 'Tap or Press Space to Resume';
 }
 
+/* The altitude was rewritten every frame from a float, so at 17-43 feet
+   a second the last digits strobed - a block of text repainting 60 times
+   a second, right beside where you are looking. Rounded to ten feet and
+   only written when it changes. */
+let shownAlt = -1;
 function syncHUD(){
-  el.alt.textContent  = commas(feet);
+  const a = Math.round(feet / 10) * 10;
+  if (a !== shownAlt){ shownAlt = a; el.alt.textContent = commas(a); }
   el.best.textContent = commas(best) + ' FT';
   const z = zoneFor(feet).name;
   if (z !== shownZone){
@@ -1624,7 +1630,10 @@ function updateBits(dt){
 function update(dt){
   runTime += dt;
   if (state === S.PLAY){
-    diff    = Math.pow(clamp(feet / RAMP_FEET, 0, 1), 0.85);
+    /* above 1, so the climb starts gentle and the speed is earned later;
+       at 0.85 it took a third of the range in the first tenth of the
+       altitude, which is what made the opening feel like a rush */
+    diff    = Math.pow(clamp(feet / RAMP_FEET, 0, 1), 1.15);
     hazDiff = Math.pow(clamp(feet / RAMP_FEET, 0, 1), 0.58);
     speed = lerp(SPEED_MIN, SPEED_MAX, diff);
 
@@ -7376,7 +7385,11 @@ function drawStars(){
   /* the field fills in by COUNT as the sky darkens - a dot has no alpha
      to fade, and inventing one would put a tone in it that is in no
      palette */
-  BD.stars(ctx, W, H, feet, px * 0.35, runTime);
+  /* Stars are the smallest, brightest, highest-contrast things on the
+     darkest background, so they are the first thing to strobe. At 0.35
+     they slid 3-4px a frame at speed, which flickers rather than reads
+     as travel. They are a long way off - they should barely move. */
+  BD.stars(ctx, W, H, feet, px * 0.06, runTime);
 }
 
 function drawEarthLimb(){
@@ -7976,7 +7989,10 @@ window.DBG = {
      the corridor check lives, so calling a spawner directly skips it. */
   sim: (ft, n) => {
     feet = ft; px = ft / FEET_PER_PX;
-    diff    = Math.pow(clamp(feet / RAMP_FEET, 0, 1), 0.85);
+    /* above 1, so the climb starts gentle and the speed is earned later;
+       at 0.85 it took a third of the range in the first tenth of the
+       altitude, which is what made the opening feel like a rush */
+    diff    = Math.pow(clamp(feet / RAMP_FEET, 0, 1), 1.15);
     hazDiff = Math.pow(clamp(feet / RAMP_FEET, 0, 1), 0.58);
     speed   = lerp(SPEED_MIN, SPEED_MAX, diff);
     corridor = [[HALF_CAR, W - HALF_CAR]]; lastSpawnPx = px; lastCrane = null;
