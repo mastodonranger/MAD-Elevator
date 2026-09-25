@@ -905,50 +905,107 @@ let shownZone = '';
 
 /* What the results card leads with. Keyed by hazard, and by sub-kind
    where one exists, so it names the thing that actually got you. */
+/* The voice is the service call, not the disaster: an elevator company
+   filling in an incident report about a thing that fell on one of its
+   cars. Deadpan, present tense, never explains the joke. Keys fall back
+   base-first, so a family always has a line even if its kind does not. */
 const CRASH_LINES = {
-  bird: ['Oops, you hit a bird!',
-         'That pigeon had right of way.',
-         'The bird did not move. You did not either.'],
-  crane: ['You clipped a crane boom.',
-          'Hard hat area, apparently.',
-          'That scaffolding was not going anywhere.'],
-  debris: ['Something fell off the building. Then you hit it.',
-           'Loose masonry. Classic.'],
+  bird: ['That pigeon had right of way.',
+         'The bird did not move. You did not either.',
+         'Bird strike. The bird is fine.',
+         'It looked you right in the eye and kept flying.',
+         'Wildlife encountered at the eleventh floor.'],
+  'bird:pigeon':  ['The pigeon was not insured. Neither were you.',
+                   'It has hit three elevators this year.'],
+  'bird:crow':    ['The crow saw it coming and chose not to mention it.',
+                   'It has told the other crows about you.'],
+  'bird:sparrow': ['Felled by something that weighs 24 grams.',
+                   'A sparrow. An entire sparrow.'],
+
+  crane: ['Hard hat area, apparently.',
+          'The boom was there yesterday too.',
+          'You lost an argument with a counterweight.',
+          'The crane operator watched the whole thing.',
+          'Permit posted. Clearance not.'],
+
+  debris: ['The building shed a piece and you caught it.',
+           'Loose masonry. Classic.',
+           'Everything above you is also held on with bolts.'],
   'debris:brick': ['A brick. Just one brick.',
-                   'Felled by a single brick.'],
-  'debris:rubble': ['A chunk of the building got there first.',
-                    'You met a lump of falling concrete.'],
-  'debris:cinder': ['A cinder block. Through and through.',
-                    'You found the one block with holes in it.'],
-  heli: ['Someone took "get to the chopper" too literally.',
-         'Where did that helicopter come from?!',
-         'You met a chopper mid-hover.',
-         'Rotor wash is no joke.'],
-  plane: ['Where did that plane come from?!',
-          'You found the flight path.',
-          'That was a scheduled service. You were not.'],
-  meteor: ['A meteor got there first.',
-           'You flew into the shower.',
-           'It was already on fire. Now so are you.'],
-  asteroid: ['You hit an asteroid.',
-             'That rock had been there for four billion years.',
-             'Asteroid. No warning, no apology.'],
-  sat: ['You hit a satellite.',
-        'That one was still operational.',
-        'Somebody is going to file a report about this.'],
-  satfrag: ['Orbital debris got you.',
-            "You hit somebody else's wreckage."],
-  'satfrag:panel': ['You hit a torn-off solar wing.',
-                    "Somebody else's solar panel. Now in pieces."],
-  'satfrag:dish': ['You hit a dead antenna dish.',
-                   'That dish stopped listening years ago.'],
-  'satfrag:strut': ['You hit a length of truss.',
-                    'Foil-wrapped truss. Still solid.'],
+                   'One brick. It only takes the one.',
+                   'Three kilos of fired clay, travelling.'],
+  'debris:rubble': ['A lump of the ninth floor got there first.',
+                    'Unspecified chunk. Very specific outcome.'],
+  'debris:cinder': ['You found the one block with holes in it.',
+                    'A cinder block went through the formalities.'],
+
+  heli: ['Someone took get to the chopper too literally.',
+         'Rotor wash is no joke.',
+         'You were not cleared into that hover.',
+         'Two aircraft, one lane, no discussion.'],
+  'heli:news':   ['The traffic helicopter is now the traffic.',
+                  'They got the shot. They led with it.'],
+  'heli:rescue': ['Rescued. By the thing that hit you.',
+                  'The rescue helicopter has created a rescue.'],
+  'heli:cargo':  ['It was carrying something heavy. It still is.',
+                  'Slung load, meet passenger lift.'],
+
+  plane: ['You found the flight path.',
+          'That was a scheduled service. You were not.',
+          'The cabin crew have been asked to take their seats.',
+          'You are now a line item on somebody else incident report.'],
+  'plane:airliner':  ['Two hundred people saw you out of the window.',
+                      'You were not on the manifest.'],
+  'plane:turboprop': ['Propellers. Plural. Sequential.',
+                      'A short hop, interrupted.'],
+  'plane:bizjet':    ['You have delayed somebody important.',
+                      'That jet was worth more than the building.'],
+  'plane:twin':      ['A small plane. A large problem.',
+                      'A flying lesson, for both of you.'],
+
+  meteor: ['It was already on fire. Now so are you.',
+           'Four and a half billion years, and it picked today.',
+           'You made a wish at exactly the wrong moment.',
+           'It burned up on re-entry. You assisted.'],
+
+  asteroid: ['It was not going to move. It has never moved.',
+             'No warning, no apology, no insurance.',
+             'You have discovered a minor planet. With the roof.'],
+  'asteroid:chunk':    ['A rock with no features and no remorse.',
+                        'Plain rock. Plainly fatal.'],
+  'asteroid:cratered': ['It has been hit before. It took it better.',
+                        'Every crater on it is somebody else.'],
+
+  sat: ['Somebody is going to file a report about this.',
+        'You have knocked out coverage for three provinces.',
+        'That was public infrastructure.'],
+  'sat:cluster':  ['Four solar panels. One elevator. No survivors.',
+                   'It was doing science. You were going up.'],
+  'sat:derelict': ['It stopped answering in 1998 and still hits like that.',
+                   'Dead for decades. Solid as ever.'],
+
+  satfrag: ["You hit somebody else's wreckage.",
+            'Orbital debris. The gift that keeps arriving.',
+            'This is what the last collision left.'],
+  'satfrag:panel':  ['A torn-off solar wing, now in smaller pieces.',
+                     'Somebody else had this exact accident first.'],
+  'satfrag:corner': ['The corner of a bus that used to be a satellite.',
+                     'One eighth of a spacecraft, at full speed.'],
+  'satfrag:boom':   ['A length of antenna boom, foil and all.',
+                     'Thin, light, and entirely sufficient.'],
+
   ufo: ['Abducted. Briefly.',
-        'That saucer was aiming for you.',
-        'First contact. Went badly.'],
-  first: ['Is this thing going up?'],
-  default: ['Out of service.', 'Service interrupted.']
+        'First contact. Went badly.',
+        'They were not expecting an elevator either.',
+        'The lights went round once and then it hit you.',
+        'They have never seen a lift before and they still won.'],
+
+  first: ['Is this thing going up?',
+          'Out of the shaft and straight into it.',
+          'A new record, in the other direction.'],
+  default: ['Out of service.',
+            'Service interrupted.',
+            'Please use the stairs.']
 };
 function crashLine(key){
   const base = String(key || '').split(':')[0];
@@ -1438,12 +1495,23 @@ function setLabels(){
   el.vms.hidden       = !player.vms3;
   el.f1.hidden        = player.boost <= 0;
 }
+/* Half the families carry a bake index as their kind rather than a name,
+   so 'satfrag:panel' and its neighbours had quietly stopped matching
+   anything and every fragment fell back to the generic line. */
+function hazardKey(o){
+  const k = o.kind;
+  if (k === undefined || k === null) return o.t;
+  if (typeof k === 'string') return o.t + ':' + k;
+  if (o.t === 'satfrag')  return o.t + ':' + SPACE.fragKind(k);
+  if (o.t === 'asteroid') return o.t + ':' + SPACE.astKind(k);
+  if (o.t === 'sat')      return o.t + ':' + SPACE.satKind(k);
+  return o.t;
+}
 function crash(x, y, o){
   if (state !== S.PLAY) return;
   if (player.mercy > 0 || player.boost > 0) return;
   /* going out to the very first thing in the shaft has its own line */
-  killedBy = cleared === 0 ? 'first'
-           : o ? (o.kind ? o.t + ':' + o.kind : o.t) : '';
+  killedBy = cleared === 0 ? 'first' : o ? hazardKey(o) : '';
   el.shieldLbl.hidden = true; el.vms.hidden = true; el.f1.hidden = true;
   if (player.shield){                      /* the shield absorbs it */
     player.shield = false;
@@ -6078,6 +6146,10 @@ return {
   ast:  (ctx,i,x,y,rot) => blit(ctx, cvs.ast[i],  anc.ast[i],  x, y, rot),
   fragCount: () => cvs.frag.length,
   fragKind:  i  => FRAGPICK[i][0],
+  /* readable names for the families whose kind is a bake index, so the
+     crash lines can key off what actually hit you */
+  astKind:   i  => (i < 3 ? 'chunk' : 'cratered'),
+  satKind:   i  => (i === 0 ? 'cluster' : 'derelict'),
   fragBox:   i  => box.frag[i],
   frag: (ctx,i,x,y,rot) => blit(ctx, cvs.frag[i], anc.frag[i], x, y, rot),
   satCount:  () => cvs.sat.length,
@@ -7976,6 +8048,27 @@ window.DBG = {
   bits: () => bits.length,
   /* light the F1 boost, so the wake and the chevrons can be looked at */
   boost: () => { player.boost = F1_TIME; setLabels(); },
+  /* run the real crash path against the last parked hazard */
+  hit: (asFirst) => { const o = obstacles[obstacles.length - 1];
+               if (!o) return 'nothing parked';
+               player.shield = false; player.mercy = 0; player.boost = 0;
+               /* a crash with nothing cleared yet has its own line, so
+                  unless that is what is being tested, pretend one passed */
+               if (!asFirst) cleared = Math.max(cleared, 1);
+               crash(player.x, carY, o); return hazardKey(o); },
+  /* every hazard key the game can actually produce, and the line it
+     lands on - so a renamed kind cannot quietly fall back for ever */
+  lines: () => {
+    const out = [];
+    const fams = { bird:KIND.bird, debris:KIND.debris, heli:KIND.heli,
+                   plane:KIND.plane, crane:[null], meteor:[null], ufo:[null],
+                   asteroid:[0,1,2,3,4,5], sat:[0,1], satfrag:[0,1,2] };
+    for (const t in fams) for (const k of fams[t]){
+      const key = hazardKey({ t, kind: k });
+      out.push({ key, own: !!CRASH_LINES[key], line: crashLine(key) });
+    }
+    return out;
+  },
   state: () => Object.keys(S).find(k => S[k] === state),
   /* run the real crash path, so the burst is the one the game throws */
   boom: () => { player.mercy = 0; obstacles.length = 0;
