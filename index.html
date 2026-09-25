@@ -534,7 +534,16 @@ const PLAYER_Y      = H * 0.70;
    on it and the car rests on the pad. */
 const GROUND_Y      = H * 0.94;
 const PAD_Y         = GROUND_Y - 10;
+/* The LAYOUT box: where the car rests on the pad, where the jets come
+   off it, where the crash throws from. Not what decides whether it fits -
+   that is CAR_HALF_W, measured off the baked sprite at boot. */
 const PLAYER_W      = 84, PLAYER_H = 118;
+/* Half the car's real painted width. Everything that decides whether the
+   car FITS reads this: the wall clamp and the corridor solver. It was
+   PLAYER_W/2 = 42 against a sprite that is 90 across, so every gap the
+   spawner checked was six pixels wider than the one the player got. */
+let CAR_HALF_W      = PLAYER_W / 2;
+let CAR_BOX_H       = PLAYER_H;
 /* the baked car is 76x106 and its nozzle row is FLOOR+13+YOFF = 87 */
 const CAR_W = 76, CAR_H = 106, CAR_NOZ = 87;
 const BIT_RAMP = ['#FFFFFF','#FFF2C0','#FFE9A8','#F2A93B','#E2542A'];
@@ -553,8 +562,13 @@ const F1_RISE       = 190;    // px the car climbs up the screen
 const F1_MULT       = 2.4;    // climb speed multiplier while boosting
 const F1_GRACE      = 1.0;    // s of immunity once it drops you back off
 const BLOCKER_FLOOR  = 200;   // ft before the first full-width hazard
-const SPAWN_GAP_EASY = 430;   // px of climb between hazards at launch
-const SPAWN_GAP_HARD = 200;   // ...and once fully ramped
+/* px of climb between spawn ATTEMPTS. About a quarter of them are turned
+   down by the plan as unsurvivable, so the gap is tightened to match and
+   the rate of hazards the player actually meets stays where it was - the
+   fairness fix is not meant to be a difficulty change as well. */
+const GAP_EASY0 = 292, GAP_HARD0 = 136;
+let SPAWN_GAP_EASY = GAP_EASY0;   // px of climb between hazards at launch
+let SPAWN_GAP_HARD = GAP_HARD0;   // ...and once fully ramped
 const PLAYER_ACCEL  = 2600;   // keyboard steering acceleration, px/s^2
 const PLAYER_MAXV   = 640;
 const WALL_PAD      = 10;
@@ -1334,8 +1348,10 @@ function spawnBird(){
    game-overs with every spacing guard switched on, and 0 once the
    spawner checked before committing. See docs/SPAWNER.md.
    ------------------------------------------------------------------ */
-const CORRIDOR_MIN = 40;         // px of freedom the car's centre keeps
-const HALF_CAR = PLAYER_W / 2;
+/* px of freedom the car's centre keeps. A car half again as wide needs
+   proportionally more room to be steered through a gap, not the same 40. */
+const CORRIDOR_MIN = 56;
+let HALF_CAR = CAR_HALF_W;
 let corridor = [[HALF_CAR, W - HALF_CAR]];
 let lastSpawnPx = 0;
 
@@ -1379,28 +1395,129 @@ function blockOf(o){
   if (o.t === 'crane')
     return o.side === 'L' ? [0, o.reach + CRANE_TIP + HALF_CAR]
                           : [W - o.reach - CRANE_TIP - HALF_CAR, W];
-  const drift = Math.abs(o.vx || 0) * (o.h / Math.max(1, speed));
+  /* How far this thing can still wander before it is level with the car -
+     not how far it moves while it falls its own height. A tumbling block
+     spends two seconds on screen and crosses eighty pixels in that time;
+     the old window was an eighth of a second, so the gap the spawner
+     checked was never the gap the player was given. A bird's sine swing
+     counts too: its amplitude is travel the corridor never saw. */
+  const fall  = Math.max(0, carY - o.y) / Math.max(1, speed + (o.vy || 0));
+  const drift = Math.min(W, Math.abs(o.vx || 0) * fall + (o.amp || 0));
   return [o.x - o.w/2 - HALF_CAR - drift, o.x + o.w/2 + HALF_CAR + drift];
 }
-/* Test before committing: shrink a boom or slide a mover until a path
-   survives, and drop the hazard outright rather than seal the screen. */
+/* ---- will the run survive this hazard? ------------------------------
+   The corridor above is a sequence of spawn EVENTS: each hazard subtracts
+   what it blocks, and the dilation between spawns re-opens the set by how
+   far the car can travel in the meantime. That is a good model when
+   hazards arrive one at a time, and the wrong shape entirely when they do
+   not - a tumbling block falls at up to 170px/s of its own on top of the
+   climb while a boom falls at the climb alone, so hazards spawned seconds
+   apart are level with the car together, and by the time the third is
+   checked the dilation has forgiven the first two.
+
+   Measured on the real spawner over 800 minutes of play: one run in forty
+   sealed the shaft outright, always a boom and a tumbling lump arriving
+   together. No amount of tuning the spacing fixes that, because the model
+   never looks at the two of them at the same instant.
+
+   So the gate is reachability over TIME. The car's reachable positions
+   start at where it actually is, spread by what it can travel each step,
+   and have every hazard that is level with the car at that step
+   subtracted. Empty at any step means the run was lost the moment the
+   hazard spawned and no input could have saved it. The hazards are walked
+   forward by moveHazard - the routine the game moves them with - so the
+   plan cannot drift from the play. */
+const PLAN_DT = 0.04, PLAN_T = 5.0;
+/* the room the plan insists on keeping, not just a surviving pixel */
+let PLAN_MIN = 30;
+/* The plan walks in steps and the game in frames, so a ghost's position
+   drifts a little from the real thing's. Everything the plan measures is
+   therefore rounded AGAINST the player: a hazard is treated as wider than
+   it is, and as level with the car for longer. A plan that is optimistic
+   by a pixel is a plan that hands out an unwinnable run. */
+let PLAN_PAD = 8;
+/* what a hazard takes out of the car's centre positions AT ONE INSTANT -
+   its own box, widened by half the car either side. */
+function spanAt(o){
+  if (o.t === 'crane')
+    return o.side === 'L' ? [-1e4, o.reach + CRANE_TIP + CAR_HALF_W + PLAN_PAD]
+                          : [W - o.reach - CRANE_TIP - CAR_HALF_W - PLAN_PAD, 1e4];
+  return [o.x - o.w/2 - CAR_HALF_W - PLAN_PAD,
+          o.x + o.w/2 + CAR_HALF_W + PLAN_PAD];
+}
+function survivable(){
+  const lo = CAR_HALF_W + WALL_PAD, hi = W - CAR_HALF_W - WALL_PAD;
+  const reach = PLAYER_MAXV * PLAN_DT;
+  const ghosts = [];
+  for (const o of obstacles){
+    if (o.t === 'shield' || o.t === 'vms3' || o.t === 'f1') continue;
+    ghosts.push(Object.assign({}, o));
+  }
+  let R = [[clamp(player.x, lo, hi), clamp(player.x, lo, hi)]];
+  for (let t = 0; t < PLAN_T; t += PLAN_DT){
+    R = mergeIv(R.map(([a, b]) =>
+      [Math.max(lo, a - reach), Math.min(hi, b + reach)]));
+    let live = false;
+    for (const g of ghosts){
+      moveHazard(g, PLAN_DT, true);
+      g.y += (speed + (g.vy || 0)) * PLAN_DT;
+      if (g.y - g.h > H) continue;
+      live = true;
+      /* a step's worth of travel either side, so a hazard that grazes the
+         car between two samples is still counted as having been there */
+      if (Math.abs(g.y - carY) >
+          (CAR_BOX_H + g.h) / 2 + (speed + (g.vy || 0)) * PLAN_DT) continue;
+      const sp = spanAt(g);
+      R = subIv(R, sp[0], sp[1]);
+    }
+    if (widestIv(R) < PLAN_MIN) return false;
+    if (!live) break;
+  }
+  return true;
+}
+
+/* Test before committing. The plan is the authority on whether a hazard
+   can be there at all; everything here is about finding a version of it
+   that CAN be, because a shaft with a quarter of its hazards thrown away
+   is its own kind of broken. A boom reaches less far, a tumbling lump is
+   tried somewhere else and then made to drift more slowly, and only when
+   none of that survives is it dropped.
+
+   The number of plans one spawn may run is capped: this is on the frame
+   that spawns, and an unbounded search for a placement would show up as a
+   hitch exactly when something new appears. */
+const PLAN_BUDGET = 14;
+let planCalls = 0;
+function canPlace(){ return planCalls++ < PLAN_BUDGET && survivable(); }
 function placeSafely(o){
   const dp = Math.max(0, px - lastSpawnPx);
   const grown = dilateIv(corridor, travelIn(dp / Math.max(1, speed)));
-  for (let attempt = 0; attempt < 6; attempt++){
+  planCalls = 0;
+  const commit = () => {
     const b = blockOf(o);
-    const test = subIv(grown, b[0], b[1]);
-    if (widestIv(test) >= CORRIDOR_MIN){
-      corridor = test; lastSpawnPx = px; return true;
+    corridor = subIv(grown, b[0], b[1]);
+    if (!corridor.length) corridor = [[HALF_CAR, W - HALF_CAR]];
+    lastSpawnPx = px; return true;
+  };
+  if (canPlace()) return commit();
+  if (o.t === 'crane'){
+    while (o.reach > 140){
+      o.reach = Math.max(140, o.reach - 26);
+      if (canPlace()) return commit();
     }
-    if (o.t === 'crane'){
-      if (o.reach <= 130) break;
-      o.reach = Math.max(130, o.reach - 34);
-    } else {
-      const seg = widestSeg(grown);
-      if (!seg || attempt > 1) break;
-      o.x = clamp((seg[0]+seg[1])/2, o.w/2 + 8, W - o.w/2 - 8);
-      if (o.base !== undefined) o.base = o.x;
+  } else {
+    const lo = o.w/2 + 8, hi = W - o.w/2 - 8, home = o.x, step = W / 7;
+    for (let pass = 0; pass < 2; pass++){
+      for (let i = 1; i <= 3; i++) for (const sgn of [-1, 1]){
+        const x = clamp(home + sgn * i * step, lo, hi);
+        o.x = x; if (o.base !== undefined) o.base = x;
+        if (canPlace()) return commit();
+      }
+      if (!o.vx && !o.amp) break;
+      o.x = home; if (o.base !== undefined) o.base = home;
+      o.vx = (o.vx || 0) * 0.4;
+      if (o.amp !== undefined) o.amp *= 0.4;
+      if (canPlace()) return commit();
     }
   }
   obstacles.pop();
@@ -1410,7 +1527,11 @@ function placeSafely(o){
 /* One boom reaching in from a single edge - not a wall with a hole in
    it. Difficulty is how far it reaches, so the player has exactly one
    edge to judge instead of two. */
-const CRANE_REACH_CAP = 390;
+/* The sky the boom leaves is the car's width plus a working margin, so
+   the cap follows the car rather than a number typed when it was 60px
+   across. At 390 a 90-wide car had 51px of total slack to thread. */
+const CRANE_CLEAR = 72;
+let CRANE_REACH_CAP = 390;
 /* The chevron post is painted from the tip outward, so the solid edge is
    9px past o.reach. Measured, not guessed: without this the cap that
    marks the edge is the one part of the boom you can fly through. */
@@ -1504,6 +1625,10 @@ const SPAWNERS = { bird:spawnBird, crane:spawnCrane, debris:spawnDebris,
                    heli:spawnHeli, meteor:spawnMeteor,
                    asteroid:spawnAsteroid, satfrag:spawnSatFrag };
 
+/* A hazard the plan turns down is not replaced by another one. Measured:
+   retrying with a different family kept exactly as many hazards and ran
+   the planner three times as often - when the plan refuses, the shaft is
+   genuinely full and there is nowhere to put anything else either. */
 function spawnOne(){
   const mix = zoneFor(feet).mix;
   let total = 0;
@@ -1525,7 +1650,10 @@ function spawnOne(){
   }
   (SPAWNERS[chosen] || spawnBird)();
   const o = obstacles[obstacles.length - 1];
-  if (o) placeSafely(o);
+  const ok = o ? placeSafely(o) : false;
+  if (window.DBG){ DBG._tried = (DBG._tried||0) + 1;
+                   if (ok) DBG._kept = (DBG._kept||0) + 1; }
+  return ok;
 }
 
 /* ================================================================
@@ -1651,7 +1779,7 @@ function updatePlayer(dt){
     player.vx = clamp(player.vx, -PLAYER_MAXV, PLAYER_MAXV);
   }
   player.x += player.vx * dt;
-  const minX = PLAYER_W/2 + WALL_PAD, maxX = W - PLAYER_W/2 - WALL_PAD;
+  const minX = CAR_HALF_W + WALL_PAD, maxX = W - CAR_HALF_W - WALL_PAD;
   if (player.x < minX){ player.x = minX; player.vx *= -0.25; }
   if (player.x > maxX){ player.x = maxX; player.vx *= -0.25; }
   player.tilt = lerp(player.tilt, clamp(player.vx / PLAYER_MAXV, -1, 1) * 0.26, Math.min(1, 10*dt));
@@ -1666,52 +1794,62 @@ function playerRect(){
 }
 function playerRects(){ return bandsAt(SPR.carBands(), player.x, carY); }
 
+/* How a hazard moves sideways, in one place. The spawner has to be able
+   to run this forward to see where a hazard will be when it reaches the
+   car, and a second copy of the motion for the planner would drift from
+   the one the game plays. `ghost` stops the UFO re-homing on a player
+   position that is only a guess at that point in the future. */
+function moveHazard(o, dt, ghost){
+  if (o.t === 'bird'){
+    o.phase += dt * 1.25;
+    o.base += o.vx * dt;
+    if (o.base < 40 || o.base > W - 40){ o.vx *= -1; o.base = clamp(o.base, 40, W-40); }
+    o.x = clamp(o.base + Math.sin(o.phase) * o.amp, 34, W - 34);
+    o.flapT = (o.flapT || 0) + dt * o.flap;
+  } else if (o.t === 'ufo'){
+    o.phase += dt * 1.0;
+    if (!ghost){
+      const toward = Math.sign(player.x - o.x) * o.homing;
+      o.vx = lerp(o.vx, toward, Math.min(1, 1.4*dt));
+    }
+    o.x += (o.vx + Math.sin(o.phase) * 36) * dt;
+    o.x = clamp(o.x, 60, W - 60);
+  } else if (o.t === 'plane'){
+    o.x += o.vx * dt;
+    o.blink += dt;
+  } else if (o.t === 'sat'){
+    o.x += o.vx * dt;
+    o.rot += o.spin * dt;
+    if (o.x < 80 || o.x > W - 80) o.vx *= -1;
+  } else if (o.t === 'debris'){
+    o.x += o.vx * dt;
+    o.rot += o.spin * dt;
+    if (o.x < 30 || o.x > W - 30){ o.vx *= -1; o.x = clamp(o.x, 30, W-30); }
+  } else if (o.t === 'vms3' || o.t === 'f1' || o.t === 'shield'){
+    o.phase += dt * 1.5;
+    o.spin += dt * 1.1;
+    o.x = clamp(o.base + Math.sin(o.phase) * 42, 56, W - 56);
+  } else if (o.t === 'heli'){
+    o.x += o.vx * dt;
+    o.bob += dt * 2.1;
+    o.rotor += dt * 26;
+  } else if (o.t === 'meteor'){
+    o.x += o.vx * dt;
+    o.rot += o.spin * dt;
+    o.flick += dt * 18;
+  } else if (o.t === 'asteroid' || o.t === 'satfrag'){
+    o.x += o.vx * dt;
+    o.rot += o.spin * dt;
+    if (o.x < 34 || o.x > W - 34){ o.vx *= -1; o.x = clamp(o.x, 34, W-34); }
+  }
+}
+
 function updateObstacles(dt, scroll){
   const pr = playerRect();
   for (let i = obstacles.length - 1; i >= 0; i--){
     const o = obstacles[i];
 
-    if (o.t === 'bird'){
-      o.phase += dt * 1.25;
-      o.base += o.vx * dt;
-      if (o.base < 40 || o.base > W - 40){ o.vx *= -1; o.base = clamp(o.base, 40, W-40); }
-      o.x = clamp(o.base + Math.sin(o.phase) * o.amp, 34, W - 34);
-      o.flapT = (o.flapT || 0) + dt * o.flap;
-    } else if (o.t === 'ufo'){
-      o.phase += dt * 1.0;
-      const toward = Math.sign(player.x - o.x) * o.homing;
-      o.vx = lerp(o.vx, toward, Math.min(1, 1.4*dt));
-      o.x += (o.vx + Math.sin(o.phase) * 36) * dt;
-      o.x = clamp(o.x, 60, W - 60);
-    } else if (o.t === 'plane'){
-      o.x += o.vx * dt;
-      o.blink += dt;
-    } else if (o.t === 'sat'){
-      o.x += o.vx * dt;
-      o.rot += o.spin * dt;
-      if (o.x < 80 || o.x > W - 80) o.vx *= -1;
-    } else if (o.t === 'debris'){
-      o.x += o.vx * dt;
-      o.rot += o.spin * dt;
-      if (o.x < 30 || o.x > W - 30){ o.vx *= -1; o.x = clamp(o.x, 30, W-30); }
-    } else if (o.t === 'vms3' || o.t === 'f1' || o.t === 'shield'){
-      o.phase += dt * 1.5;
-      o.spin += dt * 1.1;
-      o.x = clamp(o.base + Math.sin(o.phase) * 42, 56, W - 56);
-    } else if (o.t === 'heli'){
-      o.x += o.vx * dt;
-      o.bob += dt * 2.1;
-      o.rotor += dt * 26;
-    } else if (o.t === 'meteor'){
-      o.x += o.vx * dt;
-      o.rot += o.spin * dt;
-      o.flick += dt * 18;
-    } else if (o.t === 'asteroid' || o.t === 'satfrag'){
-      o.x += o.vx * dt;
-      o.rot += o.spin * dt;
-      if (o.x < 34 || o.x > W - 34){ o.vx *= -1; o.x = clamp(o.x, 34, W-34); }
-    }
-
+    moveHazard(o, dt, false);
     o.y += (scroll + (o.vy || 0) * dt);
 
     /* collision */
@@ -8138,6 +8276,12 @@ const _spc = SPACE.bake();
 const _bd  = BD.bake();
 const _gnd = GND.BAKE;
 const _fx  = FX.bake(SPR.carCv(0), SPR.carAnchor(0)[0], SPR.carAnchor(0)[1]);
+/* the sprite is the hitbox, so the sprite is also the spacing */
+CAR_HALF_W = SPR.carBox().w / 2;
+CAR_BOX_H  = SPR.carBox().h;
+HALF_CAR   = CAR_HALF_W;
+CRANE_REACH_CAP = W - (SPR.carBox().w + CRANE_CLEAR) - CRANE_TIP;
+corridor = [[HALF_CAR, W - HALF_CAR]];
 /* Test hooks, only with ?debug - the sprite measurement harness and the
    hitbox/coverage checks run against these. */
 if (location.search.indexOf('debug') >= 0){
@@ -8245,6 +8389,9 @@ window.DBG = {
     }
     return out;
   },
+  tune: (mn, pd) => { PLAN_MIN = mn; PLAN_PAD = pd; },
+  plan: () => survivable(),
+  gap: k => { SPAWN_GAP_EASY = GAP_EASY0 * k; SPAWN_GAP_HARD = GAP_HARD0 * k; },
   state: () => Object.keys(S).find(k => S[k] === state),
   /* run the real crash path, so the burst is the one the game throws */
   boom: () => { player.mercy = 0; obstacles.length = 0;
@@ -8253,6 +8400,61 @@ window.DBG = {
   dome: () => { player.shield = true; player.bubble = 1;
                 player.mercy = 0; obstacles.length = 0; setLabels(); },
   corridor: () => ({ w: +widestIv(corridor).toFixed(1), segs: corridor.length }),
+  /* The positions the car's CENTRE could hold at its own row, given only
+     what is level with it right now. If this comes back empty the shaft is
+     sealed and no input would have saved the run. */
+  free: () => {
+    const cb = SPR.carBox();
+    const top = carY - cb.h/2, bot = carY + cb.h/2;
+    let iv = [[cb.w/2 + WALL_PAD, W - cb.w/2 - WALL_PAD]];
+    for (const o of obstacles){
+      if (o.t === 'shield' || o.t === 'vms3' || o.t === 'f1') continue;
+      for (const r of rectsOf(o)){
+        if (r.y + r.h <= top || r.y >= bot) continue;
+        iv = subIv(iv, r.x - cb.w/2, r.x + r.w + cb.w/2);
+      }
+    }
+    return iv;
+  },
+  /* Drive the REAL update loop and watch that set. Crashing is suppressed,
+     so one pass covers a whole climb instead of ending at the first hit. */
+  squeeze: (secs, seed) => {
+    start(); state = S.PLAY; introT = 99; speed = SPEED_MIN;
+    DBG._tried = 0; DBG._kept = 0;
+    if (seed !== undefined){ feet = seed; px = seed / FEET_PER_PX; }
+    const N = Math.round(secs * 60), dt = 1/60;
+    let worst = 1e9, worstFt = 0, worstAt = [], sealed = 0, frames = 0;
+    let worstBoost = false, worstSp = 0, worstScene = null, worstCar = null;
+    for (let i = 0; i < N; i++){
+      player.mercy = 9;              /* the probe survives to keep watching */
+      update(dt);
+      if (state !== S.PLAY) break;
+      const w = widestIv(DBG.free());
+      frames++;
+      if (w <= 0) sealed++;
+      if (w < worst){ worst = w; worstFt = Math.floor(feet);
+                      worstBoost = player.boost > 0; worstSp = Math.round(speed);
+                      worstScene = obstacles.map(q => ({
+                        k: hazardKey(q), x: Math.round(q.x), y: Math.round(q.y),
+                        vx: Math.round(q.vx||0), vy: Math.round(q.vy||0),
+                        reach: q.reach, side: q.side,
+                        r: rectsOf(q).map(r => [Math.round(r.x), Math.round(r.y),
+                                                Math.round(r.w), Math.round(r.h)])
+                      }));
+                      worstCar = { y: Math.round(carY), h: SPR.carBox().h,
+                                   w: SPR.carBox().w };
+                      worstAt = obstacles.filter(o => {
+                        const cb = SPR.carBox();
+                        return rectsOf(o).some(r => r.y + r.h > carY - cb.h/2 &&
+                                                    r.y < carY + cb.h/2); })
+                        .map(hazardKey); }
+    }
+    return { frames, sealedFrames: sealed, minFree: +worst.toFixed(1),
+             at: worstFt, hazards: worstAt, carW: SPR.carBox().w,
+             ft: Math.floor(feet), tried: DBG._tried, kept: DBG._kept,
+             boosting: worstBoost, sp: worstSp,
+             scene: worstScene, car: worstCar };
+  },
   jump: ft => { feet = ft; px = ft / FEET_PER_PX; },
   /* Drive the REAL spawn path over a simulated climb: spawnOne is where
      the corridor check lives, so calling a spawner directly skips it. */
