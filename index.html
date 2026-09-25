@@ -5961,62 +5961,599 @@ return {
 })();
 
 /* ================================================================
+   12c. Backdrop
+   ----------------------------------------------------------------
+   The sky, the star field, the clouds and the Earth's limb. All four
+   were gradients: a two-stop linear fill for the sky, a radial for the
+   sun, alpha-faded dots for the stars, a radial for the limb and a
+   clipped linear per cloud. None of that is in any other sprite here.
+
+   The sky is a twelve-stop flat ladder pinned to the zone table, so the
+   colour changes where the world does, and the join between two stops
+   is a boundary that steps on a coarse grid rather than a blend - no
+   third tone is invented. Clouds are baked and blitted; the far layer
+   carries a half-tone hole mask instead of alpha, because alpha would
+   mix tones that are in no palette.
+   ================================================================ */
+const BD = (function(){
+let _g = null, _P = 1, OX = 0, OY = 0;
+const px = (x,y,w,h,col) => { _g.fillStyle = col; _g.fillRect(OX+x*_P, OY+y*_P, w*_P, h*_P); };
+const G = 3;
+/* ---- sky bands -------------------------------------------------------
+   The one part of the art that cannot be made of parts. Everything else
+   in this game is a silhouette with flat fills; the sky is the ground
+   they are read against, and it has to carry 0 to 400,000 feet without
+   ever becoming a smooth gradient — a gradient is the one thing the
+   pixel grid cannot survive.
+
+   So it is a ladder of flat stops with a deliberate treatment at each
+   join. The stops are fixed; what these candidates vary is the join.  */
+
+const SKY = [
+  ['Street level',   '#93D4F0'],
+  ['Midtown',        '#7EC8E8'],
+  ['High rise',      '#63B4DE'],
+  ['Skyline',        '#4A9AD0'],
+  ['Low airspace',   '#3583BE'],
+  ['Flight level',   '#2B6FA8'],
+  ['Stratosphere',   '#1F5590'],
+  ['Mesosphere',     '#17406E'],
+  ['Kármán line',    '#0E2A52'],
+  ['Low orbit',      '#0B1E3E'],
+  ['Deep space',     '#050A1C'],
+  ['The long dark',  '#02040C'],
+];
+const SKYC = SKY.map(s=>s[1]);
+
+/* a checker of cell size G between two flat colours - the only place in
+   the whole asset set where dithering is allowed, because it is a
+   TRANSITION between two flats, not shading laid over a form */
+function checker(x,y,w,h,a,b,phase){
+  for(let j=0;j<h;j+=G) for(let i=0;i<w;i+=G)
+    px(x+i, y+j, G, G, (((i/G)+(j/G)+(phase||0))&1) ? b : a);
+}
+/* a join stepped horizontally instead of dithered: the boundary itself
+   moves up and down on a coarse grid, so two flats meet along a ragged
+   line and no third tone is invented */
+function stepJoin(x,y,w,step,amp,a,b,seedRow){
+  for(let i=0;i<w;i+=step){
+    const d = seedRow[(i/step) % seedRow.length] * G;
+    px(x+i, y-amp*G, step, amp*G + d, a);
+    px(x+i, y-amp*G+amp*G+d, step, amp*G*2 - d, b);
+  }
+}
+const SEED=[0,2,1,3,1,0,2,1,3,0,1,2,0,3,1,2,1,0,2,3];
+
+const JOINS=[];   /* [name, note, draw(x,y,w,bandH,stops)] */
+
+JOINS.push(['Hard','no transition at all - flats meet on a straight line',
+ (x,y,w,bh,n,f)=>{
+   for(let k=0;k<n;k++) px(x, y+k*bh, w, bh, SKYC[(f||0)+k]);
+ }]);
+
+JOINS.push(['Checker','one 50% checker band at each join, 6px deep',
+ (x,y,w,bh,n,f)=>{
+   for(let k=0;k<n;k++) px(x, y+k*bh, w, bh, SKYC[(f||0)+k]);
+   for(let k=1;k<n;k++) checker(x, y+k*bh-G, w, G*2, SKYC[(f||0)+k-1], SKYC[(f||0)+k], 0);
+ }]);
+
+JOINS.push(['Triple','three checkers per join - 25, 50 then 75 percent',
+ (x,y,w,bh,n,f)=>{
+   for(let k=0;k<n;k++) px(x, y+k*bh, w, bh, SKYC[(f||0)+k]);
+   /* ordered 1-in-4, then 2-in-4, then 3-in-4 - a real quarter ramp.
+      The earlier version keyed on (i+j)%4, which is a diagonal line
+      rather than a density, and it read as hatching. */
+   for(let k=1;k<n;k++){
+     const a=SKYC[(f||0)+k-1], b=SKYC[(f||0)+k], t=y+k*bh-G*2;
+     const q=(i,j)=>(((i/G)&1)===0 && ((j/G)&1)===0);
+     for(let j=0;j<G;j+=G) for(let i=0;i<w;i+=G) px(x+i,t+j,G,G, q(i,j)?b:a);
+     checker(x, t+G, w, G, a, b, 0);
+     for(let j=0;j<G;j+=G) for(let i=0;i<w;i+=G) px(x+i,t+G*2+j,G,G, q(i,j)?a:b);
+   }
+ }]);
+
+JOINS.push(['Scanline','alternating full rows instead of a checker',
+ (x,y,w,bh,n,f)=>{
+   for(let k=0;k<n;k++) px(x, y+k*bh, w, bh, SKYC[(f||0)+k]);
+   for(let k=1;k<n;k++){
+     const a=SKYC[(f||0)+k-1], b=SKYC[(f||0)+k], t=y+k*bh-G*2;
+     for(let j=0;j<G*4;j+=G) px(x, t+j, w, G, ((j/G)&1)?b:a);
+   }
+ }]);
+
+JOINS.push(['Stepped','the boundary itself steps on a coarse grid',
+ (x,y,w,bh,n,f)=>{
+   for(let k=0;k<n;k++) px(x, y+k*bh, w, bh, SKYC[(f||0)+k]);
+   for(let k=1;k<n;k++)
+     stepJoin(x, y+k*bh, w, G*4, 2, SKYC[(f||0)+k-1], SKYC[(f||0)+k], SEED);
+ }]);
+
+JOINS.push(['Ruled','a hard flats join with one bright rule on it',
+ (x,y,w,bh,n,f)=>{
+   for(let k=0;k<n;k++) px(x, y+k*bh, w, bh, SKYC[(f||0)+k]);
+   for(let k=1;k<n;k++){
+     px(x, y+k*bh-G, w, G, SKYC[(f||0)+k-1]);
+     px(x, y+k*bh, w, 1, 'rgba(255,255,255,.20)');
+   }
+ }]);
+
+/* ---- stars -----------------------------------------------------------
+   A hand-laid table, not a noise function evaluated per frame. The field
+   is a 180x360 tile that wraps, so it scrolls forever without repeating
+   visibly and without ever being reseeded — the same reason the meteor's
+   embers run on fixed lanes.
+
+   [x, y, grade] — grade 0 dim, 1 mid, 2 bright.                       */
+const STARS=[
+ [72,5,0],[94,14,1],[7,20,0],[22,39,0],[130,40,2],[47,60,0],[72,60,0],[21,73,1],
+ [108,80,0],[136,80,0],[171,86,1],[50,109,0],[97,114,0],[16,115,2],[170,116,0],[46,146,0],
+ [84,146,1],[10,152,0],[145,155,0],[37,170,1],[96,173,0],[166,189,0],[129,200,2],[67,204,0],
+ [23,207,0],[99,212,1],[162,214,0],[41,222,0],[155,234,1],[102,242,0],[19,245,0],[81,254,2],
+ [7,274,0],[154,287,0],[42,301,1],[7,304,0],[85,310,0],[129,319,1],[45,334,0],[64,344,0],
+ [112,348,2],[165,350,0]
+];
+const STAR_W=180, STAR_H=360;
+const ST_C=['#8FA6C4','#CFE0F4','#FFFFFF'];
+const ST_S=[1,2,3];
+/* which stars take a turn twinkling, and on which of six frames */
+const TWINKLE=[2,9,16,23,30,37];
+
+function starField(w,h,scroll,mode,frame){
+  const oy=((scroll%STAR_H)+STAR_H)%STAR_H;
+  for(let ty=-STAR_H; ty<h+STAR_H; ty+=STAR_H)
+    for(let tx=0; tx<w; tx+=STAR_W)
+      STARS.forEach(([sx,sy,gr],i)=>{
+        const x=tx+sx, y=ty+sy+oy;
+        if(x<0||x>=w||y<-4||y>=h) return;
+        let g2=gr, s=ST_S[gr], col=ST_C[gr];
+        if(mode==='twinkle'){
+          const k=TWINKLE.indexOf(i);
+          if(k>=0 && (k%6)===frame){ g2=2; s=ST_S[2]; col=ST_C[2]; }
+        }
+        if(mode==='flat'){ s=1; col=ST_C[1]; }
+        if(mode==='glint' && gr===2){
+          px(x-2,y,5,1,col); px(x,y-2,1,5,col);
+          px(x,y,1,1,'#FFFFFF'); return;
+        }
+        if(mode==='streak'){ px(x,y,s,s*3,col); return; }
+        if(mode==='trail'){ px(x,y,s,s,col);
+          if(gr>0) px(x,y+s,s,s*2,ST_C[0]); return; }
+        px(x,y,s,s,col);
+      });
+}
+const STARMODES=[
+ ['Flat','every star one pixel, one colour - the cheapest field there is','flat'],
+ ['Graded','three sizes and three tones, hand-placed','grade'],
+ ['Glint','the brightest grade gets a hard four-point cross','glint'],
+ ['Twinkle','a fixed sixteen take turns brightening, six frames','twinkle'],
+ ['Streak','every star drawn 3x tall - speed read into the field itself','streak'],
+ ['Trail','a bright head with a dim tail under it, only on the big ones','trail'],
+];
+
+/* ---- glint + twinkle, combined --------------------------------------
+   The permanent glint stays on the brightest grade, so the field has a
+   few fixed anchors. A separate twelve ramp up to a glint and back down
+   on an eight-step table, each offset by its own phase so they never
+   pulse together — a blink reads as a fault, a ramp reads as air.    */
+const TW_SET=[2,9,16,23,30,37];
+const TW_STEP=[0,1,2,3,3,2,1,0];          /* 3 = bright plus the cross */
+const TW_PHASE=TW_SET.map((_,k)=>k*5);
+
+function glintCross(x,y,col){
+  px(x-2,y,5,1,col); px(x,y-2,1,5,col); px(x,y,1,1,'#FFFFFF');
+}
+function starsGlintTwinkle(w,h,scroll,frame){
+  const oy=((scroll%STAR_H)+STAR_H)%STAR_H;
+  for(let ty=-STAR_H; ty<h+STAR_H; ty+=STAR_H)
+    for(let tx=0; tx<w; tx+=STAR_W)
+      STARS.forEach(([sx,sy,gr],i)=>{
+        const x=tx+sx, y=ty+sy+oy;
+        if(x<-3||x>=w+3||y<-3||y>=h+3) return;
+        const k=TW_SET.indexOf(i);
+        if(k>=0){
+          const lv=TW_STEP[(frame+TW_PHASE[k])%TW_STEP.length];
+          if(lv===3){ glintCross(x,y,ST_C[2]); return; }
+          px(x,y,ST_S[lv],ST_S[lv],ST_C[lv]);
+          return;
+        }
+        if(gr===2){ glintCross(x,y,ST_C[2]); return; }
+        px(x,y,ST_S[gr],ST_S[gr],ST_C[gr]);
+      });
+}
+
+/* ---- clouds ----------------------------------------------------------
+   A soft thing that has to be drawn hard. No ramps, no dithered edge —
+   the form comes from flat lobes placed by hand, a light line along the
+   top, and one flat shadow tone underneath. The outline is a deeper
+   blue rather than the near-black the sprites use; near-black around a
+   cloud reads as a hole in the sky.                                   */
+const CL_H='#FFFFFF', CL_L='#ECF5FD', CL_B='#D2E4F4', CL_D='#AFC9E0', CL_S='#8FAECC';
+
+/* a flat lobe, stepped on the grid, clamped to a flat base */
+function lobeRows(m,cx,cy,rx,ry,baseY){
+  for(let y=Math.round((cy-ry)/G)*G; y<=Math.min(cy+ry,baseY); y+=G){
+    const t=(y-cy)/ry, w=Math.round(rx*Math.sqrt(Math.max(0,1-t*t))/G)*G;
+    if(w<G) continue;
+    for(let yy=y; yy<y+G; yy++){
+      if(yy>baseY) break;
+      const e=m.get(yy);
+      if(!e) m.set(yy,[cx-w,cx+w-1]);
+      else { e[0]=Math.min(e[0],cx-w); e[1]=Math.max(e[1],cx+w-1); }
+    }
+  }
+}
+function cloudFrom(lobes, baseY){
+  const m=new Map();
+  for(const L of lobes) lobeRows(m,L[0],L[1],L[2],L[3],baseY);
+  return [...m.entries()].sort((a,b)=>a[0]-b[0]).map(([y,ab])=>[y,ab[0],ab[1]]);
+}
+/* fill, then the two-pixel light line along the top, then a flat shadow
+   band on the underside, then the deeper-blue edge */
+function paintCloud(S, litFrac, shadeRows){
+  rows(S, CL_B);
+  const bot=S[S.length-1][0];
+  for(const [y,a,b] of S) if(y>bot-shadeRows) px(a,y,b-a+1,1,CL_D);
+  const top=new Map();
+  for(const [y,a,b] of S) for(let x=a;x<=b;x++) if(!top.has(x)) top.set(x,y);
+  const xs=[...top.keys()], x0=Math.min(...xs), x1=Math.max(...xs);
+  for(const [x,y] of top){
+    if(x > x0+(x1-x0)*litFrac) continue;
+    px(x,y,1,2,CL_H); px(x,y+2,1,1,CL_L);
+  }
+  for(const [y,a,b] of S){ px(a,y,1,1,CL_S); px(b,y,1,1,CL_S); }
+  px(S[S.length-1][1], bot, S[S.length-1][2]-S[S.length-1][1]+1, 1, CL_S);
+}
+
+const CLOUDS=[];   /* [name, note, w, h, draw] */
+
+CLOUDS.push(['Stacked lobes','overlapping flat lobes on a flat base - the default cumulus',186,66,
+ ()=>paintCloud(cloudFrom([[54,42,42,27],[96,33,39,33],[138,45,36,24],[24,51,24,15]],60),0.58,9)]);
+
+CLOUDS.push(['Terraced','flat plateaus with hard risers - no curve anywhere',186,66,
+ ()=>{
+   const S=[];
+   const T=[[18,30,168],[27,21,174],[36,12,180],[45,6,183],[54,0,185]];
+   const TOPS=[[9,72,120],[12,60,132],[15,48,144]];
+   const m=new Map();
+   for(const [y,a,b] of TOPS.concat(T))
+     for(let yy=y; yy<y+9; yy++){ const e=m.get(yy);
+       if(!e) m.set(yy,[a,b]); else { e[0]=Math.min(e[0],a); e[1]=Math.max(e[1],b); } }
+   for(const [y,ab] of [...m.entries()].sort((p,q)=>p[0]-q[0])) S.push([y,ab[0],ab[1]]);
+   paintCloud(S,0.55,9);
+ }]);
+
+CLOUDS.push(['Slab','a long stratus bar, bumped on top and flat underneath',216,39,
+ ()=>paintCloud(cloudFrom([[36,27,36,15],[84,21,45,18],[144,24,39,15],[192,27,27,12]],33),0.62,6)]);
+
+CLOUDS.push(['Ragged','a hand-laid irregular outline - no lobe repeats',186,63,
+ ()=>{
+   const T=[[9,84,111],[12,72,120],[15,60,129],[18,45,138],[21,36,147],[24,27,153],
+            [27,21,162],[30,15,168],[33,9,171],[36,6,174],[39,3,177],[42,0,180],
+            [45,0,183],[48,0,183],[51,0,180],[54,3,177]];
+   const S=[];
+   for(const [y,a,b] of T) for(let yy=y;yy<y+3;yy++) S.push([yy,a,b]);
+   paintCloud(S,0.56,9);
+ }]);
+
+CLOUDS.push(['Banked','lobes with a hard flat shadow across the whole underside',186,66,
+ ()=>{
+   const S=cloudFrom([[54,42,42,27],[96,33,39,33],[138,45,36,24],[24,51,24,15]],60);
+   paintCloud(S,0.58,21);
+ }]);
+
+CLOUDS.push(['Wisp','broken into separate pieces with sky between - cirrus',216,48,
+ ()=>{
+   [[[24,24,24,9]],[[84,18,33,8]],[[150,30,27,7]],[[198,21,18,6]]]
+     .forEach(g=>paintCloud(cloudFrom(g, g[0][1]+g[0][3]), 0.60, 3));
+ }]);
+
+/* ---- overlap and transparency ----------------------------------------
+   A cloud cannot be made translucent with alpha without inventing blended
+   tones, which is the one thing the palette rules forbid. So it is made
+   translucent by leaving HOLES: a checker on the 3px grid where every
+   other cell is simply not painted. Whatever is behind — sky, or another
+   cloud — shows through it, and no new colour exists.
+
+   mode 'half'    the whole cloud is checkered: the far layer
+   mode 'feather' solid core, checkered for `d` pixels in from the edge
+   mode 'solid'   as before                                            */
+function holeAt(x,y){ return (((x/G)|0)+((y/G)|0))&1; }
+
+function paintCloudM(S, litFrac, shadeRows, mode, d){
+  d = d||6;
+  const bot=S[S.length-1][0], top0=S[0][0];
+  for(const [y,a,b] of S){
+    const shaded = y > bot-shadeRows;
+    const col = shaded ? CL_D : CL_B;
+    for(let x=a;x<=b;x++){
+      let hole=false;
+      if(mode==='half') hole = holeAt(x,y);
+      else if(mode==='feather'){
+        const near = (x < a+d) || (x > b-d) || (y < top0+d) || (y > bot-d);
+        if(near) hole = holeAt(x,y);
+      }
+      if(!hole) px(x,y,1,1,col);
+    }
+  }
+  const tmap=new Map();
+  for(const [y,a,b] of S) for(let x=a;x<=b;x++) if(!tmap.has(x)) tmap.set(x,y);
+  const xs=[...tmap.keys()], x0=Math.min(...xs), x1=Math.max(...xs);
+  for(const [x,y] of tmap){
+    if(x > x0+(x1-x0)*litFrac) continue;
+    if(mode==='half' && holeAt(x,y)) continue;
+    px(x,y,1,2,CL_H); px(x,y+2,1,1,CL_L);
+  }
+  for(const [y,a,b] of S){
+    if(!(mode==='half' && holeAt(a,y))) px(a,y,1,1,CL_S);
+    if(!(mode==='half' && holeAt(b,y))) px(b,y,1,1,CL_S);
+  }
+}
+const CLOUD_A=[[54,42,42,27],[96,33,39,33],[138,45,36,24],[24,51,24,15]];
+const CLOUD_B=[[48,30,36,21],[90,24,33,24],[126,33,27,18]];
+
+const TRANS=[
+ ['Solid','as it was - opaque, nothing shows through','solid'],
+ ['Feathered','solid core, checkered for 6px in from the edge','feather'],
+ ['Half-tone','the whole cloud checkered - the far layer','half'],
+];
+
+/* ---- Earth limb ------------------------------------------------------
+   Seen from low orbit the horizon is a very shallow arc across the whole
+   540, not a ball. So it is one stepped curve with flat atmosphere bands
+   stacked above it, each following the same arc — no radial gradient,
+   which is what every reference image of this is made of and what the
+   pixel grid cannot carry.
+
+   The curve is quantised to the 3px grid like every silhouette here, so
+   it steps rather than sweeps.                                        */
+const EA_N='#081A34', EA_O1='#123A6E', EA_O2='#1B5090', EA_O3='#2A6BB0';
+const EA_L1='#2E5A3A', EA_L2='#3F7A4E', EA_ICE='#D8E8F4';
+const EA_A=['#4FA8D8','#3A86BE','#25608F','#163A62','#0B1E3E'];
+const EA_DAWN='#E8A23C';
+
+/* y of the limb at column x, for a sag of `sag` across width w */
+function limbY(x,w,base,sag){
+  const t=(x-w/2)/(w/2);
+  return Math.round((base + sag*t*t)/G)*G;
+}
+/* fill everything below the arc, and stack the bands above it */
+function limbBase(w,h,base,sag,body){
+  for(let x=0;x<w;x+=G){
+    const y=limbY(x,w,base,sag);
+    px(x,y,G,h-y,body);
+  }
+}
+function limbBands(w,base,sag,bands){
+  let off=0;
+  bands.forEach(([th,col])=>{
+    for(let x=0;x<w;x+=G){
+      const y=limbY(x,w,base,sag);
+      px(x,y-off-th,G,th,col);
+    }
+    off+=th;
+  });
+}
+/* a flat detail that follows the curve - land, ice, cloud streak */
+function onLimb(w,base,sag,x0,x1,depth,thick,col,mask){
+  for(let x=x0;x<x1;x+=G){
+    const y=limbY(x,w,base,sag)+depth;
+    if(mask){ for(let j=0;j<thick;j+=G) if(!holeAt(x,y+j)) px(x,y+j,G,G,col); }
+    else px(x,y,G,thick,col);
+  }
+}
+
+const LIMBS=[];   /* [name, note, sag, draw(w,h)] */
+
+LIMBS.push(['Bands','the arc with five flat atmosphere bands above it',
+ (w,h)=>{ const base=h-120, sag=54;
+   limbBase(w,h,base,sag,EA_O2);
+   limbBands(w,base,sag,[[3,EA_A[0]],[6,EA_A[1]],[9,EA_A[2]],[12,EA_A[3]],[18,EA_A[4]]]);
+   for(let x=0;x<w;x+=G) px(x,limbY(x,w,base,sag),G,3,EA_O3);
+ }]);
+
+LIMBS.push(['Terminator','a hard day/night split, the glow following the curve',
+ (w,h)=>{ const base=h-120, sag=54, tx=Math.round(w*0.58/G)*G;
+   limbBase(w,h,base,sag,EA_O2);
+   for(let x=tx;x<w;x+=G){ const y=limbY(x,w,base,sag); px(x,y,G,h-y,EA_N); }
+   limbBands(w,base,sag,[[3,EA_A[0]],[6,EA_A[1]],[9,EA_A[2]],[12,EA_A[3]],[18,EA_A[4]]]);
+   /* the bands go out on the night side too, or the split reads as a cut */
+   const NIGHT=[[3,'#1B4468'],[6,'#143552'],[9,'#0E2740'],[12,'#0A1B2E'],[18,'#060F1E']];
+   let off=0;
+   NIGHT.forEach(([th,col])=>{
+     for(let x=tx;x<w;x+=G){ const y=limbY(x,w,base,sag); px(x,y-off-th,G,th,col); }
+     off+=th;
+   });
+   for(let x=0;x<tx;x+=G) px(x,limbY(x,w,base,sag),G,3,EA_O3);
+   /* dawn: a short warm run along the limb either side of the boundary */
+   for(let x=tx-36;x<tx+18;x+=G){
+     const y=limbY(x,w,base,sag);
+     px(x,y-3,G,6, x<tx?EA_DAWN:'#9A5F1E');
+   }
+ }]);
+
+LIMBS.push(['Landmass','a hand-laid continent lying on the ocean, ice at its edge',
+ (w,h)=>{ const base=h-120, sag=54;
+   limbBase(w,h,base,sag,EA_O2);
+   limbBands(w,base,sag,[[3,EA_A[0]],[6,EA_A[1]],[9,EA_A[2]],[12,EA_A[3]],[18,EA_A[4]]]);
+   for(let x=0;x<w;x+=G) px(x,limbY(x,w,base,sag),G,3,EA_O3);
+   /* [x offset, depth of the coast, depth of the far edge] - one connected
+      mass, every column touching its neighbour */
+   const LAND=[[0,12,33],[12,9,39],[24,6,45],[36,9,48],[48,15,42],[60,12,51],
+               [72,18,45],[84,15,54],[96,21,48],[108,18,39],[120,24,45],
+               [132,21,36],[144,27,42],[156,24,33],[168,30,36],[180,27,30]];
+   const X0=138;
+   for(const [dx,t,b] of LAND){
+     const x=X0+dx, y=limbY(x,w,base,sag);
+     px(x,y+t,12,b-t,EA_L1);          /* full 12px span, or it combs */
+     px(x,y+t,12,3,EA_L2);
+   }
+   onLimb(w,base,sag,60,111,3,6,EA_ICE);
+ }]);
+
+LIMBS.push(['Cloud tops','half-tone cloud streaks lying on the curve',
+ (w,h)=>{ const base=h-120, sag=54;
+   limbBase(w,h,base,sag,EA_O2);
+   limbBands(w,base,sag,[[3,EA_A[0]],[6,EA_A[1]],[9,EA_A[2]],[12,EA_A[3]],[18,EA_A[4]]]);
+   for(let x=0;x<w;x+=G) px(x,limbY(x,w,base,sag),G,3,EA_O3);
+   [[42,138,9],[189,300,18],[330,462,12],[96,171,33]].forEach(([a,b,d])=>{
+     onLimb(w,base,sag,a,b,d,9,CL_B,true);
+     onLimb(w,base,sag,a,Math.min(b,a+36),d,3,CL_H,true);
+   });
+ }]);
+
+LIMBS.push(['Thin crescent','the limb far off - a sliver, no bands to speak of',
+ (w,h)=>{ const base=h-78, sag=27;
+   limbBase(w,h,base,sag,EA_O1);
+   limbBands(w,base,sag,[[3,EA_A[2]],[6,EA_A[3]],[9,EA_A[4]]]);
+   for(let x=0;x<w;x+=G) px(x,limbY(x,w,base,sag),G,3,EA_O2);
+ }]);
+
+LIMBS.push(['Close curve','nearly flat - the horizon on the way up, not from orbit',
+ (w,h)=>{ const base=h-180, sag=18;
+   limbBase(w,h,base,sag,EA_O3);
+   limbBands(w,base,sag,[[6,EA_A[0]],[12,EA_A[1]],[18,EA_A[2]],[24,EA_A[3]]]);
+   for(let x=0;x<w;x+=G) px(x,limbY(x,w,base,sag),G,3,'#4E8FC8');
+ }]);
+
+/* ---- the ladder, pinned to the zone table --------------------------
+   Each stop is the altitude its zone starts at, so the sky steps where
+   the world does rather than on a schedule of its own. */
+const STOP_FT = [0, 500, 1000, 1500, 3000, 4500, 5500, 6000, 7500, 8000, 9500, 10000];
+function stopAt(feet){
+  if (feet <= 0) return 0;
+  for (let i = 0; i < STOP_FT.length - 1; i++)
+    if (feet < STOP_FT[i+1])
+      return i + (feet - STOP_FT[i]) / (STOP_FT[i+1] - STOP_FT[i]);
+  return STOP_FT.length - 1;
+}
+
+/* ---- clouds: baked once, blitted after ----------------------------- */
+function bakeCloud(lobes, mode){
+  const S = cloudFrom(lobes, lobes[0][1] + lobes[0][3] + 18);
+  const w = Math.max(...S.map(r=>r[2])) + 8, h = S[S.length-1][0] + 8;
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const pg=_g, pp=_P, ox=OX, oy=OY;
+  _g = cv.getContext('2d'); _P = 1; OX = 4; OY = 4;
+  paintCloudM(S, 0.58, 9, mode, 6);
+  _g=pg; _P=pp; OX=ox; OY=oy;
+  return cv;
+}
+let CB = null, stats = null;
+function bake(){
+  const t0 = performance.now();
+  CB = { farA:  bakeCloud(CLOUD_A,'half'),  farB:  bakeCloud(CLOUD_B,'half'),
+         nearA: bakeCloud(CLOUD_A,'solid'), nearB: bakeCloud(CLOUD_B,'solid') };
+  let bytes = 0, n = 0;
+  for (const k in CB){ n++; bytes += CB[k].width * CB[k].height * 4; }
+  stats = { ms:+(performance.now()-t0).toFixed(2), sprites:n, kb:Math.round(bytes/1024) };
+  return stats;
+}
+
+/* the far layer runs slower and carries the holes; parallax and overlap
+   are the only depth cues there are, because a sprite cannot be scaled */
+const TILE = 760;
+const SLOT = {
+  farA:  [[-40,60,1],[250,300,-1],[60,540,1],[300,660,-1]],
+  farB:  [[180,170,-1],[-10,420,1],[330,610,1]],
+  nearA: [[20,120,1],[280,380,-1],[-50,620,1]],
+  nearB: [[300,40,-1],[120,470,1],[240,700,-1]]
+};
+function layer(ctx, bk, slots, off, drift, t){
+  const oy = ((off % TILE) + TILE) % TILE;
+  ctx.imageSmoothingEnabled = false;
+  for (let k = -1; k <= 1; k++)
+    for (const [sx, sy, mir] of slots){
+      const x = sx + Math.sin(t*drift + sy)*6, y = sy + oy + k*TILE;
+      if (y > 1200 || y < -400) continue;
+      ctx.save();
+      if (mir < 0){ ctx.translate(x + bk.width, y); ctx.scale(-1,1); ctx.drawImage(bk,0,0); }
+      else ctx.drawImage(bk, x, y);
+      ctx.restore();
+    }
+}
+
+/* a ramp of stars rather than a switch: the field fills in as the sky
+   darkens, by COUNT, because a dot has no alpha to fade */
+function starsAt(w, h, scroll, frame, keep){
+  if (keep <= 0) return;
+  const cut = Math.round(STARS.length * keep);
+  const oy = ((scroll % STAR_H) + STAR_H) % STAR_H;
+  for (let ty = -STAR_H; ty < h + STAR_H; ty += STAR_H)
+    for (let tx = 0; tx < w; tx += STAR_W)
+      STARS.forEach(([sx,sy,gr], i) => {
+        if (i >= cut) return;
+        const x = tx+sx, y = ty+sy+oy;
+        if (x < -3 || x >= w+3 || y < -3 || y >= h+3) return;
+        const k = TW_SET.indexOf(i);
+        if (k >= 0){
+          const lv = TW_STEP[(frame + TW_PHASE[k]) % TW_STEP.length];
+          if (lv === 3){ glintCross(x, y, ST_C[2]); return; }
+          px(x, y, ST_S[lv], ST_S[lv], ST_C[lv]); return;
+        }
+        if (gr === 2){ glintCross(x, y, ST_C[2]); return; }
+        px(x, y, ST_S[gr], ST_S[gr], ST_C[gr]);
+      });
+}
+
+return {
+  bake, stats: () => stats, stopAt,
+  /* two stops and the boundary between them: the join steps on a coarse
+     grid, so the two flats meet along a ragged line and nothing is
+     blended. Darker is always above. */
+  sky(ctx, w, h, feet){
+    _g = ctx; _P = 1; OX = 0; OY = 0;
+    const f = stopAt(feet), i0 = Math.min(SKYC.length-2, Math.floor(f)), fr = f - i0;
+    const yb = Math.round((1 - fr) * h / G) * G;
+    px(0, 0, w, yb, SKYC[i0+1]);
+    px(0, yb, w, h - yb, SKYC[i0]);
+    if (yb > G*3 && yb < h - G*3)
+      stepJoin(0, yb, w, G*4, 2, SKYC[i0+1], SKYC[i0], SEED);
+  },
+  stars(ctx, w, h, feet, scroll, t){
+    const keep = Math.max(0, Math.min(1, (stopAt(feet) - 4) / 3));
+    if (keep <= 0) return;
+    _g = ctx; _P = 1; OX = 0; OY = 0;
+    starsAt(w, h, scroll, Math.floor(t*6) % TW_STEP.length, keep);
+  },
+  /* front is the near pair, which runs faster and is solid */
+  clouds(ctx, w, h, feet, scroll, t, front){
+    if (feet > 5200) return;
+    if (front){ layer(ctx, CB.nearA, SLOT.nearA, -scroll*0.44, 0.11, t);
+                layer(ctx, CB.nearB, SLOT.nearB, -scroll*0.44, 0.09, t); }
+    else      { layer(ctx, CB.farA,  SLOT.farA,  -scroll*0.26, 0.17, t);
+                layer(ctx, CB.farB,  SLOT.farB,  -scroll*0.26, 0.13, t); }
+  },
+  /* one stepped curve with five flat atmosphere bands above it, all
+     following the same arc. It sinks as the climb continues. */
+  limb(ctx, w, h, feet){
+    if (feet < 6600) return;
+    const sink = Math.max(0, Math.min(1, (feet - 7000) / 9000));
+    const base = Math.round((h - 40 + sink * 620) / G) * G, sag = 54;
+    if (base - 90 > h) return;
+    _g = ctx; _P = 1; OX = 0; OY = 0;
+    limbBase(w, h, base, sag, EA_O2);
+    limbBands(w, base, sag, [[3,EA_A[0]],[6,EA_A[1]],[9,EA_A[2]],[12,EA_A[3]],[18,EA_A[4]]]);
+    for (let x = 0; x < w; x += G) px(x, limbY(x, w, base, sag), G, 3, EA_O3);
+  }
+};
+})();
+
+/* ================================================================
    13. Rendering
    ================================================================ */
 function drawSky(){
-  const [top, bot] = skyAt(feet);
-  const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, rgb(top));
-  g.addColorStop(1, rgb(bot));
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, W, H);
-
-  /* low sun sits near the horizon and fades out as we leave the haze */
-  const sunA = clamp(1 - feet / 4600, 0, 1);
-  if (sunA > 0.01){
-    const sg = ctx.createRadialGradient(W*0.78, H*0.80, 10, W*0.78, H*0.80, 420);
-    sg.addColorStop(0, 'rgba(255,241,206,' + (0.55*sunA) + ')');
-    sg.addColorStop(1, 'rgba(255,214,150,0)');
-    ctx.fillStyle = sg;
-    ctx.fillRect(0, 0, W, H);
-  }
+  BD.sky(ctx, W, H, feet);
 }
 
 function drawStars(){
-  const a = clamp((feet - 4000) / 2800, 0, 1);
-  if (a <= 0.01) return;
-  ctx.save();
-  for (const s of stars){
-    const y = ((s.y + px * s.p) % H + H) % H;
-    const tw = 0.55 + 0.45 * Math.sin(runTime * 2.2 + s.tw);
-    ctx.globalAlpha = a * tw;
-    ctx.fillStyle = '#FFFFFF';
-    ctx.beginPath();
-    ctx.arc(s.x, y, s.r, 0, 6.2832);
-    ctx.fill();
-  }
-  ctx.restore();
+  /* the field fills in by COUNT as the sky darkens - a dot has no alpha
+     to fade, and inventing one would put a tone in it that is in no
+     palette */
+  BD.stars(ctx, W, H, feet, px * 0.35, runTime);
 }
 
 function drawEarthLimb(){
-  const a = clamp((feet - 7000) / 1800, 0, 1) * clamp(1 - (feet - 16000) / 9000, 0, 1);
-  if (a <= 0.01) return;
-  const sink = clamp((feet - 7000) / 9000, 0, 1) * 520;
-  const cy = H + 640 + sink, r = 980;
-  ctx.save();
-  ctx.globalAlpha = a;
-  const g = ctx.createRadialGradient(W/2, cy, r*0.82, W/2, cy, r);
-  g.addColorStop(0, '#0B2A52');
-  g.addColorStop(0.86, '#13508F');
-  g.addColorStop(1, '#2E86C8');
-  ctx.fillStyle = g;
-  ctx.beginPath(); ctx.arc(W/2, cy, r, 0, 6.2832); ctx.fill();
-  ctx.lineWidth = 5;
-  ctx.strokeStyle = 'rgba(150,225,255,.55)';
-  ctx.shadowColor = 'rgba(120,210,255,.9)';
-  ctx.shadowBlur = 34;
-  ctx.beginPath(); ctx.arc(W/2, cy, r + 3, Math.PI*1.16, Math.PI*1.84); ctx.stroke();
-  ctx.restore();
+  BD.limb(ctx, W, H, feet);
 }
 
 function drawCity(){
@@ -6045,54 +6582,8 @@ function drawCity(){
   ctx.restore();
 }
 
-function drawCloud(c){
-  ctx.save();
-  ctx.globalAlpha = clamp(c.a, 0, 1);
-  ctx.translate(c.x, c.y);
-  ctx.scale(c.s, c.s);
-
-  /* every puff as its own subpath, filled once - overlaps merge instead
-     of stacking their alpha, which is what made these read as circles */
-  ctx.beginPath();
-  for (const p of c.puffs){
-    ctx.moveTo(p.dx + p.r, p.dy);
-    ctx.arc(p.dx, p.dy, p.r, 0, 6.2832);
-  }
-
-  const high = feet > 4200;
-  const g = ctx.createLinearGradient(0, c.top, 0, 24);
-  if (high){
-    g.addColorStop(0,   'rgba(226,236,250,0.95)');
-    g.addColorStop(0.5, 'rgba(198,214,240,0.90)');
-    g.addColorStop(1,   'rgba(150,170,206,0.86)');
-  } else {
-    g.addColorStop(0,   'rgba(255,255,255,0.97)');
-    g.addColorStop(0.5, 'rgba(246,250,255,0.93)');
-    g.addColorStop(1,   'rgba(198,214,238,0.88)');
-  }
-  ctx.fillStyle = g;
-  ctx.fill();
-
-  /* sunlit caps on the upper left of each swell */
-  ctx.save();
-  ctx.clip();
-  ctx.fillStyle = high ? 'rgba(242,248,255,0.55)' : 'rgba(255,255,255,0.72)';
-  ctx.beginPath();
-  for (const p of c.puffs){
-    ctx.moveTo(p.dx + p.r*0.62, p.dy - p.r*0.26);
-    ctx.arc(p.dx - p.r*0.14, p.dy - p.r*0.26, p.r*0.76, 0, 6.2832);
-  }
-  ctx.fill();
-  ctx.restore();
-
-  ctx.restore();
-}
 function drawClouds(front, smear){
-  for (const c of clouds){
-    if ((c.par > 0.58) !== front) continue;
-    if (smear > 0.02) smearPass(() => drawCloud(c), smear);
-    drawCloud(c);
-  }
+  BD.clouds(ctx, W, H, feet, px, runTime, front);
 }
 
 function drawSpeedLines(){
@@ -6867,11 +7358,13 @@ resize();
 buildSkyline();
 const _spr = SPR.bake();
 const _spc = SPACE.bake();
+const _bd  = BD.bake();
 /* Test hooks, only with ?debug - the sprite measurement harness and the
    hitbox/coverage checks run against these. */
 if (location.search.indexOf('debug') >= 0){
 window.SPRDBG = SPR;
 window.SPACEDBG = SPACE;
+window.BDDBG = BD;
 window.DBG = {
   live: () => obstacles.map(o => o.t + (o.kind ? ':'+o.kind : '')),
   boxes: () => obstacles.map(o => ({ t:o.t, k:o.kind, n:rectsOf(o).length })),
@@ -6932,6 +7425,7 @@ window.DBG = {
 }
 console.log('[sprites] ' + _spr.sprites + ' baked in ' + _spr.ms + 'ms, ' +
             _spr.kb + ' KB, ' + _spr.clipped + ' clipped ' + JSON.stringify(_spr.where));
+console.log('[backdrop] ' + _bd.sprites + ' cloud surfaces in ' + _bd.ms + 'ms, ' + _bd.kb + ' KB');
 console.log('[space]   ' + _spc.sprites + ' baked in ' + _spc.ms + 'ms, ' +
             _spc.kb + ' KB, ' + _spc.clipped + ' clipped ' + JSON.stringify(_spc.where));
 document.getElementById('titleBest').textContent = commas(best) + ' FT';
