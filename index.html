@@ -1353,8 +1353,12 @@ function updatePlayer(dt){
   player.tilt = lerp(player.tilt, clamp(player.vx / PLAYER_MAXV, -1, 1) * 0.26, Math.min(1, 10*dt));
 }
 
+/* The sprite is the hitbox here too. This was 66x100 typed by hand
+   against an 84x118 player box, while the car's art is 60x84 - so the
+   car was being hit by things that visibly missed it. */
 function playerRect(){
-  return { x: player.x - 33, y: carY - 50, w: 66, h: 100 };
+  const b = SPR.carBox();
+  return { x: player.x - b.w/2, y: carY - b.h/2, w: b.w, h: b.h };
 }
 
 function updateObstacles(dt, scroll){
@@ -2820,6 +2824,10 @@ const SPR = (function(){
     const t0 = performance.now();
     cache.car = RIDER_PICK.map(i =>
       surface(76, 106, 0, 2, () => { cabin(); RIDERS[i][1](); panelBox(); }));
+    /* the same car with nobody in it, so the intro can show an empty
+       cabin being walked up to instead of one that already has its
+       rider standing in it */
+    cache.carEmpty = surface(76, 106, 0, 2, () => { cabin(); panelBox(); });
     cache.bird = BIRD_PICK.map(i =>
       [0,1,2].map(f => surface(48, 34, 5, 6, () => drawBird(BIRDS[i][2], f))));
     cache.debris = DEBRIS_PICK.map(i =>
@@ -2845,7 +2853,7 @@ const SPR = (function(){
     cache.pickup = [0,1,2].map(k =>
       Array.from({ length: PK_FRAMES },
                  (_, f) => surface(70, 70, 1, 1, () => pickup(k, f))));
-    let n = cache.car.length + cache.debris.length;
+    let n = cache.car.length + cache.debris.length + 1;   /* +1: the empty cabin */
     cache.bird.forEach(a => n += a.length);
     cache.heli.forEach(a => n += a.length);
     cache.plane.forEach(a => a.forEach(b => n += b.length));
@@ -2866,7 +2874,8 @@ const SPR = (function(){
     const where = {};
     const add = tag => cv => { bytes += cv.width * cv.height * 4;
       if (edgeTouched(cv)){ clipped++; where[tag] = (where[tag]||0)+1; } };
-    cache.car.forEach(add('car')); cache.debris.forEach(add('debris'));
+    cache.car.forEach(add('car')); add('car')(cache.carEmpty);
+    cache.debris.forEach(add('debris'));
     cache.bird.forEach((a,i) => a.forEach(add('bird'+i)));
     cache.heli.forEach((a,i) => a.forEach(add('heli'+i)));
     cache.plane.forEach((a,i) => a.forEach(b => b.forEach(add('plane'+i))));
@@ -2944,8 +2953,9 @@ const SPR = (function(){
       [HIT[k].anchor[0]+PAD.plane[i][0], HIT[k].anchor[1]+PAD.plane[i][1]]);
   }
 
-  function put(ctx, cv, anc, x, y, dir, rot){
+  function put(ctx, cv, anc, x, y, dir, rot, alpha){
     ctx.save();
+    if (alpha !== undefined && alpha < 1) ctx.globalAlpha = alpha;
     ctx.imageSmoothingEnabled = false;
     ctx.translate(Math.round(x), Math.round(y));
     if (rot) ctx.rotate(rot);
@@ -2966,7 +2976,9 @@ const SPR = (function(){
     bake, stats: () => stats, hit: k => HIT[k],
     put, rectsFor, hitKey: (fam,k) => HIT_KEY[fam][k],
     dims: (fam,k) => boxes[fam][k],
-    drawCar:    (ctx,i,x,y,rot)     => put(ctx, cache.car[i], anchors.car[i], x, y, 1, rot||0),
+    carBox: () => boxes.car[0],
+    drawCar:    (ctx,i,x,y,rot,a)   => put(ctx, cache.car[i], anchors.car[i], x, y, 1, rot||0, a),
+    drawCarEmpty:(ctx,x,y,rot)      => put(ctx, cache.carEmpty, anchors.car[0], x, y, 1, rot||0),
     carCv:      i                   => cache.car[i],
     carAnchor:  i                   => anchors.car[i],
     drawBird:   (ctx,k,f,x,y,dir)   => put(ctx, cache.bird[k][f], anchors.bird[k], x, y, dir, 0),
@@ -6406,12 +6418,15 @@ function bake(){
 
 /* the far layer runs slower and carries the holes; parallax and overlap
    are the only depth cues there are, because a sprite cannot be scaled */
-const TILE = 760;
+const TILE = 1180;
+/* Six instances per tile, not thirteen, on a tile half again as long -
+   so the sky is mostly sky and a cloud is an event rather than a
+   texture. One per layer keeps the parallax readable. */
 const SLOT = {
-  farA:  [[-40,60,1],[250,300,-1],[60,540,1],[300,660,-1]],
-  farB:  [[180,170,-1],[-10,420,1],[330,610,1]],
-  nearA: [[20,120,1],[280,380,-1],[-50,620,1]],
-  nearB: [[300,40,-1],[120,470,1],[240,700,-1]]
+  farA:  [[-40,180,1],[290,900,-1]],
+  farB:  [[300,610,-1]],
+  nearA: [[30,420,1],[-60,1060,1]],
+  nearB: [[250,60,-1]]
 };
 function layer(ctx, bk, slots, off, drift, t){
   const oy = ((off % TILE) + TILE) % TILE;
@@ -7534,7 +7549,12 @@ function drawElevator(x, y, rot, broken){
                      (state === S.RESCUE && rescueT >= R_GO - 1.0));
   /* the jets come off the sprite's nozzle row, not the player box */
   if (thrusting) drawFlames(x, y - hh + CAR_H, boostEnv());
-  SPR.drawCar(ctx, riderIx, x, y, rot);
+  /* empty until somebody has walked in - the rider fades up as they
+     step through the door, the way the doors fade out behind them */
+  const inside = state === S.MENU ? 0
+               : state === S.INTRO ? clamp((introT - I_BOARD) / 0.3, 0, 1) : 1;
+  if (inside < 1) SPR.drawCarEmpty(ctx, x, y, rot);
+  if (inside > 0) SPR.drawCar(ctx, riderIx, x, y, rot, inside);
   if (broken) crackle(x, y, rot);
 }
 
