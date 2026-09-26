@@ -669,6 +669,25 @@ function spunBandsAt(sets, rot, x, y){
   return bandsAt(sets[i], x, y);
 }
 
+/* ---- moving slowly on a screen that is finer than the world ---------
+   The backdrop layers travel at 4 to 17 px/s. Snapped to a whole LOGICAL
+   pixel they sit still for a third of a second and then jump one - the
+   skyline measured 3.3 steps a second while everything else moved every
+   frame, which is what reads as a choppy pan.
+
+   The display has more pixels than the world does: at a typical 1.8x the
+   screen can show a step of 0.55 of a world pixel. So the backdrop is
+   snapped to the DEVICE grid instead. It still lands exactly on a screen
+   pixel, so nothing is resampled and no edge is softened, but it can move
+   in the smallest step the screen is able to draw.
+
+   Never coarser than the world, though: in a small window the canvas is
+   fewer device pixels than the 540 it is authored at, and snapping to
+   that grid would make the judder worse rather than better. */
+let SNAP_ON = true;     /* ?debug can turn it off, to A/B the same build */
+const snapDev = v => { const d = SNAP_ON && scale > 1 ? scale : 1;
+                       return Math.round(v * d) / d; };
+
 function roundRect(g,x,y,w,h,r){
   const rr = Math.min(r, Math.abs(w)/2, Math.abs(h)/2);
   g.beginPath();
@@ -698,6 +717,7 @@ function resize(){
   cv.style.height = r.height + 'px';
   scale = cv.width / W;
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  BD.setScale(scale);
   stage.style.setProperty('--u', (r.width / W) + 'px');
 }
 window.addEventListener('resize', resize, {passive:true});
@@ -849,6 +869,10 @@ let riderIx = 0;
    passenger speaks, the agent answers, the ticket closes green, 3-2-1. */
 const R_RING = 1.3, R_PASS = 2.5, R_AGENT = 4.1, R_OK = 4.9,
       R_COUNT = 5.2, R_GO = 8.2;
+/* s of protection once the technician has you moving again. The shaft is
+   where you left it, so you are put back into traffic rather than into an
+   empty sky, and this is the room to read it. */
+const RESCUE_GRACE = 5.0;
 let rescueT = 0;
 const RESUME_T = 3.0;   /* count back in after a pause */
 let resumeT = 0;
@@ -856,7 +880,7 @@ let state = S.MENU;
 
 const player = {
   x: W/2, vx: 0, tilt: 0,
-  shield: false, mercy: 0, boost: 0, bubble: 0, vms3: false,
+  shield: false, mercy: 0, boost: 0, bubble: 0, vms3: false, hitBy: null,
   crashT: 0, crashVy: 0, crashSpin: 0, crashRot: 0, crashX: 0, crashY: 0
 };
 let carY = PLAYER_Y;                 /* the boost lifts this up the screen */
@@ -1206,6 +1230,7 @@ function start(){
   killedBy = ''; cleared = 0;
   el.rescue.hidden = true;
   player.shield = false; player.mercy = 0; player.boost = 0; player.bubble = 0;
+  player.hitBy = null;
   carY = PLAYER_Y; nextShield = SHIELD_AT; nextF1 = F1_AT;
   nextVms3 = VMS3_AT; vms3Taken = false; player.vms3 = false;
   nextSpawnPx = 420; lastBlockerPx = -1e9;
@@ -1742,6 +1767,7 @@ function crash(x, y, o){
   }
   if (player.vms3){                        /* the extra life, once a run */
     player.vms3 = false;
+    player.hitBy = o || null;
     state = S.RESCUE; rescueT = 0;
     player.crashX = player.x; player.crashY = carY;
     player.crashRot = 0; player.vx = 0;
@@ -1925,6 +1951,7 @@ function updateBits(dt){
 
 function update(dt){
   runTime += dt;
+  if (window.DBG && DBG.godOn) player.mercy = Math.max(player.mercy, 1);
   if (state === S.PLAY){
     /* above 1, so the climb starts gentle and the speed is earned later;
        at 0.85 it took a third of the range in the first tenth of the
@@ -2056,9 +2083,22 @@ function update(dt){
       }
     }
     if (rescueT >= R_GO){
-      /* back under way with a clear shaft and a moment of grace */
-      obstacles.length = 0;
-      player.mercy = 1.4;
+      /* Back under way in the shaft you left. Wiping it clean put the car
+         into a different sky from the one it stalled in, which read as a
+         new run rather than as the same one continuing - the altitude was
+         carried over but nothing else was.
+         Only the thing that actually hit the car is taken away, and not
+         even that if it was a boom: a crane is a piece of the world rather
+         than something loose, and deleting one would cut a hole in the
+         skyline. Everything else is exactly where the call interrupted
+         it, which is what the grace is for. */
+      const hit = player.hitBy;
+      if (hit && hit.t !== 'crane'){
+        const k = obstacles.indexOf(hit);
+        if (k >= 0) obstacles.splice(k, 1);
+      }
+      player.hitBy = null;
+      player.mercy = RESCUE_GRACE;
       el.rescue.hidden = true;
       state = S.PLAY;
       setLabels();
@@ -6442,7 +6482,18 @@ return {
    ================================================================ */
 const BD = (function(){
 let _g = null, _P = 1, OX = 0, OY = 0;
-const px = (x,y,w,h,col) => { _g.fillStyle = col; _g.fillRect(OX+x*_P, OY+y*_P, w*_P, h*_P); };
+/* How many device pixels there are to a world pixel. Rects are rounded
+   edge to edge on THAT grid rather than on the world's, so a star keeps
+   hard edges instead of being antialiased onto a fractional boundary,
+   and a layer creeping past at 4px/s can move by a third of a world
+   pixel instead of sitting still and then jumping a whole one. */
+let DEV = 1;
+const sd = v => Math.round(v * DEV) / DEV;
+const px = (x,y,w,h,col) => {
+  const x0 = sd(OX+x*_P),     y0 = sd(OY+y*_P);
+  const x1 = sd(OX+(x+w)*_P), y1 = sd(OY+(y+h)*_P);
+  _g.fillStyle = col; _g.fillRect(x0, y0, x1-x0, y1-y0);
+};
 const G = 3;
 /* ---- sky bands -------------------------------------------------------
    The one part of the art that cannot be made of parts. Everything else
@@ -6964,7 +7015,10 @@ const CL_DRIFT= [5, 4, 9, 7];
 function putCloud(ctx, bk, x, y, mir){
   ctx.imageSmoothingEnabled = false;
   ctx.save();
-  if (mir < 0){ ctx.translate(x + bk.width, y); ctx.scale(-1, 1); ctx.drawImage(bk, 0, 0); }
+  /* these were placed at a raw fraction, so which source row landed on
+     which screen row changed every frame and the cloud crawled */
+  x = sd(x); y = sd(y);
+  if (mir < 0){ ctx.translate(sd(x + bk.width), y); ctx.scale(-1, 1); ctx.drawImage(bk, 0, 0); }
   else ctx.drawImage(bk, x, y);
   ctx.restore();
 }
@@ -6994,6 +7048,7 @@ function starsAt(w, h, scroll, frame, keep){
 
 return {
   bake, stats: () => stats, stopAt,
+  setScale: s => { DEV = s > 1 ? s : 1; },
   /* One flat sky, darkening by degrees.
 
      This was two stops with a hard stepped boundary sweeping down the
@@ -7039,12 +7094,18 @@ return {
   limb(ctx, w, h, feet){
     if (feet < 6600) return;
     const sink = Math.max(0, Math.min(1, (feet - 7000) / 9000));
-    const base = Math.round((h - 40 + sink * 620) / G) * G, sag = 54;
+    const exact = h - 40 + sink * 620, sag = 54;
+    /* The arc is built on the 3px art grid, and it sinks at under a pixel
+       a second - so on the grid alone the horizon jolted three pixels
+       every few seconds. The shape still steps on the grid; what carries
+       the motion between steps is the offset the whole limb is drawn at. */
+    const base = Math.round(exact / G) * G;
     if (base - 90 > h) return;
-    _g = ctx; _P = 1; OX = 0; OY = 0;
+    _g = ctx; _P = 1; OX = 0; OY = sd(exact - base);
     limbBase(w, h, base, sag, EA_O2);
     limbBands(w, base, sag, [[3,EA_A[0]],[6,EA_A[1]],[9,EA_A[2]],[12,EA_A[3]],[18,EA_A[4]]]);
     for (let x = 0; x < w; x += G) px(x, limbY(x, w, base, sag), G, 3, EA_O3);
+    OY = 0;
   }
 };
 })();
@@ -7734,8 +7795,8 @@ function drawCity(){
   /* parallax is per pixel of climb, set against the altitude scale: the
      skyline sinks away over the first 2,800ft and is gone once we are
      above everything built */
-  const farY  = H * 0.88 + px * 0.016;
-  const nearY = H * 0.94 + px * 0.028;
+  const farY  = snapDev(H * 0.88 + px * 0.016);
+  const nearY = snapDev(H * 0.94 + px * 0.028);
   if (farY - 520 > H) return;
   const haze = clamp(1 - feet / 3000, 0, 1);
   const c = CITY.current();
@@ -7747,10 +7808,13 @@ function drawCity(){
   ctx.fillStyle = 'rgba(120,150,185,.45)';
   ctx.fillRect(0, farY, W, H - farY + 40);
   ctx.globalAlpha = haze * 0.55;
-  ctx.drawImage(c.far, 0, Math.round(farY - CITY.FAR_H));
+  ctx.drawImage(c.far, 0, snapDev(farY - CITY.FAR_H));
 
   ctx.globalAlpha = haze;
-  ctx.drawImage(c.near, 0, Math.round(nearY - CITY.NEAR_H));
+  ctx.drawImage(c.near, 0, snapDev(nearY - CITY.NEAR_H));
+  if (window.DBG) DBG._pan = { far: snapDev(farY - CITY.FAR_H),
+                               near: snapDev(nearY - CITY.NEAR_H),
+                               scale: scale };
   ctx.fillStyle = '#1D2532';
   ctx.fillRect(0, nearY, W, H - nearY + 60);
   ctx.restore();
@@ -8072,6 +8136,16 @@ function paintObstacle(o){
   }
 }
 
+/* The blink says nothing can touch you. It runs slowly while there is
+   plenty of that left and doubles once it is nearly out, so the rescue's
+   five seconds is a calm hold that quickens into a warning rather than
+   five seconds of strobing. */
+function mercyBlink(){
+  const m = player.mercy;
+  if (m <= 0) return false;
+  return Math.floor(m * (m > 1.2 ? 3 : 6)) % 2 === 0;
+}
+
 /* ---- the car ------------------------------------------------- */
 /* One system, not two: at cruise these are the ordinary three jets,
    short and flickering on a 4-frame table at 15 Hz; as the boost comes
@@ -8210,7 +8284,7 @@ function draw(){
     const bob = 0;
     const env = benv;
     if (env > 0.01) drawBoostWake(player.x, carY + bob, env);
-    const blink = player.mercy > 0 && Math.floor(player.mercy * 12) % 2 === 0;
+    const blink = mercyBlink();
     if (!blink) drawElevator(player.x, carY + bob, player.tilt, false);
     if (state === S.MENU) drawDoors(player.x, carY, 0, 1);
     if (state === S.INTRO){
@@ -8391,6 +8465,19 @@ window.DBG = {
   },
   tune: (mn, pd) => { PLAN_MIN = mn; PLAN_PAD = pd; },
   plan: () => survivable(),
+  pan: () => DBG._pan,
+  godOn: false,
+  god: v => { DBG.godOn = v !== false; return DBG.godOn; },
+  snap: v => { SNAP_ON = v !== false; BD.setScale(SNAP_ON ? scale : 1);
+               return SNAP_ON; },
+  /* hand out the extra life, and run the clock without waiting for it */
+  vms: () => { player.vms3 = true; setLabels(); return true; },
+  step: secs => { const n = Math.round(secs * 60);
+                  for (let i = 0; i < n; i++) update(1/60);
+                  return DBG.state(); },
+  world: () => ({ state: DBG.state(), ft: Math.floor(feet),
+                  mercy: +player.mercy.toFixed(2),
+                  haz: obstacles.map(hazardKey) }),
   gap: k => { SPAWN_GAP_EASY = GAP_EASY0 * k; SPAWN_GAP_HARD = GAP_HARD0 * k; },
   state: () => Object.keys(S).find(k => S[k] === state),
   /* run the real crash path, so the burst is the one the game throws */
