@@ -106,5 +106,10 @@ which parts are extrapolated rather than measured.
 - Never put model identifiers in commit messages, code comments, or anything
   else pushed to the repo.
 - Do not create pull requests unless asked.
+- **Anything that changes how the game looks gets proofed before it is made.**
+  Render it, send the screenshot, wait for a yes. Do not commit, publish or
+  push a visual change on the strength of a measurement - a number being
+  right is not the same as it looking right, and a rejected change that was
+  already built is wasted work on both sides.
 - Verify in the running game, not just in a test harness. Measure bake cost and
   frame time; both are reported by the debug hooks (`?debug`, `DBG.*`).

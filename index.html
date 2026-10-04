@@ -707,32 +707,15 @@ const cv    = document.getElementById('game');
 const ctx   = cv.getContext('2d', { alpha:false });
 let scale = 1;
 
-/* The render target is fixed, and the density with it: 1080x1920 is
-   exactly twice the 540x960 the art is drawn on, so one world pixel is
-   always a clean 2x2 block and nothing is ever resampled unevenly.
-
-   It used to size the canvas to the stage times the device ratio, capped
-   at 2.5. That cap is what broke it: a 1080-wide phone is 360 CSS px at
-   dpr 3, so the canvas came out 900 across and the scale 1.667 - which
-   nearest-neighbour renders as one world pixel in three landing a single
-   device pixel wide and the other two landing two. Every phone in the
-   target set was drawing pixel art on uneven pixels, and the 1080 panels
-   were being rendered at 83% of their resolution into the bargain.
-
-   Off the target resolution the browser makes one uniform scale of a
-   correct frame, which is what every console emulator does and is far
-   kinder than per-column unevenness. */
-const RENDER_W = 1080, RENDER_H = 1920;
-const DENSITY  = RENDER_W / W;          /* exactly 2 */
-
 function resize(){
   const r = stage.getBoundingClientRect();
   if (!r.width || !r.height) return;
-  cv.width  = RENDER_W;
-  cv.height = RENDER_H;
+  const dpr = clamp(window.devicePixelRatio || 1, 1, 2.5);
+  cv.width  = Math.max(1, Math.round(r.width  * dpr));
+  cv.height = Math.max(1, Math.round(r.height * dpr));
   cv.style.width  = r.width + 'px';
   cv.style.height = r.height + 'px';
-  scale = DENSITY;
+  scale = cv.width / W;
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
   BD.setScale(scale);
   stage.style.setProperty('--u', (r.width / W) + 'px');
