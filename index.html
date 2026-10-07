@@ -271,6 +271,78 @@
     text-transform:uppercase;color:var(--dim);
   }
 
+  /* ---- title: the collage plays on the canvas behind, so the screen
+     itself is only the logo, the prompt and a scrim to read them on --- */
+  #title.attract{
+    justify-content:space-between;
+    padding:calc(var(--u)*54) calc(var(--u)*30) calc(var(--u)*64);
+    /* one flat wash over the whole clip, sitting behind the logo and the
+       prompt - even across the frame, so the montage reads as one image
+       rather than something fading out at the edges */
+    background:rgba(5,7,14,.48);
+    backdrop-filter:none;
+  }
+  #title.attract .logo{margin-bottom:0}
+  .titleFoot{display:flex;flex-direction:column;align-items:center}
+  #title.attract .bestLine{margin-top:0;margin-bottom:calc(var(--u)*16)}
+  #title.attract .cta{margin-top:0}
+
+  /* ---- select: three steps on one screen -------------------------- */
+  .steps{
+    display:flex;gap:calc(var(--u)*10);margin-bottom:calc(var(--u)*18);
+    font-size:calc(var(--u)*12);letter-spacing:calc(var(--u)*1.6);
+    text-transform:uppercase;font-weight:700;color:#55607A;
+  }
+  .steps span{padding-bottom:calc(var(--u)*4);border-bottom:calc(var(--u)*2) solid transparent}
+  .steps span.on{color:var(--brass);border-bottom-color:var(--brass)}
+  .steps span.done{color:#8D97A8}
+  .selPane{display:flex;flex-direction:column;align-items:center;width:100%}
+  .selPane[hidden]{display:none}
+  #selCity{
+    width:calc(var(--u)*420);height:auto;image-rendering:pixelated;
+    border:calc(var(--u)*2) solid rgba(141,151,168,.28);
+    background:#0B1020;
+  }
+  .cityTag{
+    font-size:calc(var(--u)*14);color:var(--dim);margin-top:calc(var(--u)*-8);
+    margin-bottom:calc(var(--u)*14);letter-spacing:calc(var(--u)*.6);
+  }
+  .cityGrid{grid-template-columns:repeat(3,1fr);max-width:calc(var(--u)*390)}
+  .cityGrid .rider{padding:calc(var(--u)*10) 0}
+  .cityGrid .rider span{font-size:calc(var(--u)*13)}
+  .readyRow{
+    display:flex;align-items:center;gap:calc(var(--u)*26);
+    margin:calc(var(--u)*20) 0 calc(var(--u)*6);
+  }
+  #readyCar{width:calc(var(--u)*150);height:auto;image-rendering:pixelated;
+            filter:drop-shadow(0 calc(var(--u)*6) calc(var(--u)*18) rgba(0,0,0,.55))}
+  .readyMeta{display:grid;grid-template-columns:auto;gap:calc(var(--u)*2);text-align:left}
+  .readyLbl{font-size:calc(var(--u)*12);letter-spacing:calc(var(--u)*2);
+            text-transform:uppercase;color:var(--dim);margin-top:calc(var(--u)*10)}
+  .readyVal{font-size:calc(var(--u)*24);font-weight:800;color:var(--ink)}
+
+  /* ---- game over --------------------------------------------------- */
+  .gameOver{
+    font-size:calc(var(--u)*72);line-height:.9;font-weight:900;
+    letter-spacing:calc(var(--u)*-1);color:var(--alarm);
+    text-shadow:0 calc(var(--u)*3) 0 #8E1409,
+                0 calc(var(--u)*6) calc(var(--u)*30) rgba(255,59,48,.42);
+    margin-bottom:calc(var(--u)*18);
+  }
+  .hiRow{
+    margin-top:calc(var(--u)*26);display:flex;align-items:baseline;
+    gap:calc(var(--u)*10);
+  }
+  .hiLbl{font-size:calc(var(--u)*15);letter-spacing:calc(var(--u)*2.2);
+         text-transform:uppercase;color:var(--dim);font-weight:700}
+  .hiRow b{font-size:calc(var(--u)*34);font-weight:800;color:var(--brass)}
+  .hiUnit{font-size:calc(var(--u)*15);font-weight:700;color:var(--brass)}
+  .backsoon{
+    margin-top:calc(var(--u)*22);font-size:calc(var(--u)*14);
+    letter-spacing:calc(var(--u)*1.6);text-transform:uppercase;color:#5A6378;
+  }
+  .backsoon b{color:var(--dim);font-weight:800}
+
   .logo{position:relative;margin-bottom:calc(var(--u)*6)}
   .logo .mad{
     font-size:calc(var(--u)*112);line-height:.82;font-weight:900;
@@ -453,42 +525,69 @@
   </div>
 
   <!-- Title -->
-  <div class="screen" id="title">
+  <div class="screen attract" id="title">
     <div class="logo">
       <div class="mad">MAD</div>
       <div class="elevator">ELEVATOR</div>
     </div>
-    <div class="tagline">The service call went sideways.<br>Ride the glass car as high as it will go.</div>
-    <div class="bestLine">Best climb <b class="mono" id="titleBest">0 FT</b></div>
-    <div class="cta" id="titleCta">Press Space to Choose Your Rider</div>
-    <div class="keys">
-      <b>&#9664; &#9654;</b> arrow keys or <b>A / D</b> to steer<br>
-      or <b>touch and drag</b> anywhere on screen
+    <div class="titleFoot">
+      <div class="bestLine">Best climb <b class="mono" id="titleBest">0 FT</b></div>
+      <div class="cta" id="titleCta">Press SPACE to Start</div>
     </div>
   </div>
 
   <!-- Choose your rider -->
   <div class="screen" id="select" hidden>
-    <div class="selHead">Choose your rider</div>
-    <canvas id="selCar" width="114" height="159" aria-hidden="true"></canvas>
-    <div class="selName" id="selName">&mdash;</div>
-    <div class="selGrid" id="selGrid" role="radiogroup" aria-label="Rider"></div>
-    <button class="launch" id="launchBtn" type="button">Launch</button>
-    <div class="selHint">&#9664; &#9654; to choose &middot; Space to launch</div>
+    <div class="steps" id="steps">
+      <span data-step="rider">1 &middot; Rider</span>
+      <span data-step="city">2 &middot; Location</span>
+      <span data-step="ready">3 &middot; Ready</span>
+    </div>
+
+    <div class="selPane" id="paneRider">
+      <div class="selHead">Choose your rider</div>
+      <canvas id="selCar" width="114" height="159" aria-hidden="true"></canvas>
+      <div class="selName" id="selName">&mdash;</div>
+      <div class="selGrid" id="selGrid" role="radiogroup" aria-label="Rider"></div>
+    </div>
+
+    <div class="selPane" id="paneCity" hidden>
+      <div class="selHead">Choose your location</div>
+      <canvas id="selCity" width="420" height="300" aria-hidden="true"></canvas>
+      <div class="selName" id="cityName">&mdash;</div>
+      <div class="cityTag" id="cityTag"></div>
+      <div class="selGrid cityGrid" id="cityGrid" role="radiogroup" aria-label="Location"></div>
+    </div>
+
+    <div class="selPane" id="paneReady" hidden>
+      <div class="selHead">All set</div>
+      <div class="readyRow">
+        <canvas id="readyCar" width="114" height="159" aria-hidden="true"></canvas>
+        <div class="readyMeta">
+          <div class="readyLbl">Rider</div><div class="readyVal" id="readyRider">&mdash;</div>
+          <div class="readyLbl">Location</div><div class="readyVal" id="readyCity">&mdash;</div>
+        </div>
+      </div>
+    </div>
+
+    <button class="launch" id="launchBtn" type="button">Select</button>
+    <div class="selHint" id="selHint">&#9664; &#9654; to choose &middot; SPACE to confirm &middot; BACKSPACE to go back</div>
   </div>
 
   <!-- Crash -->
   <div class="screen" id="over" hidden>
+    <div class="gameOver">GAME OVER</div>
     <div class="verdict" id="verdict">Structural Failure</div>
     <div class="score mono" id="finalAlt">0</div>
     <div class="scoreUnit">FEET TRAVELLED</div>
     <div id="record" hidden>New Record</div>
-    <div class="stats">
-      <div>BEST<b class="mono" id="finalBest">0</b></div>
-      <div>TOP SPEED<b class="mono" id="finalSpeed">0</b></div>
-      <div>NEAR MISSES<b class="mono" id="finalNear">0</b></div>
+    <div class="hiRow">
+      <span class="hiLbl">All-time high</span>
+      <b class="mono" id="finalBest">0</b>
+      <span class="hiUnit">FT</span>
     </div>
-    <div class="cta" id="overCta">Press Space to Ride Again</div>
+    <div class="cta" id="overCta">Press SPACE for Title Screen</div>
+    <div class="backsoon">Back to the title in <b id="overCount">15</b></div>
   </div>
 
   <!-- Pause -->
@@ -580,6 +679,10 @@ const clamp = (v,a,b) => v < a ? a : v > b ? b : v;
 const lerp  = (a,b,t) => a + (b-a)*t;
 const rnd   = (a,b) => a + Math.random()*(b-a);
 const rndi  = (a,b) => Math.floor(rnd(a,b+1));
+/* A cycling frame index. JS % keeps the sign of the dividend, so a clock
+   that has run backwards - the first frame after boot does, see frame() -
+   indexes an array at -1 and the blit throws. Floor the modulo instead. */
+const cyc   = (t,n) => ((Math.floor(t) % n) + n) % n;
 const pick  = arr => arr[(Math.random()*arr.length)|0];
 const easeOut = t => 1 - Math.pow(1-t, 3);
 const commas = n => Math.floor(n).toLocaleString('en-US');
@@ -911,8 +1014,10 @@ const popups    = [];   // floating text
 
 /* the city this run starts over, picked fresh each time */
 let cityIx = 0;
-function buildSkyline(){
-  cityIx = Math.floor(Math.random() * CITY.count());
+/* the location is chosen on the picker now, so a run starts over the
+   city the player asked for; boot still needs a default to draw */
+function buildSkyline(i){
+  cityIx = (i === undefined ? citySel : i) % CITY.count();
   CITY.build(cityIx);
 }
 
@@ -926,8 +1031,15 @@ function primary(){
   /* Skipping takes you to the launch, not past it: the trip is two
      seconds and it is the half worth watching. */
   if (state === S.INTRO){ introT = Math.max(introT, I_SPOOL - 0.01); return; }
-  if (state === S.MENU){ menuScreen === 'title' ? showSelect() : start(); }
-  else if (state === S.OVER) showSelect();
+  /* SPACE is the one key that does the obvious thing in every state, so
+     in play it holds the run and in the hold it lets it go again */
+  if (state === S.PLAY){ pauseGame(); return; }
+  if (state === S.MENU){
+    if (menuScreen === 'title') showSelect();
+    else if (selStep < STEPS.length - 1) setStep(selStep + 1);
+    else start();
+  }
+  else if (state === S.OVER) showTitle();
   else if (state === S.PAUSE) resume();
 }
 
@@ -936,11 +1048,18 @@ window.addEventListener('keydown', e => {
   /* while the picker is up the arrows move the selection instead of the
      car, and the grid is five across, so up and down step by five */
   if (state === S.MENU && menuScreen === 'select'){
+    if (k === 'Backspace'){ e.preventDefault(); stepBack(); return; }
     const step = (k === 'ArrowLeft' || k === 'a' || k === 'A') ? -1
                : (k === 'ArrowRight' || k === 'd' || k === 'D') ? 1
                : (k === 'ArrowUp') ? -5 : (k === 'ArrowDown') ? 5 : 0;
-    if (step){ e.preventDefault(); chooseRider(selIx + step); return; }
+    if (step){
+      e.preventDefault();
+      if (STEPS[selStep] === 'rider') chooseRider(selIx + step);
+      else if (STEPS[selStep] === 'city') chooseCity(citySel + Math.sign(step));
+      return;
+    }
   }
+  if (k === 'Backspace' && state === S.OVER){ e.preventDefault(); showTitle(); return; }
   if (k === 'ArrowLeft'  || k === 'a' || k === 'A'){ keys.left = true;  pointerOn = false; e.preventDefault(); }
   if (k === 'ArrowRight' || k === 'd' || k === 'D'){ keys.right = true; pointerOn = false; e.preventDefault(); }
   if (k === ' ' || k === 'Enter'){ e.preventDefault(); primary(); }
@@ -1007,6 +1126,19 @@ const el = {
   selCar:   document.getElementById('selCar'),
   selName:  document.getElementById('selName'),
   selGrid:  document.getElementById('selGrid'),
+  steps:    document.getElementById('steps'),
+  paneRider:document.getElementById('paneRider'),
+  paneCity: document.getElementById('paneCity'),
+  paneReady:document.getElementById('paneReady'),
+  selCity:  document.getElementById('selCity'),
+  cityName: document.getElementById('cityName'),
+  cityTag:  document.getElementById('cityTag'),
+  cityGrid: document.getElementById('cityGrid'),
+  readyCar: document.getElementById('readyCar'),
+  readyRider:document.getElementById('readyRider'),
+  readyCity:document.getElementById('readyCity'),
+  selHint:  document.getElementById('selHint'),
+  overCount:document.getElementById('overCount'),
   launch:   document.getElementById('launchBtn'),
   over:     document.getElementById('over'),
   pause:    document.getElementById('pause'),
@@ -1015,8 +1147,6 @@ const el = {
   bigCount: document.getElementById('bigCount'),
   finalAlt: document.getElementById('finalAlt'),
   finalBest:document.getElementById('finalBest'),
-  finalSpeed:document.getElementById('finalSpeed'),
-  finalNear:document.getElementById('finalNear'),
   record:   document.getElementById('record'),
   verdict:  document.getElementById('verdict'),
   titleCta: document.getElementById('titleCta')
@@ -1141,8 +1271,8 @@ function crashLine(key){
 }
 
 if (matchMedia('(hover:none)').matches){
-  el.titleCta.textContent = 'Tap to Launch';
-  document.getElementById('overCta').textContent = 'Tap to Ride Again';
+  el.titleCta.textContent = 'Tap to Start';
+  document.getElementById('overCta').textContent = 'Tap for Title Screen';
 } else {
   document.getElementById('resumeCta').textContent = 'Tap or Press Space to Resume';
 }
@@ -1172,7 +1302,15 @@ function syncHUD(){
    renderer has to learn about a new state. menuScreen says which one is
    up, and primary() reads it. */
 let menuScreen = 'title';
+/* the picker is a sequence now: rider, then location, then a held beat
+   that lets you see both before committing. BACKSPACE walks it back. */
+const STEPS = ['rider', 'city', 'ready'];
+let selStep = 0;
 let selIx = 0;
+let citySel = 0;
+let overT = 0;                 /* s left before the title takes over */
+const OVER_HOLD = 15;
+try { citySel = Math.max(0, parseInt(localStorage.getItem('madElevator.city') || '0', 10) || 0); } catch(e){}
 try { selIx = Math.min(SPR.riders().length - 1,
         Math.max(0, parseInt(localStorage.getItem('madElevator.rider') || '0', 10) || 0)); } catch(e){}
 
@@ -1192,6 +1330,77 @@ function chooseRider(i){
   paintSelCar();
   try { localStorage.setItem('madElevator.rider', String(selIx)); } catch(e){}
 }
+/* a 1:1 crop of the chosen skyline - the band that carries each city's
+   signature: the pod, the Chrysler crown, the crown of the Arch */
+function paintCityPreview(){
+  const c = el.selCity, g = c.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  g.fillStyle = '#0B1020'; g.fillRect(0, 0, c.width, c.height);
+  const cur = CITY.current();
+  if (!cur) return;
+  g.drawImage(cur.near, -60, -380);
+}
+function chooseCity(i){
+  const n = CITY.count();
+  citySel = ((i % n) + n) % n;
+  CITY.build(citySel); cityIx = citySel;
+  el.cityName.textContent = CITY.names()[citySel];
+  el.cityTag.textContent  = CITY.tags ? CITY.tags()[citySel] : '';
+  [...el.cityGrid.children].forEach((b, k) =>
+    b.setAttribute('aria-checked', String(k === citySel)));
+  paintCityPreview();
+  try { localStorage.setItem('madElevator.city', String(citySel)); } catch(e){}
+}
+function buildCityGrid(){
+  el.cityGrid.innerHTML = '';
+  CITY.names().forEach((name, i) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'rider';
+    b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', 'false');
+    const nm = document.createElement('span'); nm.textContent = name;
+    b.appendChild(nm);
+    b.addEventListener('click', e => { e.stopPropagation(); chooseCity(i); });
+    el.cityGrid.appendChild(b);
+  });
+}
+function paintReady(){
+  const cv = el.readyCar, c = cv.getContext('2d'), src = SPR.carCvOf(selIx);
+  cv.width = src.width; cv.height = src.height;
+  c.imageSmoothingEnabled = false; c.clearRect(0,0,cv.width,cv.height);
+  c.drawImage(src, 0, 0);
+  el.readyRider.textContent = SPR.riders()[selIx];
+  el.readyCity.textContent  = CITY.names()[citySel];
+}
+function setStep(i){
+  selStep = clamp(i, 0, STEPS.length - 1);
+  const now = STEPS[selStep];
+  el.paneRider.hidden = now !== 'rider';
+  el.paneCity.hidden  = now !== 'city';
+  el.paneReady.hidden = now !== 'ready';
+  [...el.steps.children].forEach((sp, k) => {
+    sp.classList.toggle('on', k === selStep);
+    sp.classList.toggle('done', k < selStep);
+  });
+  el.launch.textContent = now === 'ready' ? 'Launch' : 'Select';
+  el.selHint.innerHTML = now === 'ready'
+    ? 'SPACE when ready &middot; BACKSPACE to go back'
+    : '&#9664; &#9654; to choose &middot; SPACE to confirm &middot; BACKSPACE to go back';
+  if (now === 'city'){ if (!el.cityGrid.children.length) buildCityGrid(); chooseCity(citySel); }
+  if (now === 'ready') paintReady();
+}
+function stepBack(){
+  if (selStep === 0) showTitle();
+  else setStep(selStep - 1);
+}
+function showTitle(){
+  state = S.MENU; menuScreen = 'title';
+  el.select.hidden = true; el.over.hidden = true; el.pause.hidden = true;
+  el.title.hidden = false;
+  el.hud.classList.remove('on');
+  document.getElementById('titleBest').textContent = commas(best) + ' FT';
+  ATTRACT.reset();
+}
+
 function buildSelect(){
   el.selGrid.innerHTML = '';
   SPR.riders().forEach((name, i) => {
@@ -1221,6 +1430,7 @@ function showSelect(){
   el.hud.classList.remove('on');
   if (!el.selGrid.children.length) buildSelect();
   chooseRider(selIx);
+  setStep(0);
 }
 
 function start(){
@@ -1282,9 +1492,9 @@ function gameOver(){
   el.verdict.textContent  = crashLine(killedBy);
   el.finalAlt.textContent = commas(reached);
   el.finalBest.textContent= commas(best);
-  el.finalSpeed.textContent = commas(topSpeed * FEET_PER_PX * 0.681818) + ' MPH';
-  el.finalNear.textContent  = commas(nearMiss);
   el.record.hidden = !isRecord;
+  overT = OVER_HOLD;
+  el.overCount.textContent = String(OVER_HOLD);
   document.getElementById('titleBest').textContent = commas(best) + ' FT';
   el.over.hidden = false;
   el.hud.classList.remove('on');
@@ -2118,8 +2328,14 @@ function update(dt){
        pressing start does not cut from a flying car to a parked one. */
     speed = 0;
     carY = PAD_Y - PLAYER_H/2;
+    if (menuScreen === 'title') ATTRACT.update(dt);
   } else if (state === S.OVER){
     speed = 70;                 /* wreckage and clouds keep drifting past */
+    /* a kiosk cannot be left on a dead end: the title takes itself back */
+    overT -= dt;
+    const n = Math.max(0, Math.ceil(overT));
+    if (el.overCount.textContent !== String(n)) el.overCount.textContent = String(n);
+    if (overT <= 0){ showTitle(); return; }
   }
 
   const held = (state === S.PAUSE || state === S.RESCUE || state === S.RESUMING);
@@ -3505,7 +3721,7 @@ const SPR = (function(){
                                          put(ctx, a[f % a.length], anchors.plane[k], x, y, dir, 0); },
     /* 35,35 is the badge's centre inside its 70x70 surface: 34 plus the
        one pixel of margin the surface carries. */
-    drawPickup: (ctx,k,f,x,y)       => put(ctx, cache.pickup[k][f % PK_FRAMES],
+    drawPickup: (ctx,k,f,x,y)       => put(ctx, cache.pickup[k][cyc(f, PK_FRAMES)],
                                            [35,35], x, y, 1, 0),
     pickupFrames: () => PK_FRAMES,
     car:    i        => cache.car[i],
@@ -3513,7 +3729,7 @@ const SPR = (function(){
     debris: k        => cache.debris[k],
     heli:   (k,f)    => cache.heli[k][f],
     plane:  (k,f,on) => { const a = cache.plane[k][on?1:0]; return a[f % a.length]; },
-    pickup: (k,f)    => cache.pickup[k][f % PK_FRAMES],
+    pickup: (k,f)    => cache.pickup[k][cyc(f, PK_FRAMES)],
     boom:   boomFor,
     riders: () => RIDERS.map(r => r[0]),
     /* content bounds within each baked surface, so the game can centre a
@@ -4335,6 +4551,7 @@ const CITY = (function(){
   return {
     build, count: () => CITIES.length,
     names: () => CITIES.map(c => c.name),
+    tags:  () => CITIES.map(c => c.tag),
     current: () => cache,
     FAR_H, NEAR_H
   };
@@ -6449,6 +6666,7 @@ return {
   satCv:     i  => cvs.sat[i],
   ufoCv:     () => cvs.ufo[0],
   rockCv:    () => rockCv,
+  metCv:     f  => cvs.met[f],
   astBands:  (i,rot) => spunBandsAt(bnd.ast[i],  rot, 0, 0),
   fragBands: (i,rot) => spunBandsAt(bnd.frag[i], rot, 0, 0),
   satBands:  (i,rot) => spunBandsAt(bnd.sat[i],  rot, 0, 0),
@@ -7999,7 +8217,7 @@ function drawUFO(o){
   /* five baked frames, one per port, with the hull byte-identical across
      all five - the lamp cycle is the whole animation, because a craft
      holds an attitude and does not tumble. */
-  SPACE.ufo(ctx, o.x, o.y, Math.floor(runTime * 8) % SPACE.ufoFrames());
+  SPACE.ufo(ctx, o.x, o.y, cyc(runTime * 8, SPACE.ufoFrames()));
 }
 
 function drawSat(o){
@@ -8013,7 +8231,7 @@ function drawMeteor(o){
      angle is the velocity turned half a turn - and the rock does not
      turn at all: it is the flame that is moving, not the stone. */
   const ang = Math.atan2(o.vy, o.vx) + Math.PI;
-  SPACE.meteor(ctx, o.x, o.y, Math.floor(runTime * 12) % SPACE.metFrames(), ang);
+  SPACE.meteor(ctx, o.x, o.y, cyc(runTime * 12, SPACE.metFrames()), ang);
 }
 
 /* ---- asteroid ------------------------------------------------------- */
@@ -8054,7 +8272,7 @@ function drawPickup(o, k){
 /* VMS3 shell: a translucent dome so the car still reads through it, and
    a hard rim that flashes white the instant it takes the hit */
 function drawBubble(x, y){
-  FX.bubble(ctx, x, y, Math.floor(runTime * 8) & 3);
+  FX.bubble(ctx, x, y, cyc(runTime * 8, 4));
 }
 /* F1 wake: the shaft blurs past while the rockets are lit */
 function drawBoostWake(x, y, env){
@@ -8234,7 +8452,7 @@ function drawPad(){
   /* the clamps let go between the doors shutting and the jets lighting */
   const cl = state !== S.INTRO || introT < I_SHUT ? 0
            : Math.min(3, Math.floor((introT - I_SHUT) / ((I_SPOOL - I_SHUT) / 3)));
-  GND.pad(ctx, W/2, y, cl, Math.floor(runTime * 4) & 1);
+  GND.pad(ctx, W/2, y, cl, cyc(runTime * 4, 2));
 }
 
 /* The rider. Same silhouette language as the figure inside the cabin,
@@ -8253,8 +8471,123 @@ function drawDoors(x, y, shut, alpha){
   GND.door(ctx, x, y, Math.round((GND.NSTEP - 1) * (1 - shut)), alpha);
 }
 
+/* ================================================================
+   12f. The attract collage
+   ----------------------------------------------------------------
+   The title plays the game at itself. Four panels, each its own small
+   run at a different altitude, drawn 1:1 as a WINDOW on that run rather
+   than a shrunken copy of it - a scaled sprite is the one thing the art
+   rules forbid, and a collage of them would give the pixel grid away on
+   the first screen anybody sees.
+
+   Each panel borrows the real renderer by swapping the module's own
+   scene state in and out around the draw, so what plays is the game's
+   art and the game's motion, not a mock-up of either.
+   ================================================================ */
+const ATTRACT = (function(){
+  const CLIP = 5.0;          /* seconds a clip holds before it cuts */
+  const FADE = 0.35;         /* the cut is a short lift out of black */
+  /* one entry per look the game has, street to the long dark. A clip is
+     a real run at that altitude over a real city, played full frame -
+     the montage is the game playing itself, not footage of it. */
+  const STAGE = [320, 1500, 2600, 3900, 5200, 6500, 8200, 10400];
+  let s = null, t = 0, last = -1;
+
+  const speedAt = ft =>
+    lerp(SPEED_MIN, SPEED_MAX, Math.pow(clamp(ft / RAMP_FEET, 0, 1), 1.15));
+
+  function cut(){
+    let i = last;
+    while (STAGE.length > 1 && i === last) i = rndi(0, STAGE.length - 1);
+    last = i;
+    const ft = Math.max(120, STAGE[i] + rnd(-140, 140));
+    CITY.build(rndi(0, CITY.count() - 1));      /* a different level each cut */
+    s = { feet: ft, px: ft / FEET_PER_PX, obs: [],
+          rider: rndi(0, Math.max(0, SPR.riders().length - 1)),
+          x: W/2 + rnd(-80, 80), vx: rnd(-150, 150),
+          turn: rnd(0.5, 1.4), next: rnd(30, 170) };
+    t = 0;
+    /* run the clip forward before it is shown, so it opens mid-action
+       rather than on an empty sky waiting for the first hazard */
+    for (let k = 0; k < 200; k++) sim(1/60);
+  }
+  function reset(){ s = null; t = 0; last = -1; }
+
+  /* run the renderer against the clip's state, then put the real one back */
+  function withScene(fn){
+    const f0 = feet, p0 = px, x0 = player.x, y0 = carY, st0 = state;
+    const keep = obstacles.splice(0, obstacles.length);
+    for (const o of s.obs) obstacles.push(o);
+    feet = s.feet; px = s.px; player.x = s.x; carY = PLAYER_Y; state = S.PLAY;
+    try { fn(); }
+    finally {
+      s.obs = obstacles.splice(0, obstacles.length);
+      for (const o of keep) obstacles.push(o);
+      feet = f0; px = p0; player.x = x0; carY = y0; state = st0;
+    }
+  }
+
+  function update(dt){
+    if (!s) cut();
+    t += dt;
+    if (t >= CLIP){ cut(); return; }
+    sim(dt);
+  }
+
+  function sim(dt){
+    const sp = speedAt(s.feet);
+    s.px += sp * dt; s.feet = s.px * FEET_PER_PX;
+    /* the car weaves the way a player does rather than sliding on rails */
+    s.turn -= dt;
+    if (s.turn <= 0){ s.turn = rnd(0.5, 1.5); s.vx = rnd(-230, 230); }
+    s.x += s.vx * dt;
+    if (s.x < 70){ s.x = 70; s.vx = Math.abs(s.vx); }
+    if (s.x > W - 70){ s.x = W - 70; s.vx = -Math.abs(s.vx); }
+    withScene(() => {
+      for (let i = obstacles.length - 1; i >= 0; i--){
+        const o = obstacles[i];
+        moveHazard(o, dt, true);
+        o.y += (sp + (o.vy || 0)) * dt;
+        if (o.y - o.h > H) obstacles.splice(i, 1);
+      }
+      s.next -= sp * dt;
+      if (s.next <= 0){
+        s.next = rnd(230, 420);
+        const mix = zoneFor(feet).mix;
+        let tot = 0; for (const m of mix) tot += m[1];
+        let r = Math.random() * tot, k = mix[0][0];
+        for (const m of mix){ r -= m[1]; if (r <= 0){ k = m[0]; break; } }
+        (SPAWNERS[k] || spawnBird)();
+      }
+    });
+  }
+
+  return { reset, update,
+    draw(){
+      if (!s) cut();
+      const tilt = clamp(s.vx / PLAYER_MAXV, -1, 1) * 0.26;
+      withScene(() => {
+        BD.sky(ctx, W, H, feet);
+        BD.stars(ctx, W, H, feet, px * 0.06, runTime);
+        BD.limb(ctx, W, H, feet);
+        BD.clouds(ctx, W, H, feet, px, runTime, false);
+        drawCity();
+        for (const o of obstacles) drawObstacle(o);
+        FX.jets(ctx, 0, player.x, carY - PLAYER_H/2 + CAR_H, runTime);
+        SPR.drawCar(ctx, s.rider, player.x, carY, tilt, 1);
+        BD.clouds(ctx, W, H, feet, px, runTime, true);
+      });
+      if (t < FADE){
+        ctx.fillStyle = 'rgba(5,7,14,' + (1 - t / FADE).toFixed(3) + ')';
+        ctx.fillRect(0, 0, W, H);
+      }
+    } };
+})();
+
 /* ---- frame ---------------------------------------------------- */
 function draw(){
+  /* the title is the collage and nothing else */
+  if (state === S.MENU && menuScreen === 'title'){ ATTRACT.draw(); return; }
   drawSky();
   ctx.save();
   if (shake > 0.4) ctx.translate(rnd(-shake, shake) * 0.5, rnd(-shake, shake) * 0.5);
@@ -8333,7 +8666,11 @@ function draw(){
    ================================================================ */
 let last = performance.now();
 function frame(t){
-  const dt = Math.min((t - last) / 1000, 0.05);
+  /* clamped at BOTH ends. The rAF timestamp is the vsync the frame began
+     on, and the first one lands before boot finished baking, so t - last
+     is about -50ms on every single launch. Left unclamped that runs the
+     clock backwards and every frame index built on it goes negative. */
+  const dt = clamp((t - last) / 1000, 0, 0.05);
   last = t;
   update(dt);
   draw();
@@ -8576,7 +8913,7 @@ console.log('[effects] ' + _fx.sprites + ' bubble frames in ' + _fx.ms + 'ms, ' 
 console.log('[backdrop] ' + _bd.sprites + ' cloud surfaces in ' + _bd.ms + 'ms, ' + _bd.kb + ' KB');
 console.log('[space]   ' + _spc.sprites + ' baked in ' + _spc.ms + 'ms, ' +
             _spc.kb + ' KB, ' + _spc.clipped + ' clipped ' + JSON.stringify(_spc.where));
-el.launch.addEventListener('click', e => { e.stopPropagation(); start(); });
+el.launch.addEventListener('click', e => { e.stopPropagation(); primary(); });
 el.launch.addEventListener('pointerdown', e => e.stopPropagation());
 document.getElementById('titleBest').textContent = commas(best) + ' FT';
 requestAnimationFrame(frame);
