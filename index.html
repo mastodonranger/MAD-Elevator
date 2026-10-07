@@ -908,7 +908,77 @@ const Sound = (() => {
     src.connect(f); f.connect(g); g.connect(a.destination);
     src.start();
   }
+  /* One oscillator, hard pitch steps, one envelope. Every interface
+     sound below is a short list of notes played on this - a chip had one
+     pulse channel to spare for the menus and no way to glide between
+     notes, and keeping to that is what makes the whole set sit together
+     rather than sounding like six different libraries. */
+  function steps(notes, hold, vol, type){
+    const a = ready(); if (!a) return;
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = type || 'square';
+    const t0 = a.currentTime, len = notes.length * hold;
+    notes.forEach((f, i) => o.frequency.setValueAtTime(f, t0 + i * hold));
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(vol, t0 + 0.006);
+    g.gain.setValueAtTime(vol, t0 + len - 0.025);
+    g.gain.linearRampToValueAtTime(0.0001, t0 + len + 0.01);
+    o.connect(g); g.connect(a.destination);
+    o.start(t0); o.stop(t0 + len + 0.03);
+  }
   return {
+    /* ---- the interface ---------------------------------------------
+       Four jobs, four shapes, and the shape carries the meaning without
+       anyone having to learn it: a tick for moving, up for yes, down for
+       no, a climb for committing. */
+    move(){   steps([1175], 0.035, 0.055); },
+    choose(){ steps([784, 1175], 0.045, 0.075); },
+    back(){   steps([784, 523], 0.055, 0.065); },
+    go(){     steps([523, 784, 1046, 1568], 0.052, 0.080); },
+    /* the classic: two notes down to stop, the same two back up to go */
+    holdOn(){  steps([1046, 659], 0.085, 0.085, 'triangle'); },
+    holdOff(){ steps([659, 1046], 0.085, 0.085, 'triangle'); },
+    /* A 16-bit telephone. A square wave STEPPED between two pitches
+       rather than slid between them, gated into the two pulses of a
+       double ring - a chip could not glide and could not make noise, and
+       not doing either is what makes this read as a ring rather than as
+       a notification. */
+    ring(){
+      const a = ready(); if (!a) return;
+      const o = a.createOscillator(), g = a.createGain();
+      o.type = 'square';
+      const t0 = a.currentTime, STEP = 0.025, HI = 1046.5, LO = 784;
+      for (let i = 0; i < 32; i++)
+        o.frequency.setValueAtTime(i % 2 ? LO : HI, t0 + i * STEP);
+      const pulse = (at, len) => {
+        g.gain.setValueAtTime(0.0001, at);
+        g.gain.linearRampToValueAtTime(0.085, at + 0.01);
+        g.gain.setValueAtTime(0.085, at + len - 0.03);
+        g.gain.linearRampToValueAtTime(0.0001, at + len);
+      };
+      g.gain.setValueAtTime(0.0001, t0);
+      pulse(t0, 0.34); pulse(t0 + 0.42, 0.34);
+      o.connect(g); g.connect(a.destination);
+      o.start(t0); o.stop(t0 + 0.82);
+    },
+    /* a line of chat landing: two stepped squares, low-high for the one
+       coming in and high-low for the reply, so the two sides of the
+       conversation are told apart without reading them */
+    msg(reply){
+      const a = ready(); if (!a) return;
+      const lo = reply ? 988 : 523, hi = reply ? 659 : 784;
+      const o = a.createOscillator(), g = a.createGain();
+      o.type = 'square';
+      const t0 = a.currentTime;
+      o.frequency.setValueAtTime(lo, t0);
+      o.frequency.setValueAtTime(hi, t0 + 0.055);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.linearRampToValueAtTime(0.075, t0 + 0.006);
+      g.gain.setValueAtTime(0.075, t0 + 0.10);
+      g.gain.linearRampToValueAtTime(0.0001, t0 + 0.13);
+      o.connect(g); g.connect(a.destination);
+      o.start(t0); o.stop(t0 + 0.15);
+    },
     launch(){ tone(180, 0.55, 'sawtooth', 0.09, 640); },
     ding(){   tone(880, 0.16, 'triangle', 0.10); setTimeout(()=>tone(1320,0.22,'triangle',0.08), 90); },
     near(){   tone(1500, 0.06, 'sine', 0.05); },
@@ -1056,8 +1126,9 @@ let introT = 0, introShut = false, introLit = false;
 let riderIx = 0;
 /* VMS3 rescue beats, in seconds: the call rings, it is picked up, the
    passenger speaks, the agent answers, the ticket closes green, 3-2-1. */
-const R_RING = 1.3, R_PASS = 2.5, R_AGENT = 4.1, R_OK = 4.9,
+const R_DIAL = 0.3, R_RING = 1.3, R_PASS = 2.5, R_AGENT = 4.1, R_OK = 4.9,
       R_COUNT = 5.2, R_GO = 8.2;
+let rescueRang = false;
 /* s of protection once the technician has you moving again. The shaft is
    where you left it, so you are put back into traffic rather than into an
    empty sky, and this is the room to read it. */
@@ -1121,11 +1192,11 @@ function primary(){
      in play it holds the run and in the hold it lets it go again */
   if (state === S.PLAY){ pauseGame(); return; }
   if (state === S.MENU){
-    if (menuScreen === 'title') showSelect();
-    else if (selStep < STEPS.length - 1) setStep(selStep + 1);
-    else start();
+    if (menuScreen === 'title'){ Sound.go(); showSelect(); }
+    else if (selStep < STEPS.length - 1){ Sound.choose(); setStep(selStep + 1); }
+    else { Sound.go(); start(); }
   }
-  else if (state === S.OVER) showTitle();
+  else if (state === S.OVER){ Sound.back(); showTitle(); }
   else if (state === S.PAUSE) resume();
 }
 
@@ -1145,7 +1216,8 @@ window.addEventListener('keydown', e => {
       return;
     }
   }
-  if (k === 'Backspace' && state === S.OVER){ e.preventDefault(); showTitle(); return; }
+  if (k === 'Backspace' && state === S.OVER){
+    e.preventDefault(); Sound.back(); showTitle(); return; }
   if (k === 'ArrowLeft'  || k === 'a' || k === 'A'){ keys.left = true;  pointerOn = false; e.preventDefault(); }
   if (k === 'ArrowRight' || k === 'd' || k === 'D'){ keys.right = true; pointerOn = false; e.preventDefault(); }
   if (k === ' ' || k === 'Enter'){ e.preventDefault(); primary(); }
@@ -1409,7 +1481,9 @@ function paintSelCar(){
 }
 function chooseRider(i){
   const n = SPR.riders().length;
+  const was = selIx;
   selIx = ((i % n) + n) % n;
+  if (selIx !== was) Sound.move();
   el.selName.textContent = SPR.riders()[selIx];
   [...el.selGrid.children].forEach((b, k) =>
     b.setAttribute('aria-checked', String(k === selIx)));
@@ -1428,7 +1502,11 @@ function paintCityPreview(){
 }
 function chooseCity(i){
   const n = CITY.count();
+  const was = citySel;
   citySel = ((i % n) + n) % n;
+  /* only when it actually moves: setStep calls this on the way in to
+     paint the pane, and that is not the player choosing anything */
+  if (citySel !== was) Sound.move();
   CITY.build(citySel); cityIx = citySel;
   el.cityName.textContent = CITY.names()[citySel];
   el.cityTag.textContent  = CITY.tags ? CITY.tags()[citySel] : '';
@@ -1475,6 +1553,7 @@ function setStep(i){
   if (now === 'ready') paintReady();
 }
 function stepBack(){
+  Sound.back();
   if (selStep === 0) showTitle();
   else setStep(selStep - 1);
 }
@@ -1555,7 +1634,9 @@ function pauseGame(){
   pointerOn = false;
   keys.left = keys.right = false;
   el.pause.hidden = false;
-  Music.duck(0.3);
+  /* the run is still there, just a long way off */
+  Music.duck(0.16);
+  Sound.holdOn();
 }
 /* Resuming never drops you straight back into traffic: the world stays
    frozen through a 3-2-1 and steering is locked, so a pause can't be used
@@ -1572,7 +1653,7 @@ function resume(){
   el.bigCount.classList.remove('tick'); void el.bigCount.offsetWidth;
   el.bigCount.classList.add('tick');
   Music.duck(1);
-  Sound.ding();
+  Sound.holdOff();
 }
 
 function gameOver(){
@@ -1710,6 +1791,16 @@ function subIv(iv, s, e){
   }
   return out.filter(([a,b]) => b - a > 0.5);
 }
+/* the overlap of two interval sets, for walking a target backwards
+   through the reachable sets it has to have come from */
+function andIv(p, q){
+  const out = [];
+  for (const [a,b] of p) for (const [c,d] of q){
+    const lo = Math.max(a,c), hi = Math.min(b,d);
+    if (hi - lo > 0.5) out.push([lo,hi]);
+  }
+  return mergeIv(out);
+}
 function widestSeg(iv){
   let best = null;
   for (const seg of iv) if (!best || seg[1]-seg[0] > best[1]-best[0]) best = seg;
@@ -1763,14 +1854,33 @@ let PLAN_MIN = 30;
    it is, and as level with the car for longer. A plan that is optimistic
    by a pixel is a plan that hands out an unwinnable run. */
 let PLAN_PAD = 8;
+/* ---- how big a hazard actually is ----------------------------------
+   o.w and o.h are the box the sprite was BAKED at, unrotated. Four
+   families tumble, and their hitboxes come off the spun bands - the box
+   at whatever angle the thing is turned to, whose diagonal is bigger
+   than either side. Measured against the real rects: a satfrag's reach
+   16px past o.h/2, debris 15, a satellite 14, an asteroid 7.
+
+   The plan was reading the unrotated box, so it called a tumbling lump
+   "not level with the car" while its hitbox was across the car's band,
+   and handed out the graze it had just checked for. The bake already
+   knows this - spun() sizes its surface to the diagonal for exactly this
+   reason - so the plan uses the same number. Rotation-independent, so it
+   holds at every angle rather than the one it was sampled at. */
+const SPUN = { debris:1, sat:1, asteroid:1, satfrag:1 };
+function extentOf(o){
+  if (SPUN[o.t]){ const d = Math.hypot(o.w, o.h) / 2; return [d, d]; }
+  return [o.w / 2, o.h / 2];
+}
 /* what a hazard takes out of the car's centre positions AT ONE INSTANT -
    its own box, widened by half the car either side. */
 function spanAt(o){
   if (o.t === 'crane')
     return o.side === 'L' ? [-1e4, o.reach + CRANE_TIP + CAR_HALF_W + PLAN_PAD]
                           : [W - o.reach - CRANE_TIP - CAR_HALF_W - PLAN_PAD, 1e4];
-  return [o.x - o.w/2 - CAR_HALF_W - PLAN_PAD,
-          o.x + o.w/2 + CAR_HALF_W + PLAN_PAD];
+  const hw = extentOf(o)[0];
+  return [o.x - hw - CAR_HALF_W - PLAN_PAD,
+          o.x + hw + CAR_HALF_W + PLAN_PAD];
 }
 function survivable(){
   const lo = CAR_HALF_W + WALL_PAD, hi = W - CAR_HALF_W - WALL_PAD;
@@ -1793,7 +1903,7 @@ function survivable(){
       /* a step's worth of travel either side, so a hazard that grazes the
          car between two samples is still counted as having been there */
       if (Math.abs(g.y - carY) >
-          (CAR_BOX_H + g.h) / 2 + (speed + (g.vy || 0)) * PLAN_DT) continue;
+          CAR_BOX_H / 2 + extentOf(g)[1] + (speed + (g.vy || 0)) * PLAN_DT) continue;
       const sp = spanAt(g);
       R = subIv(R, sp[0], sp[1]);
     }
@@ -2080,6 +2190,10 @@ function crash(x, y, o){
     el.rescue.className = 'screen rescue ringing';
     el.rPass.hidden = true; el.rAgent.hidden = true;
     el.rCount.textContent = '';
+    /* the call takes the floor: the music goes out, and what is left is
+       the phone and the two of you */
+    Music.play(null);
+    rescueRang = false;
     Sound.crash();
     return;
   }
@@ -2364,13 +2478,14 @@ function update(dt){
     rescueT += dt;
     speed = Math.max(0, speed - 900 * dt);     /* the car stalls */
     shake = Math.max(0, shake - dt * 42);
+    if (rescueT >= R_DIAL && !rescueRang){ rescueRang = true; Sound.ring(); }
     if (rescueT >= R_RING && el.rescue.classList.contains('ringing')){
       el.rescue.classList.remove('ringing');
       el.rescue.classList.add('answered');
       Sound.ding();
     }
-    if (rescueT >= R_PASS && el.rPass.hidden){ el.rPass.hidden = false; Sound.near(); }
-    if (rescueT >= R_AGENT && el.rAgent.hidden){ el.rAgent.hidden = false; Sound.near(); }
+    if (rescueT >= R_PASS && el.rPass.hidden){ el.rPass.hidden = false; Sound.msg(false); }
+    if (rescueT >= R_AGENT && el.rAgent.hidden){ el.rAgent.hidden = false; Sound.msg(true); }
     if (rescueT >= R_OK && !el.rescue.classList.contains('fixed')){
       el.rescue.classList.add('fixed');
       Sound.shield();
@@ -2404,6 +2519,8 @@ function update(dt){
       el.rescue.hidden = true;
       state = S.PLAY;
       setLabels();
+      /* back under way, so the run gets its music back */
+      Music.play('game');
       Sound.launch();
     }
 
@@ -6766,6 +6883,10 @@ return {
   rockBands: () => bnd.rock,
   metBox:    () => box.rock,
   metFrames: () => MSHELL,
+  /* the shell as it is BLITTED - 306x88 about its anchor. The hitbox is
+     the rock alone, deliberately, because the flame is not solid; this is
+     for anything that needs to know what the player actually sees. */
+  metPaint:  () => ({ w: MW, h: MH, ax: MAX, ay: MAY }),
   /* the shell is turned to lie along the track; the rock is not turned
      at all, because it is the flame that is moving, not the stone */
   meteor: (ctx,x,y,f,ang) => {
@@ -8583,58 +8704,327 @@ const ATTRACT = (function(){
      a real run at that altitude over a real city, played full frame -
      the montage is the game playing itself, not footage of it. */
   const STAGE = [320, 1500, 2600, 3900, 5200, 6500, 8200, 10400];
-  let s = null, t = 0, last = -1;
+  const FRAMES = Math.round(CLIP * 60);  /* a clip is this many frames */
+  const ROLL   = 200;                    /* ...after this many run in */
+  /* How many goes at a clip before the least-bad one is shown anyway.
+     The autopilot brings 89% of clips home without touching anything, so
+     a clean one is usually the first or second try and eight is a
+     generous ceiling rather than a budget that gets spent. */
+  const TRIES  = 8;
+  /* Steps of baking per displayed frame. Playback costs nothing - it is
+     a replay - so the whole 5 seconds of a clip is free time to build
+     the next one in. 14 steps is about 0.6ms a frame, and eight full
+     attempts still fit inside one clip. */
+  const CHUNK  = 14;
+
+  let s = null;                 /* the clip being SIMULATED */
+  let play = null, t = 0, last = -1;
+  let oven = null, ready = null, best = null, tries = 0, held = false;
+  let stats = { baked: 0, tries: 0, dirty: 0 };
 
   const speedAt = ft =>
     lerp(SPEED_MIN, SPEED_MAX, Math.pow(clamp(ft / RAMP_FEET, 0, 1), 1.15));
 
-  function cut(){
+  /* ---- baking a clip ------------------------------------------------
+     The montage used to be simulated as it was shown, which means
+     whatever the autopilot did with a boom was what you saw. It is good
+     - 0.18% of frames touching something - but 0.18% is still a graze
+     every half minute on the screen that is up the most, and the title
+     screen is the whole game's first impression.
+
+     So clips are BAKED, the way everything else here is: run one
+     forward, check every frame of it against the real hitboxes, and
+     throw it away and seed another if the car touched anything. What
+     gets shown is a recording of a clip that came home clean.
+
+     It is also cheaper. Playback is a replay - no planner, no spawner,
+     no hitbox tests - so the frame cost of the title screen went down,
+     not up, and the baking fills the idle time of the clip in front. */
+  function seed(){
     let i = last;
     while (STAGE.length > 1 && i === last) i = rndi(0, STAGE.length - 1);
     last = i;
     const ft = Math.max(120, STAGE[i] + rnd(-140, 140));
-    CITY.build(rndi(0, CITY.count() - 1));      /* a different level each cut */
     s = { feet: ft, px: ft / FEET_PER_PX, obs: [],
+          city: rndi(0, CITY.count() - 1),
           rider: rndi(0, Math.max(0, SPR.riders().length - 1)),
-          x: W/2 + rnd(-80, 80), vx: rnd(-150, 150),
-          turn: rnd(0.5, 1.4), next: rnd(30, 170) };
-    t = 0;
-    /* run the clip forward before it is shown, so it opens mid-action
-       rather than on an empty sky waiting for the first hazard */
-    for (let k = 0; k < 200; k++) sim(1/60);
+          x: W/2 + rnd(-80, 80), vx: 0, tilt: 0, aimAt: W/2,
+          win: null, replan: 0,
+          nextSpawn: ft / FEET_PER_PX + rnd(40, 300),
+          corridor: [[HALF_CAR, W - HALF_CAR]], lastSpawn: ft / FEET_PER_PX,
+          lastBlocker: -1e9, lastCrane: null };
   }
-  function reset(){ s = null; t = 0; last = -1; }
+  /* one displayed frame of a clip, which is everything draw() reads */
+  const snap = () => ({ x: s.x, tilt: s.tilt, feet: s.feet, px: s.px,
+                        obs: s.obs.map(o => Object.assign({}, o)) });
 
-  /* run the renderer against the clip's state, then put the real one back */
-  function withScene(fn){
+  /* Advance the clip in the oven by a chunk. Called once per displayed
+     frame, so a bake never costs a frame the way one synchronous 25ms
+     run would. */
+  function bake(){
+    if (ready) return;
+    if (!oven){ seed(); oven = { k: 0, rec: [], touch: 0,
+                                 city: s.city, rider: s.rider }; }
+    for (let n = 0; n < CHUNK; n++){
+      if (oven.k >= ROLL + FRAMES) break;
+      sim(1/60);
+      oven.k++;
+      /* the run-in is not shown, so a graze in it does not count - it is
+         only there so the clip opens mid-action rather than on empty sky */
+      if (oven.k > ROLL){
+        if (painted()) oven.touch++;
+        oven.rec.push(snap());
+      }
+    }
+    if (oven.k < ROLL + FRAMES) return;
+    const done = oven; oven = null; tries++;
+    stats.tries++;
+    if (!done.touch){ ready = done; best = null; tries = 0; return; }
+    if (!best || done.touch < best.touch) best = done;
+    if (tries >= TRIES){ ready = best; best = null; tries = 0; stats.dirty++; }
+  }
+  /* Put the next clip up. If the oven has nothing clean yet - only at
+     boot, or after a freak run of eight dirty clips - finish one here
+     and take the cost, because a title screen with no clip is worse. */
+  function cut(){
+    while (!ready) bake();
+    play = ready; ready = null; t = 0;
+    stats.baked++;
+    CITY.build(play.city);                 /* a different level each cut */
+  }
+  function reset(){ play = null; oven = null; ready = null; best = null;
+                    tries = 0; t = 0; last = -1; }
+
+  /* Run the real routines against the clip's state, then put the real
+     one back. Everything the spawner and the plan read is swapped, not
+     just what the renderer needs - that is what lets the montage call
+     spawnOne() and survivable() rather than carrying copies of them. */
+  function withScene(fn, scene){
+    const sc = scene || s;
     const f0 = feet, p0 = px, x0 = player.x, y0 = carY, st0 = state;
+    const sp0 = speed, hd0 = hazDiff, co0 = corridor;
+    const ls0 = lastSpawnPx, lb0 = lastBlockerPx, lc0 = lastCrane;
     const keep = obstacles.splice(0, obstacles.length);
-    for (const o of s.obs) obstacles.push(o);
-    feet = s.feet; px = s.px; player.x = s.x; carY = PLAYER_Y; state = S.PLAY;
+    for (const o of sc.obs) obstacles.push(o);
+    feet = sc.feet; px = sc.px; player.x = sc.x; carY = PLAYER_Y; state = S.PLAY;
+    speed = speedAt(sc.feet);
+    hazDiff = Math.pow(clamp(sc.feet / RAMP_FEET, 0, 1), 0.58);
+    /* a recorded frame carries no spawner bookkeeping - it is a replay,
+       and nothing it is handed to will spawn anything */
+    corridor = sc.corridor || corridor;
+    lastSpawnPx = sc.lastSpawn !== undefined ? sc.lastSpawn : lastSpawnPx;
+    lastBlockerPx = sc.lastBlocker !== undefined ? sc.lastBlocker : lastBlockerPx;
+    lastCrane = sc.lastCrane !== undefined ? sc.lastCrane : lastCrane;
     try { fn(); }
     finally {
-      s.obs = obstacles.splice(0, obstacles.length);
+      sc.obs = obstacles.splice(0, obstacles.length);
       for (const o of keep) obstacles.push(o);
+      if (sc.corridor){ sc.corridor = corridor; sc.lastSpawn = lastSpawnPx;
+                        sc.lastBlocker = lastBlockerPx; sc.lastCrane = lastCrane; }
       feet = f0; px = p0; player.x = x0; carY = y0; state = st0;
+      speed = sp0; hazDiff = hd0; corridor = co0;
+      lastSpawnPx = ls0; lastBlockerPx = lb0; lastCrane = lc0;
     }
   }
 
+  /* ---- the autopilot ------------------------------------------------
+     The title car is the game being played, so it has to be played, not
+     drifted. This is the same forward reachability the spawner gates on,
+     read for a different answer: not "does a surviving position exist"
+     but "which one, and how much room does it keep". The reachable set
+     starts at where the car is, spreads by what the car can travel each
+     step, and has every hazard that is level with it subtracted. Aim at
+     the middle of the widest interval that is still open at the horizon
+     and the car commits to a gap early and threads it, which is what a
+     good player looks like.
+
+     A shorter horizon than the spawner's: the plan only has to be right
+     about the hazard the car is about to meet, and looking five seconds
+     out makes it hedge toward the middle of the screen and sit there. */
+  /* the spawner's horizon, because the spawner's guarantee is what the
+     car is trying to live up to */
+  /* The spawner's horizon, because the spawner's guarantee is what the
+     car is trying to live up to. LEAD is where the walk-back stops, in
+     steps: 5 of them, a quarter second out. Swept, not picked - 0 gives
+     0.18% of frames touching at lead 5 against 8% at lead 0 and 9% at
+     lead 30, because too near says nothing about where to go and too far
+     aims at a gap the world has moved on from. */
+  let AIM_T = 5.0, NOWCUT = 1, LEAD = 5;
+  const AIM_DT = 0.05;
+  /* Where the car could be standing RIGHT NOW without touching anything,
+     measured off the real hitboxes at the car's own band. This is the
+     fallback when the forward plan finds nothing, and it matters more
+     than the plan does: a car that is already inside a boom has to be
+     told to leave, and the plan's answer in that case is the empty set. */
+  function clearNow(){
+    const lo = CAR_HALF_W + WALL_PAD, hi = W - CAR_HALF_W - WALL_PAD;
+    const top = carY - CAR_BOX_H/2, bot = carY + CAR_BOX_H/2;
+    let iv = [[lo, hi]];
+    for (const o of obstacles){
+      if (o.t === 'shield' || o.t === 'vms3' || o.t === 'f1') continue;
+      const sp = paintSpan(o, top, bot);
+      if (sp){ iv = subIv(iv, sp[0], sp[1]); continue; }
+      for (const r of rectsOf(o)){
+        if (r.y + r.h <= top || r.y >= bot) continue;
+        iv = subIv(iv, r.x - CAR_HALF_W - PLAN_PAD, r.x + r.w + CAR_HALF_W + PLAN_PAD);
+      }
+    }
+    return iv;
+  }
+  /* The meteor shell is a long box laid along the track, so the x-range
+     it paints across the car's band depends on the angle - not on o.x.
+     Returns null for everything else, which hits where it paints. */
+  function paintSpan(o, top, bot){
+    if (o.t !== 'meteor') return null;
+    const sh = metShell(o);
+    const c = Math.abs(Math.cos(sh.ang)), s2 = Math.abs(Math.sin(sh.ang));
+    const ex = sh.hx * c + sh.hy * s2, ey = sh.hx * s2 + sh.hy * c;
+    if (sh.cy + ey <= top || sh.cy - ey >= bot) return [0, 0];
+    return [sh.cx - ex - CAR_HALF_W, sh.cx + ex + CAR_HALF_W];
+  }
+  /* Two passes, and the second one is the whole trick.
+
+     Forward is the spawner's reachability: where the car COULD be at each
+     step, with everything level with it at that step taken away. Aiming
+     at the widest interval that survives to the horizon is the obvious
+     thing and it is wrong - that interval is where the car can END UP,
+     and the straight line to it runs through whatever is in the way now.
+     Measured: the car sat on an aim point 15px inside a boom because the
+     boom would have passed by the time it was due there.
+
+     So the surviving corridor is walked BACK through the reachable sets
+     it has to have come from, shrinking by what the car can travel each
+     step. What is left at step zero is the window the car can be in now
+     and still make that corridor. Steer for that and the path is clear
+     at every step, not just at the end. */
+  function aim(){
+    const lo = CAR_HALF_W + WALL_PAD, hi = W - CAR_HALF_W - WALL_PAD;
+    /* How far the car can move in one step - and NOT PLAYER_MAXV*AIM_DT,
+       which is the spawner's figure and assumes the car is already at top
+       speed in whichever direction it turns out to need. It is not: 640
+       px/s off 2600 px/s^2 takes a quarter second to reach, over which
+       the real car covers 79px against that model's 160. So a plan built
+       on it is optimistic by about 80px on any quick reversal, and the
+       car arrives at a gap that was never makeable. Accelerating from
+       rest instead is conservative for a car already moving, which is
+       the right way to be wrong. */
+    /* A step's travel at top speed. Walking the car up from rest with
+       travelIn() instead is the more honest model of a car that
+       accelerates - and measured WORSE, 0.88% of frames touching against
+       0.18%. An over-cautious plan narrows the window, and a window too
+       narrow to stand in is one the car spends its time chasing. So the
+       pessimism belongs in PLAN_PAD, where it is a margin, not in the
+       reach, where it is a handicap. */
+    const reachAt = () => PLAYER_MAXV * AIM_DT;
+    const growBy = (iv, r) => mergeIv(iv.map(([a, b]) =>
+      [Math.max(lo, a - r), Math.min(hi, b + r)]));
+    const ghosts = [];
+    for (const o of obstacles){
+      if (o.t === 'shield' || o.t === 'vms3' || o.t === 'f1') continue;
+      ghosts.push(Object.assign({}, o));
+    }
+    const x = clamp(player.x, lo, hi);
+    let R = [[x, x]];
+    const steps = [];
+    for (let u = 0; u < AIM_T; u += AIM_DT){
+      R = growBy(R, reachAt());
+      for (const g of ghosts){
+        moveHazard(g, AIM_DT, true);
+        g.y += (speed + (g.vy || 0)) * AIM_DT;
+        /* level with the car at this step, by the same padded span the
+           spawner uses - the car should look like it is clearing things
+           by a margin, not shaving them */
+        if (g.t === 'meteor'){
+          const ps = paintSpan(g, carY - CAR_BOX_H/2, carY + CAR_BOX_H/2);
+          if (ps[1] > ps[0]) R = subIv(R, ps[0] - PLAN_PAD, ps[1] + PLAN_PAD);
+          continue;
+        }
+        const hh = extentOf(g)[1];
+        if (g.y + hh < carY - CAR_BOX_H/2 || g.y - hh > carY + CAR_BOX_H/2)
+          continue;
+        const sp = spanAt(g);
+        R = subIv(R, sp[0], sp[1]);
+      }
+      if (!R.length) break;        /* nothing survives past here */
+      steps.push(R);
+    }
+    /* Nothing survived even one step: the car is standing in something,
+       so forget the plan and head for the nearest clear air. */
+    if (!steps.length){
+      const seg = nearestSeg(clearNow(), x);
+      return seg || [x, x];
+    }
+    /* Walk back from EVERY corridor that survives, not just the widest.
+       Narrowing to one at the horizon throws away the others for no
+       reason and then makes the car cross the screen for a gap it had no
+       need of - and because the widths shift every re-plan, the choice
+       flips and the car dithers. The union is both cheaper to get and
+       the right answer: it is the whole set of positions the car can
+       hold now that lead to SOME survivable corridor. */
+    /* Stop the walk-back at a LEAD, not at step zero.
+
+       Step zero's reachable set is, by construction, the car plus one
+       step's travel either side - sixty-odd pixels, centred on the car,
+       whatever the plan found. Measured: an average window 68px wide with
+       the car sitting 49px outside it. A target like that says nothing
+       about where to go, so the car only ever moved when its own little
+       band got clipped, which is the definition of reacting late.
+
+       Half a second out the set is hundreds of pixels wide and genuinely
+       displaced, so it can say "left" or "right" - and it is still only
+       positions the car can actually reach, because that is what the
+       walk-back preserves. */
+    const lead = Math.min(LEAD, steps.length - 1);
+    let T = steps[steps.length - 1];
+    for (let k = steps.length - 2; k >= lead; k--){
+      const back = andIv(growBy(T, reachAt()), steps[k]);
+      T = back.length ? back : steps[k];
+    }
+    /* The plan walks each ghost a step BEFORE it tests it, so its first
+       step is the world 50ms from now and a hazard that is level with the
+       car this instant - and about to pass below it - is never checked at
+       all. Where the lead is short enough for that to still be the car's
+       problem, the window is cut against where it can stand right now. */
+    if (!NOWCUT || lead > 4) return nearestSeg(T, x) || [x, x];
+    const now = clearNow();
+    return nearestSeg(andIv(T, now), x) || nearestSeg(now, x) || [x, x];
+  }
+  /* the segment the car is in, or the one it has least distance to -
+     flipping to a wider gap on the far side of the screen is what makes
+     an autopilot dither instead of commit */
+  function nearestSeg(iv, x){
+    let best = null, bd = 1e9;
+    for (const seg of iv){
+      const d = x < seg[0] ? seg[0] - x : x > seg[1] ? x - seg[1] : 0;
+      if (d < bd){ bd = d; best = seg; }
+    }
+    return best ? best.slice() : null;
+  }
+  function tune(o){ if (o){ if (o.T !== undefined) AIM_T = o.T;
+                             if (o.replan !== undefined) REPLAN = o.replan;
+                             if (o.nowcut !== undefined) NOWCUT = o.nowcut ? 1 : 0;
+                             if (o.lead !== undefined) LEAD = o.lead; }
+                    return { T: AIM_T, replan: REPLAN, nowcut: NOWCUT,
+                             lead: LEAD }; }
+
   function update(dt){
-    if (!s) cut();
+    if (!play) cut();
+    if (held) return;        /* the render harness steps it by hand */
     t += dt;
     if (t >= CLIP){ cut(); return; }
-    sim(dt);
+    /* the clip in front is a replay, so its frame is free - spend it on
+       the one after */
+    bake();
   }
+
+  /* How often the aim point is recomputed. Every frame is wasted work -
+     the answer barely moves in 16ms - and too seldom reads as reacting
+     late, which is the one thing the montage must not look like. */
+  let REPLAN = 0.05;
 
   function sim(dt){
     const sp = speedAt(s.feet);
     s.px += sp * dt; s.feet = s.px * FEET_PER_PX;
-    /* the car weaves the way a player does rather than sliding on rails */
-    s.turn -= dt;
-    if (s.turn <= 0){ s.turn = rnd(0.5, 1.5); s.vx = rnd(-230, 230); }
-    s.x += s.vx * dt;
-    if (s.x < 70){ s.x = 70; s.vx = Math.abs(s.vx); }
-    if (s.x > W - 70){ s.x = W - 70; s.vx = -Math.abs(s.vx); }
     withScene(() => {
       for (let i = obstacles.length - 1; i >= 0; i--){
         const o = obstacles[i];
@@ -8642,22 +9032,241 @@ const ATTRACT = (function(){
         o.y += (sp + (o.vy || 0)) * dt;
         if (o.y - o.h > H) obstacles.splice(i, 1);
       }
-      s.next -= sp * dt;
-      if (s.next <= 0){
-        s.next = rnd(230, 420);
-        const mix = zoneFor(feet).mix;
-        let tot = 0; for (const m of mix) tot += m[1];
-        let r = Math.random() * tot, k = mix[0][0];
-        for (const m of mix){ r -= m[1]; if (r <= 0){ k = m[0]; break; } }
-        (SPAWNERS[k] || spawnBird)();
+      s.replan -= dt;
+      if (s.replan <= 0){ s.replan = REPLAN; s.win = aim();
+                          s.aimAt = (s.win[0] + s.win[1]) / 2; }
+      /* the spawner's own gate, so the montage is handed the same
+         clearable traffic a run is - and at the same density */
+      if (px >= s.nextSpawn){
+        spawnOne();
+        s.nextSpawn = px + lerp(SPAWN_GAP_EASY, SPAWN_GAP_HARD, hazDiff)
+                           * rnd(0.82, 1.28);
       }
     });
+    /* steered with the car's own acceleration and top speed, braking into
+       the gap rather than snapping to it, so the montage car has the same
+       weight and the same bank as the one under your thumb */
+    /* held toward the window and released inside it, which is what a
+       player's thumb does - not a position chase, which reads as a servo */
+    const w = s.win || [s.x, s.x];
+    const d = s.x < w[0] ? w[0] - s.x : s.x > w[1] ? w[1] - s.x : 0;
+    const dir = d > 4 ? 1 : d < -4 ? -1 : 0;
+    if (dir !== 0) s.vx += dir * PLAYER_ACCEL * dt;
+    else s.vx -= s.vx * Math.min(1, 9 * dt);
+    /* do not overshoot the window: shed speed once the car could still be
+       stopped inside it, which is what turns a slalom into a dodge */
+    const stop = (s.vx * s.vx) / (2 * PLAYER_ACCEL);
+    if (dir !== 0 && stop > Math.abs(d)) s.vx -= s.vx * Math.min(1, 14 * dt);
+    s.vx = clamp(s.vx, -PLAYER_MAXV, PLAYER_MAXV);
+    s.x += s.vx * dt;
+    const minX = CAR_HALF_W + WALL_PAD, maxX = W - CAR_HALF_W - WALL_PAD;
+    if (s.x < minX){ s.x = minX; s.vx *= -0.25; }
+    if (s.x > maxX){ s.x = maxX; s.vx *= -0.25; }
+    s.tilt = lerp(s.tilt, clamp(s.vx / PLAYER_MAXV, -1, 1) * 0.26,
+                  Math.min(1, 10 * dt));
   }
 
-  return { reset, update,
+  /* The montage's own fairness check, and the only honest one: not "did
+     the plan say a gap existed" but "is the car, right now, clear of
+     every solid thing on screen". Named rather than boolean so a failure
+     says which family it was. This is what the baker throws clips out
+     on, so it runs against the clip being SIMULATED. */
+  /* ---- what the eye sees, which is not what the game hits -----------
+     The montage is judged by looking at it, and one sprite is drawn far
+     bigger than the thing it collides with: a meteor's hitbox is the
+     ROCK, 48x48, because the flame is deliberately not solid, but what
+     gets blitted is a 306x88 shell of trail laid along its track. A clip
+     where that trail is painted straight across the car passes every
+     collision test in the game and still reads, correctly, as the car
+     going through something.
+
+     So clips are rejected on the painted shape. Every other family hits
+     with bands taken off the same baked surface it draws, so there the
+     hitbox IS the painted shape and rectsOf stands. */
+  const PAINT_PAD = 4;        /* and not shaving past things either */
+
+  /* separating axes between two oriented boxes - four to test, because
+     opposite sides of a rectangle share a normal */
+  function obbHit(a, b){
+    for (const box of [a, b]){
+      for (let k = 0; k < 2; k++){
+        const ang = box.ang + k * Math.PI / 2;
+        const nx = Math.cos(ang), ny = Math.sin(ang);
+        let amin = 1e9, amax = -1e9, bmin = 1e9, bmax = -1e9;
+        for (const q of [a, b]){
+          const cx = Math.cos(q.ang), sy = Math.sin(q.ang);
+          const c = q.cx * nx + q.cy * ny;
+          const r = Math.abs((cx * q.hx) * nx + (sy * q.hx) * ny) +
+                    Math.abs((-sy * q.hy) * nx + (cx * q.hy) * ny);
+          if (q === a){ amin = c - r; amax = c + r; }
+          else        { bmin = c - r; bmax = c + r; }
+        }
+        if (amax < bmin || bmax < amin) return false;
+      }
+    }
+    return true;
+  }
+  /* the meteor as it is painted: the shell box, anchored and turned to
+     lie along the track exactly as drawMeteor turns it */
+  function metShell(o){
+    const g = SPACE.metPaint();
+    const ang = Math.atan2(o.vy, o.vx) + Math.PI;
+    const ox = g.w/2 - g.ax, oy = g.h/2 - g.ay;   /* anchor to centre */
+    const c = Math.cos(ang), s2 = Math.sin(ang);
+    return { cx: o.x + ox*c - oy*s2, cy: o.y + ox*s2 + oy*c,
+             hx: g.w/2 + PAINT_PAD, hy: g.h/2 + PAINT_PAD, ang };
+  }
+  function painted(scene){
+      const sc = scene || s;
+      if (!sc) return null;
+      let who = null;
+      withScene(() => {
+        const b = SPR.carBox();
+        const car = { cx: player.x, cy: carY, hx: b.w/2, hy: b.h/2, ang: 0 };
+        for (const o of obstacles){
+          if (o.t === 'shield' || o.t === 'vms3' || o.t === 'f1') continue;
+          if (o.t === 'meteor'){
+            if (obbHit(car, metShell(o))){ who = 'meteor:trail'; return; }
+            continue;
+          }
+          for (const r of rectsOf(o))
+            if (obbHit(car, { cx: r.x + r.w/2, cy: r.y + r.h/2,
+                              hx: r.w/2 + PAINT_PAD, hy: r.h/2 + PAINT_PAD,
+                              ang: 0 })){
+              who = o.t + (o.kind != null ? ':'+o.kind : ''); return;
+            }
+        }
+      }, sc);
+      return who;
+  }
+
+  function touching(scene){
+      const sc = scene || s;
+      if (!sc) return null;
+      let who = null;
+      withScene(() => {
+        const pr = playerRects();
+        for (const o of obstacles){
+          if (o.t === 'shield' || o.t === 'vms3' || o.t === 'f1') continue;
+          for (const r of rectsOf(o)) for (const q of pr)
+            if (overlap(q, r)){ who = o.t + (o.kind != null ? ':'+o.kind : ''); return; }
+        }
+      }, sc);
+      return who;
+  }
+
+  /* How close the car came, in pixels, on one recorded frame. Zero is a
+     touch; the baker rejects those. A clip whose closest pass is 200px
+     is a car in empty sky, which is not a montage of anybody dodging
+     anything - this is how a tight one is found to show. */
+  function clearance(f){
+    let best = 1e9;
+    withScene(() => {
+      const pr = playerRects();
+      for (const o of obstacles){
+        if (o.t === 'shield' || o.t === 'vms3' || o.t === 'f1') continue;
+        for (const r of rectsOf(o)) for (const q of pr){
+          const dx = Math.max(r.x - (q.x + q.w), q.x - (r.x + r.w), 0);
+          const dy = Math.max(r.y - (q.y + q.h), q.y - (r.y + r.h), 0);
+          best = Math.min(best, Math.hypot(dx, dy));
+        }
+      }
+    }, f);
+    return best;
+  }
+
+  return { reset, update, touching, painted, tune,
+    /* drive playback by hand, for the render harness */
+    _hold:   v => { held = v !== false; return held; },
+    _frames: () => play ? play.rec.length : 0,
+    _seek:   i => { t = clamp(i, 0, (play ? play.rec.length : 1) - 1) / 60; },
+    _clip:   () => {
+      if (!play) return null;
+      const cl = play.rec.map(clearance);
+      let at = 0;
+      for (let i = 1; i < cl.length; i++) if (cl[i] < cl[at]) at = i;
+      let travel = 0;
+      for (let i = 1; i < play.rec.length; i++)
+        travel += Math.abs(play.rec[i].x - play.rec[i-1].x);
+      return { frames: play.rec.length, city: play.city, rider: play.rider,
+               feet: Math.round(play.rec[0].feet),
+               travel: Math.round(travel),
+               span: Math.round(Math.max(...play.rec.map(f=>f.x)) -
+                                Math.min(...play.rec.map(f=>f.x))),
+               minClear: +cl[at].toFixed(1), at,
+               hazards: new Set(play.rec.flatMap(f =>
+                 f.obs.map(o => o.t))).size };
+    },
+    _next:   () => { t = CLIP; },
+    /* the closest the painted meteor shell came to the car, per clip -
+       this is the case the hitbox test was blind to */
+    _met:    () => {
+      if (!play) return null;
+      let best = 1e9, at = -1, seen = 0, hits = 0;
+      play.rec.forEach((f, i) => {
+        withScene(() => {
+          const b = SPR.carBox();
+          for (const o of obstacles){
+            if (o.t !== 'meteor') continue;
+            seen++;
+            const sh = metShell(o);
+            const c = Math.abs(Math.cos(sh.ang)), s2 = Math.abs(Math.sin(sh.ang));
+            const ex = sh.hx*c + sh.hy*s2, ey = sh.hx*s2 + sh.hy*c;
+            const dx = Math.max(Math.abs(sh.cx - player.x) - ex - b.w/2, 0);
+            const dy = Math.max(Math.abs(sh.cy - carY)   - ey - b.h/2, 0);
+            const d = Math.hypot(dx, dy);
+            if (d < best){ best = d; at = i; }
+            /* the gap above is off the shell's AXIS-ALIGNED extent, which
+               for a box lying at 45 degrees is far bigger than the box.
+               It is only good for ranking frames; whether the trail is
+               actually on the car is the oriented test. */
+            if (obbHit({ cx: player.x, cy: carY, hx: b.w/2, hy: b.h/2, ang: 0 }, sh))
+              hits++;
+          }
+        }, f);
+      });
+      return { seen, trailOnCar: hits,
+               aabbGap: best === 1e9 ? null : +best.toFixed(1), at };
+    },
+    /* every frame of every clip that was shown, checked - this should
+       read zero touching, because a clip that touched anything was
+       thrown away rather than shown */
+    audit(secs){
+      reset();
+      const dt = 1/60, N = Math.round((secs || 60) * 60);
+      let frames = 0, bad = 0; const who = {};
+      for (let i = 0; i < N; i++){
+        update(dt);
+        const f = play && play.rec[Math.min(play.rec.length - 1,
+                                            Math.floor(t * 60))];
+        if (!f) continue;
+        frames++;
+        const hit = painted(f);
+        if (hit){ bad++; who[hit] = (who[hit] || 0) + 1; }
+      }
+      return { frames, touching: bad, who,
+               clips: stats.baked, attempts: stats.tries,
+               shownDirty: stats.dirty };
+    },
+    at(){
+      if (!s) return null;
+      let clear = null, inClear = null;
+      withScene(() => {
+        const iv = clearNow();
+        clear = iv.map(([a,b]) => [Math.round(a), Math.round(b)]);
+        inClear = iv.some(([a,b]) => player.x >= a && player.x <= b);
+      });
+      const w = s.win || [s.x, s.x];
+      const gap = s.x < w[0] ? w[0] - s.x : s.x > w[1] ? s.x - w[1] : 0;
+      return { feet: Math.round(s.feet), x: Math.round(s.x),
+               win: [Math.round(w[0]), Math.round(w[1])],
+               inWin: gap === 0, gap: Math.round(gap),
+               vx: Math.round(s.vx), n: s.obs.length, inClear, clear };
+    },
     draw(){
-      if (!s) cut();
-      const tilt = clamp(s.vx / PLAYER_MAXV, -1, 1) * 0.26;
+      if (!play) cut();
+      const f = play.rec[Math.min(play.rec.length - 1, Math.floor(t * 60))];
+      const tilt = f.tilt;
       withScene(() => {
         BD.sky(ctx, W, H, feet);
         BD.stars(ctx, W, H, feet, px * 0.06, runTime);
@@ -8666,9 +9275,9 @@ const ATTRACT = (function(){
         drawCity();
         for (const o of obstacles) drawObstacle(o);
         FX.jets(ctx, 0, player.x, carY - PLAYER_H/2 + CAR_H, runTime);
-        SPR.drawCar(ctx, s.rider, player.x, carY, tilt, 1);
+        SPR.drawCar(ctx, play.rider, player.x, carY, tilt, 1);
         BD.clouds(ctx, W, H, feet, px, runTime, true);
-      });
+      }, f);
       if (t < FADE){
         ctx.fillStyle = 'rgba(5,7,14,' + (1 - t / FADE).toFixed(3) + ')';
         ctx.fillRect(0, 0, W, H);
@@ -8791,6 +9400,8 @@ corridor = [[HALF_CAR, W - HALF_CAR]];
 if (location.search.indexOf('debug') >= 0){
 window.SPRDBG = SPR;
 window.MUSICDBG = Music;
+window.SOUNDDBG = Sound;
+window.ATTRACTDBG = ATTRACT;
 window.SPACEDBG = SPACE;
 window.BDDBG = BD;
 window.GNDDBG = GND;
@@ -8921,6 +9532,32 @@ window.DBG = {
   /* The positions the car's CENTRE could hold at its own row, given only
      what is level with it right now. If this comes back empty the shaft is
      sealed and no input would have saved the run. */
+  /* Fly the title montage and count the frames in which the car is
+     touching something. The montage is the first thing anyone sees, so
+     a car that clips a boom there is the whole game's first impression. */
+  attract: (secs) => {
+    ATTRACT.reset();
+    const N = Math.round((secs || 60) * 60), dt = 1/60;
+    let frames = 0, bad = 0;
+    const who = {}, where = [];
+    for (let i = 0; i < N; i++){
+      ATTRACT.update(dt);
+      frames++;
+      const t = ATTRACT.touching();
+      if (t){ bad++; who[t] = (who[t] || 0) + 1;
+              if (where.length < 6) where.push(Object.assign({ t }, ATTRACT.at())); }
+    }
+    return { frames, touching: bad, pct: +(100 * bad / frames).toFixed(2),
+             who, where };
+  },
+  /* the plan works off o.x/o.w and o.y/o.h; collision works off the baked
+     alpha. These let the two be compared directly - a plan built on a box
+     that is narrower or shorter than the real hitbox is a plan that never
+     sees the graze it is handing out. */
+  _obs:   i => Object.assign({}, obstacles[i]),
+  _rects: i => rectsOf(obstacles[i]).map(r =>
+             ({ x:+r.x.toFixed(1), y:+r.y.toFixed(1),
+                w:+r.w.toFixed(1), h:+r.h.toFixed(1) })),
   free: () => {
     const cb = SPR.carBox();
     const top = carY - cb.h/2, bot = carY + cb.h/2;
