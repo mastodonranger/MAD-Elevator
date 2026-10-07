@@ -869,7 +869,7 @@ function zoneFor(feet){
 
 
 /* ================================================================
-   5. Audio - a few synthesised blips, no assets
+   5. Audio - a few synthesised blips. The music is section 5b.
    ================================================================ */
 const Sound = (() => {
   let actx = null, on = true;
@@ -942,6 +942,92 @@ soundBtn.addEventListener('click', e => {
   soundBtn.textContent = Sound.toggle() ? 'SOUND ON' : 'SOUND OFF';
   soundBtn.blur();
 });
+
+
+/* ================================================================
+   5b. Music - one track per screen
+   ----------------------------------------------------------------
+   The blips above are synthesised because they are cheap. These are
+   not: seven megabytes of mp3 base64'd into this file would make it
+   twenty-five times bigger and hold the first frame behind the whole
+   download. So the four tracks sit beside it in audio/ and are pulled
+   in as they are needed. A missing file is not an error - the game
+   just runs quiet, which is what opening this html on its own does.
+
+   Volume is ramped in the frame loop rather than by a timer, so a
+   crossfade runs on the same clock as everything else, and the mute
+   button needs no wiring here: every ramp reads Sound.on.
+   ================================================================ */
+const Music = (() => {
+  const SRC = {
+    title:  { file:'audio/title.mp3',  vol:0.55, loop:true  },
+    select: { file:'audio/select.mp3', vol:0.55, loop:true  },
+    game:   { file:'audio/game.mp3',   vol:0.42, loop:true  },
+    over:   { file:'audio/over.mp3',   vol:0.60, loop:false }
+  };
+  const RAMP = 1 / 0.45;                 /* nought to full in 0.45s */
+  const live = {};                       /* key -> {a, want} | null if gone */
+  let cur = null, duckF = 1, gesture = false;
+
+  function get(k){
+    if (live[k] === null) return null;             /* the file is not there */
+    if (!live[k]){
+      const a = new Audio();
+      a.preload = 'auto'; a.loop = SRC[k].loop; a.volume = 0;
+      a.addEventListener('error', () => { live[k] = null; }, { once:true });
+      a.src = SRC[k].file;
+      live[k] = { a, want: 0 };
+    }
+    return live[k];
+  }
+  /* Nothing is allowed to sound before the first gesture, so until then
+     every track sits loaded at volume zero and arm() lets them go. */
+  function kick(t){
+    if (!gesture || !Sound.on) return;
+    if (t.a.paused) { const r = t.a.play(); if (r && r.catch) r.catch(()=>{}); }
+  }
+  return {
+    play(k){
+      if (cur === k) return;
+      cur = k;
+      for (const j in live) if (live[j]) live[j].want = 0;
+      if (!k) return;
+      const t = get(k); if (!t) return;
+      t.want = SRC[k].vol;
+      if (!SRC[k].loop && t.a.currentTime) { try { t.a.currentTime = 0; } catch(e){} }
+      kick(t);
+    },
+    /* a pause holds the run, so it holds the music under the overlay
+       rather than cutting it - coming back out of a pause should not
+       sound like starting a new one */
+    duck(v){ duckF = v; },
+    arm(){
+      if (gesture) return;
+      gesture = true;
+      for (const k in live) if (live[k] && live[k].want > 0) kick(live[k]);
+    },
+    _live: () => live,
+    _cur:  () => cur,
+    tick(dt){
+      const step = RAMP * dt;
+      for (const k in live){
+        const t = live[k]; if (!t) continue;
+        const want = Sound.on ? t.want * duckF : 0;
+        if (t.a.volume < want)      t.a.volume = Math.min(want, t.a.volume + step);
+        else if (t.a.volume > want) t.a.volume = Math.max(want, t.a.volume - step);
+        /* keyed off want, not volume: a track that was loaded but never
+           allowed to sound still holds its volume, and kicking that one
+           on the way out plays a second of the screen you just left */
+        if (t.want > 0) kick(t);
+        else if (!t.a.paused && t.a.volume === 0) t.a.pause();
+      }
+    }
+  };
+})();
+/* the browser decides when sound is allowed, and the answer is "after
+   the user has touched something" - so hand it the first thing they do */
+addEventListener('pointerdown', () => Music.arm(), { once:true, capture:true });
+addEventListener('keydown',     () => Music.arm(), { once:true, capture:true });
 
 /* ================================================================
    6. Persistent best
@@ -1399,6 +1485,7 @@ function showTitle(){
   el.hud.classList.remove('on');
   document.getElementById('titleBest').textContent = commas(best) + ' FT';
   ATTRACT.reset();
+  Music.duck(1); Music.play('title');
 }
 
 function buildSelect(){
@@ -1431,6 +1518,7 @@ function showSelect(){
   if (!el.selGrid.children.length) buildSelect();
   chooseRider(selIx);
   setStep(0);
+  Music.duck(1); Music.play('select');
 }
 
 function start(){
@@ -1457,6 +1545,7 @@ function start(){
   el.title.hidden = true; el.over.hidden = true; el.pause.hidden = true;
   el.select.hidden = true; menuScreen = 'title';
   el.hud.classList.add('on');
+  Music.duck(1); Music.play('game');
   syncHUD();
 }
 
@@ -1466,6 +1555,7 @@ function pauseGame(){
   pointerOn = false;
   keys.left = keys.right = false;
   el.pause.hidden = false;
+  Music.duck(0.3);
 }
 /* Resuming never drops you straight back into traffic: the world stays
    frozen through a 3-2-1 and steering is locked, so a pause can't be used
@@ -1481,6 +1571,7 @@ function resume(){
   el.bigCount.textContent = '3';
   el.bigCount.classList.remove('tick'); void el.bigCount.offsetWidth;
   el.bigCount.classList.add('tick');
+  Music.duck(1);
   Sound.ding();
 }
 
@@ -1498,6 +1589,7 @@ function gameOver(){
   document.getElementById('titleBest').textContent = commas(best) + ' FT';
   el.over.hidden = false;
   el.hud.classList.remove('on');
+  Music.duck(1); Music.play('over');
 }
 
 /* ================================================================
@@ -8673,6 +8765,7 @@ function frame(t){
   const dt = clamp((t - last) / 1000, 0, 0.05);
   last = t;
   update(dt);
+  Music.tick(dt);
   draw();
   requestAnimationFrame(frame);
 }
@@ -8697,6 +8790,7 @@ corridor = [[HALF_CAR, W - HALF_CAR]];
    hitbox/coverage checks run against these. */
 if (location.search.indexOf('debug') >= 0){
 window.SPRDBG = SPR;
+window.MUSICDBG = Music;
 window.SPACEDBG = SPACE;
 window.BDDBG = BD;
 window.GNDDBG = GND;
@@ -8915,7 +9009,9 @@ console.log('[space]   ' + _spc.sprites + ' baked in ' + _spc.ms + 'ms, ' +
             _spc.kb + ' KB, ' + _spc.clipped + ' clipped ' + JSON.stringify(_spc.where));
 el.launch.addEventListener('click', e => { e.stopPropagation(); primary(); });
 el.launch.addEventListener('pointerdown', e => e.stopPropagation());
-document.getElementById('titleBest').textContent = commas(best) + ' FT';
+/* the title screen is the start state, so go in through the same door
+   every later return to it uses - that is what cues its music */
+showTitle();
 requestAnimationFrame(frame);
 })();
 </script>

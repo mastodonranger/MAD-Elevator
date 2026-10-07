@@ -4,8 +4,15 @@ A vertical endless runner in a 9:16 frame. Car 3 has left the building and
 it is not coming back down. You steer left and right; the only number that
 matters is how many feet you made before something hit you.
 
-Everything is one self-contained file — `index.html`. No build, no assets,
-no network requests: the art is drawn with the canvas 2D API at runtime.
+All the code and all the art is one self-contained file — `index.html`.
+No build and no network requests: every sprite, the city, the sky and the
+effects are drawn with the canvas 2D API at runtime.
+
+The only files beside it are the four music tracks in `audio/`, one per
+screen. They are 7 MB of mp3 and would make `index.html` twenty-five
+times bigger if they were embedded, so they stay separate — and they are
+optional. Open `index.html` on its own and the game runs with its
+synthesised blips and no music.
 
 ## Play
 
