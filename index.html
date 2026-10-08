@@ -1036,62 +1036,101 @@ const Music = (() => {
     over:   { file:'audio/over.mp3',   vol:0.60, loop:false }
   };
   const RAMP = 1 / 0.45;                 /* nought to full in 0.45s */
-  const live = {};                       /* key -> {a, want} | null if gone */
-  let cur = null, duckF = 1, gesture = false;
+  /* 64 samples of 8-bit silence. A phone unlocks an audio ELEMENT, not a
+     file, and only inside a real tap - so both decks are handed this and
+     played for an instant on the first touch, which is what buys them
+     the right to make noise later. */
+  const SILENT = 'data:audio/wav;base64,UklGRmQAAABXQVZFZm10IBAAAAABAAEAQB8A'
+               + 'AEAfAAABAAgAZGF0YUAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICA'
+               + 'gICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA';
 
-  function get(k){
-    if (live[k] === null) return null;             /* the file is not there */
-    if (!live[k]){
-      const a = new Audio();
-      a.preload = 'auto'; a.loop = SRC[k].loop; a.volume = 0;
-      a.addEventListener('error', () => { live[k] = null; }, { once:true });
-      a.src = SRC[k].file;
-      live[k] = { a, want: 0 };
-    }
-    return live[k];
+  /* TWO DECKS, not one element per track.
+
+     One element per track is the obvious build and it does not survive
+     contact with a phone. The browser grants the right to play to an
+     ELEMENT, inside a real tap: an <audio> that was never played in one
+     can never be played afterwards from the frame loop, and on iOS a
+     single tap unlocks a single element. So the game-over track - which
+     only ever starts from the frame loop, because that is where crashing
+     happens - could never sound at all, and the rest came down to which
+     element the first tap happened to have created. The music appeared
+     not to change.
+
+     Two decks are unlocked together on that first touch and then play
+     anything by swapping src, which a browser treats as the same
+     already-permitted element. It also means at most two tracks are
+     ever fetched, so a phone no longer pulls seven megabytes because
+     somebody looked at the title screen. */
+  const decks = [newDeck(), newDeck()];
+  let cur = null, active = null, duckF = 1, armed = false;
+
+  function newDeck(){
+    const a = new Audio();
+    a.preload = 'auto'; a.volume = 0;
+    return { a, want: 0, key: null };
   }
-  /* Nothing is allowed to sound before the first gesture, so until then
-     every track sits loaded at volume zero and arm() lets them go. */
-  function kick(t){
-    if (!gesture || !Sound.on) return;
-    if (t.a.paused) { const r = t.a.play(); if (r && r.catch) r.catch(()=>{}); }
+  const idle = () => decks[0] === active ? decks[1] : decks[0];
+
+  function load(d, k){
+    d.key = k;
+    d.a.loop = SRC[k].loop;
+    d.a.src  = SRC[k].file;
+    try { d.a.currentTime = 0; } catch(e){}
+  }
+  function go(d){
+    if (!armed || !Sound.on || !d.key) return;
+    const r = d.a.play();
+    if (r && r.catch) r.catch(() => {});   /* refused: stay quiet, not broken */
   }
   return {
     play(k){
       if (cur === k) return;
       cur = k;
-      for (const j in live) if (live[j]) live[j].want = 0;
+      for (const d of decks) if (d.key !== k) d.want = 0;
       if (!k) return;
-      const t = get(k); if (!t) return;
-      t.want = SRC[k].vol;
-      if (!SRC[k].loop && t.a.currentTime) { try { t.a.currentTime = 0; } catch(e){} }
-      kick(t);
+      /* if it is still on a deck fading out, fade it back in rather than
+         fetching it a second time */
+      let d = decks.find(x => x.key === k) || null;
+      if (!d){ d = idle(); load(d, k); }
+      d.want = SRC[k].vol;
+      active = d;
+      go(d);
     },
     /* a pause holds the run, so it holds the music under the overlay
        rather than cutting it - coming back out of a pause should not
        sound like starting a new one */
     duck(v){ duckF = v; },
+    /* The browser decides when sound is allowed and the answer is "inside
+       a tap", so this runs in the handler itself, not a frame later. */
     arm(){
-      if (gesture) return;
-      gesture = true;
-      for (const k in live) if (live[k] && live[k].want > 0) kick(live[k]);
+      if (armed) return;
+      armed = true;
+      for (const d of decks){
+        if (d.key){ go(d); continue; }       /* already has a track: start it */
+        d.a.src = SILENT;
+        const r = d.a.play();
+        if (r && r.catch) r.catch(() => {});
+        d.a.pause();                         /* unlocked, and silent about it */
+      }
     },
-    _live: () => live,
-    _cur:  () => cur,
     tick(dt){
       const step = RAMP * dt;
-      for (const k in live){
-        const t = live[k]; if (!t) continue;
-        const want = Sound.on ? t.want * duckF : 0;
-        if (t.a.volume < want)      t.a.volume = Math.min(want, t.a.volume + step);
-        else if (t.a.volume > want) t.a.volume = Math.max(want, t.a.volume - step);
-        /* keyed off want, not volume: a track that was loaded but never
-           allowed to sound still holds its volume, and kicking that one
-           on the way out plays a second of the screen you just left */
-        if (t.want > 0) kick(t);
-        else if (!t.a.paused && t.a.volume === 0) t.a.pause();
+      for (const d of decks){
+        if (!d.key) continue;
+        const want = Sound.on ? d.want * duckF : 0;
+        if (d.a.volume < want)      d.a.volume = Math.min(want, d.a.volume + step);
+        else if (d.a.volume > want) d.a.volume = Math.max(want, d.a.volume - step);
+        if (d.want > 0) go(d);
+        else if (!d.a.paused && d.a.volume === 0) d.a.pause();
       }
-    }
+    },
+    _live: () => { const o = {};
+      decks.forEach((d, i) => { o['deck'+i] = d.key
+        ? { key:d.key, want:d.want, v:+d.a.volume.toFixed(2),
+            playing:!d.a.paused, rs:d.a.readyState }
+        : null; });
+      return o; },
+    _cur: () => cur
   };
 })();
 /* the browser decides when sound is allowed, and the answer is "after
