@@ -927,6 +927,20 @@ const Sound = (() => {
     o.start(t0); o.stop(t0 + len + 0.03);
   }
   return {
+    /* The one context, handed out so the music can hang a gain node off
+       it. Not ready(), which withholds it while muted: the music needs
+       the graph either way and mutes by turning its own gain down. */
+    ctx(){
+      if (!actx){
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        actx = new AC();
+      }
+      if (actx.state === 'suspended') actx.resume();
+      return actx;
+    },
+    /* without creating one, for the readout */
+    ctxState(){ return actx ? actx.state : 'none'; },
     /* ---- the interface ---------------------------------------------
        Four jobs, four shapes, and the shape carries the meaning without
        anyone having to learn it: a tick for moving, up for yes, down for
@@ -1066,13 +1080,44 @@ const Music = (() => {
 
   function newDeck(){
     const a = new Audio();
-    a.preload = 'auto'; a.volume = 0;
-    return { a, want: 0, key: null };
+    a.preload = 'auto';
+    return { a, want: 0, lvl: 0, key: null, gain: null, wired: false };
+  }
+  /* Route the element through a gain node and fade THAT.
+
+     element.volume is read-only on iOS - the hardware buttons own it, and
+     an assignment is dropped without a word, so it always reads 1. Every
+     track therefore started at full blast, and the line that retired a
+     finished deck ("volume has reached zero, so pause it") could never be
+     true. The title track came up on the first tap and simply never
+     stopped; everything after it piled on top. From the outside: music
+     that does not change.
+
+     A gain node iOS does honour. And the level is kept here in lvl
+     rather than read back off the element, so the decision to stop is
+     made on what this code asked for, not on what a platform admits to. */
+  function wire(d){
+    if (d.wired) return;
+    d.wired = true;
+    const ac = Sound.ctx();
+    if (!ac) return;                    /* no Web Audio: fall back to volume */
+    try {
+      const src = ac.createMediaElementSource(d.a);
+      d.gain = ac.createGain();
+      d.gain.gain.value = d.lvl;
+      src.connect(d.gain); d.gain.connect(ac.destination);
+    } catch(e){ d.gain = null; }
+  }
+  function level(d, v){
+    d.lvl = v;
+    if (d.gain) d.gain.gain.value = v;
+    else { try { d.a.volume = v; } catch(e){} }
   }
   const idle = () => decks[0] === active ? decks[1] : decks[0];
 
   function load(d, k){
     d.key = k;
+    level(d, 0);                        /* always fade up from silence */
     d.a.loop = SRC[k].loop;
     d.a.src  = SRC[k].file;
     try { d.a.currentTime = 0; } catch(e){}
@@ -1105,6 +1150,10 @@ const Music = (() => {
     arm(){
       if (armed) return;
       armed = true;
+      /* the graph is built here too: a context may only be started from
+         inside a gesture, and once an element is routed through one a
+         suspended context means silence */
+      for (const d of decks) wire(d);
       for (const d of decks){
         if (d.key){ go(d); continue; }       /* already has a track: start it */
         d.a.src = SILENT;
@@ -1118,15 +1167,16 @@ const Music = (() => {
       for (const d of decks){
         if (!d.key) continue;
         const want = Sound.on ? d.want * duckF : 0;
-        if (d.a.volume < want)      d.a.volume = Math.min(want, d.a.volume + step);
-        else if (d.a.volume > want) d.a.volume = Math.max(want, d.a.volume - step);
+        if (d.lvl < want)      level(d, Math.min(want, d.lvl + step));
+        else if (d.lvl > want) level(d, Math.max(want, d.lvl - step));
         if (d.want > 0) go(d);
-        else if (!d.a.paused && d.a.volume === 0) d.a.pause();
+        else if (!d.a.paused && d.lvl === 0) d.a.pause();
       }
     },
     _live: () => { const o = {};
       decks.forEach((d, i) => { o['deck'+i] = d.key
-        ? { key:d.key, want:d.want, v:+d.a.volume.toFixed(2),
+        ? { key:d.key, want:d.want, v:+d.lvl.toFixed(2), gain:!!d.gain,
+            elVol:+d.a.volume.toFixed(2),
             playing:!d.a.paused, rs:d.a.readyState }
         : null; });
       return o; },
@@ -1135,6 +1185,26 @@ const Music = (() => {
 })();
 /* the browser decides when sound is allowed, and the answer is "after
    the user has touched something" - so hand it the first thing they do */
+/* A readout for a phone, which has no console to open. index.html?audio
+   prints what each deck is actually doing, over the game. An iPhone is
+   the one thing that cannot be tested from here, so this is how the
+   phone reports back for itself. */
+if (location.search.indexOf('audio') >= 0) addEventListener('DOMContentLoaded', () => {
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;left:0;top:0;z-index:99999;pointer-events:none;'
+    + 'font:11px/1.35 ui-monospace,Menlo,monospace;white-space:pre;'
+    + 'background:rgba(0,0,0,.78);color:#8AEBFA;padding:6px 8px';
+  document.body.appendChild(box);
+  setInterval(() => {
+    box.textContent = 'cur ' + Music._cur() + '   ctx ' + Sound.ctxState()
+      + '   snd ' + (Sound.on ? 'on' : 'off') + '\n'
+      + Object.entries(Music._live()).map(([k, d]) => k + ' ' + (d
+          ? d.key + ' want' + d.want + ' lvl' + d.v + ' el' + d.elVol
+            + (d.gain ? ' gain' : ' NOGAIN') + ' rs' + d.rs
+            + (d.playing ? ' PLAY' : ' pause')
+          : '-')).join('\n');
+  }, 250);
+});
 addEventListener('pointerdown', () => Music.arm(), { once:true, capture:true });
 addEventListener('keydown',     () => Music.arm(), { once:true, capture:true });
 
