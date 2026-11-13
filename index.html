@@ -1863,6 +1863,7 @@ function spawnPickup(kind){
 function spawnBird(){
   const kind = pick(KIND.bird), d = SPR.dims('bird', KIX['bird:'+kind]);
   const o = { t:'bird', kind, x: rnd(60, W-60), y: -60, w: d.w, h: d.h,
+              face: 0,
               vx: rnd(-52, 52), vy: rnd(18, 58), phase: rnd(0, 6.28),
               amp: rnd(18, 58), flap: BIRD_FLAP[kind], flapT: rnd(0, 6),
               base: 0, passed:false };
@@ -2436,6 +2437,7 @@ function moveHazard(o, dt, ghost){
     } else if (o.y >= carY - PERCH_GO){
       o.took = 1e-6;
       o.vx = o.flyVx * 0.5;                 /* it pushes off the way it will fly */
+      if (Math.abs(o.flyVx) > 14) o.face = o.flyVx < 0 ? -1 : 1;
     }
     o.flapT = (o.flapT || 0) + dt * (o.took > 0 ? o.flap : 0);
     return;
@@ -2446,6 +2448,19 @@ function moveHazard(o, dt, ghost){
     if (o.base < 40 || o.base > W - 40){ o.vx *= -1; o.base = clamp(o.base, 40, W-40); }
     o.x = clamp(o.base + Math.sin(o.phase) * o.amp, 34, W - 34);
     o.flapT = (o.flapT || 0) + dt * o.flap;
+    /* Face where it is actually going. o.vx is only the DRIFT: the weave
+       puts cos(phase)*1.25*amp on top of it, which reaches 60px/s against
+       a drift of at most 43 and outweighs it about half the time. Keyed
+       off the drift alone a bird was drawn flying backwards through a
+       fifth of every crossing - measured at 21.5% of the frames in which
+       one was moving sideways at all.
+
+       The deadband is so it does not flip twice a second at the ends of
+       the weave, where it is barely moving sideways and the sign of the
+       velocity is noise. */
+    const vxReal = o.vx + Math.cos(o.phase) * 1.25 * o.amp;
+    if (vxReal > 14) o.face = 1;
+    else if (vxReal < -14) o.face = -1;
   } else if (o.t === 'ufo'){
     o.phase += dt * 1.0;
     if (!ghost){
@@ -8859,7 +8874,7 @@ function paintObstacle(o){
   switch(o.t){
     case 'bird':
       SPR.drawBird(ctx, KIX['bird:'+o.kind], birdFrame(o), o.x, o.y,
-                   o.perch ? o.face : (o.vx < 0 ? -1 : 1));
+                   o.face || (o.vx < 0 ? -1 : 1));
       break;
     case 'crane':  drawCrane(o);  break;
     case 'debris':
@@ -9725,6 +9740,8 @@ window.DBG = {
   boxes: () => obstacles.map(o => ({ t:o.t, k:o.kind, n:rectsOf(o).length })),
   feet: () => Math.floor(feet),
   spawn: t => SPAWNERS[t](),
+  /* pin a hazard's fields, so one can be held still and compared */
+  _set:  (i, patch) => Object.assign(obstacles[i], patch),
   /* park the three badges where they can be looked at */
   pk: () => { obstacles.length = 0;
     [['shield',130,300],['vms3',270,470],['f1',410,640]].forEach(a => {
