@@ -2884,7 +2884,13 @@ const SPR = (function(){
   const CX = 32;
   /* one skeleton, everything else is palette + extras */
   function person(p){
-    const x = CX-10, bot = FLOOR-1;
+    /* The rider stands at the panel, not across the cabin from it. The
+       buttons are at x55-58 and the body used to end at x40, so thirteen
+       pixels of the gap were bridged by arm - a limb longer than the
+       head is wide, on a sixteen-pixel torso. Moving the figure five
+       right and taking the same five out of the arm puts the hand on
+       exactly the same button with a reach that looks like a reach. */
+    const x = CX-5, bot = FLOOR-1;
     const sk = p.skin||SK, sk2 = p.skin2||SK2;
     if(!p.bald){ px(x+4,bot-38,12,5,p.hair); px(x+5,bot-38,4,2,p.hair2||p.hair); }
     if(p.long){ px(x+3,bot-36,2,12,p.hair); px(x+15,bot-36,2,12,p.hair);
@@ -2900,8 +2906,8 @@ const SPR = (function(){
     px(x+2,bot-12,16,1,p.coatD);
     px(x+1,bot-23,2,9,p.coat); px(x+1,bot-15,2,2,p.cuff||sk2);
     px(x+16,bot-23,3,6,p.coat);
-    px(x+18,bot-18,10,3,p.coat); px(x+18,bot-18,10,1,p.coatL);
-    px(x+28,bot-18,3,3,p.glove||sk);
+    px(x+18,bot-18,5,3,p.coat); px(x+18,bot-18,5,1,p.coatL);
+    px(x+23,bot-18,3,3,p.glove||sk);
     px(x+3,bot-11,6,10,p.trou); px(x+10,bot-11,6,10,p.trou);
     px(x+4,bot-11,2,10,p.trouL); px(x+11,bot-11,2,10,p.trouL);
     px(x+2,bot-1,8,2,p.shoe); px(x+10,bot-1,8,2,p.shoe);
@@ -2927,7 +2933,7 @@ const SPR = (function(){
                      px(x+6,bot-20,8,1,L); }})]);
 
   RIDERS.push(['Kid', ()=>{
-    const x = CX-8, bot = FLOOR-1;
+    const x = CX-3, bot = FLOOR-1;
     px(x-1,bot-16,4,12,'#3A7A4A'); px(x-1,bot-16,4,1,'#4E9E60');   /* pack, behind him */
     px(x-1,bot-5,4,1,'#2A5A36');
     px(x+3,bot-29,11,5,'#8A5A2A'); px(x+4,bot-29,3,2,'#A87240');
@@ -2939,8 +2945,8 @@ const SPR = (function(){
     px(x+3,bot-15,2,9,'#3A7A4A'); px(x+10,bot-15,2,9,'#3A7A4A');   /* straps */
     px(x+1,bot-14,2,7,'#C8443A'); px(x+1,bot-8,2,2,SK);
     px(x+13,bot-14,2,4,'#C8443A');
-    px(x+15,bot-11,10,3,'#C8443A'); px(x+15,bot-11,10,1,'#E05A4E');
-    px(x+25,bot-11,3,3,SK);
+    px(x+15,bot-11,5,3,'#C8443A'); px(x+15,bot-11,5,1,'#E05A4E');
+    px(x+20,bot-11,3,3,SK);
     px(x+3,bot-5,4,4,'#2A4A8A'); px(x+8,bot-5,4,4,'#2A4A8A');
     px(x+3,bot-2,4,2,SK); px(x+8,bot-2,4,2,SK);
     px(x+2,bot-1,6,2,'#F4F6FA'); px(x+8,bot-1,6,2,'#F4F6FA');
