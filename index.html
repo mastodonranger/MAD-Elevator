@@ -1730,7 +1730,7 @@ function buildSelect(){
        and then having the layout scale the result is what produced a
        0.61x downscale - pixel art with rows missing. Cropped to the ink,
        at its own size, the browser only ever enlarges it. */
-    const src = SPR.riderCv(i), cr = SPR.riderHead(i);
+    const src = SPR.riderIdleCv(i), cr = SPR.riderHead(i);
     cv.width = cr.w; cv.height = cr.h;
     const c = cv.getContext('2d');
     c.imageSmoothingEnabled = false;
@@ -2946,10 +2946,21 @@ const SPR = (function(){
     px(x-1,bot-41,1,15,INK); px(x+14,bot-41,1,15,INK);
     px(x,bot-42,14,1,INK); px(x,bot-26,14,1,INK);
   }
+  /* The cabin pose has the near arm hanging and the far arm out on the
+     button. ARMS_DOWN swaps the reaching arm for the hanging one
+     mirrored about the torso's centre column, which is the pose the
+     select-card portraits want - a figure on a button, cropped at the
+     chest, reads as half a gesture. */
+  let ARMS_DOWN = false;
   function arms(p,x,bot){
     const sk=p.skin||SK, gl=p.glove||sk;
     px(x-3,bot-24,3,9,p.coat); px(x-3,bot-15,3,3,gl);
     px(x-4,bot-24,1,12,INK); px(x-3,bot-12,3,1,INK);
+    if (ARMS_DOWN){
+      px(x+14,bot-24,3,9,p.coat); px(x+14,bot-15,3,3,gl);
+      px(x+17,bot-24,1,12,INK); px(x+14,bot-12,3,1,INK);
+      return;
+    }
     px(x+14,bot-24,3,3,p.coat);
     px(x+17,bot-22,7,3,p.coat);
     px(x+24,bot-22,3,3,gl);
@@ -4073,7 +4084,7 @@ const SPR = (function(){
 
   const RIDER_PICK  = [0,1,2,3,4,5,6,7,8,9];
   /* the select card's portrait window, in rows either side of the eyes */
-  const PORTRAIT_UP = 19, PORTRAIT_DOWN = 10, PORTRAIT_PAD = 2;
+  const PORTRAIT_UP = 19, PORTRAIT_DOWN = 24, PORTRAIT_PAD = 2;
   const BIRD_PICK   = [0,2,3];              /* pigeon, crow, sparrow      */
   const DEBRIS_PICK = [0,3,6];              /* brick, rubble, cinder      */
   const HELI_PICK   = [0,2,5];              /* news, rescue, cargo        */
@@ -4095,12 +4106,16 @@ const SPR = (function(){
        cabin being walked up to instead of one that already has its
        rider standing in it */
     cache.carEmpty = surface(CARW, CARH, 0, 3, () => { cabin(); panelBox(); }, CAR_S);
-    /* each rider on their own, for the character select - baked at 1:1
-       and blown up by a whole number there, so the portrait is the same
-       art as the figure in the glass rather than a second drawing */
+    /* each rider on their own - baked at 1:1 and blown up by a whole
+       number on the select screen, so the portrait is the same drawing
+       as the figure in the glass, only posed with its arms down */
     /* 64 tall, not 56: the chef's toque and the gent's hat stand taller
        than the old surface and were being cut off at the top of it */
     cache.rider = RIDER_PICK.map(i => surface(48, 64, -16, -14, () => RIDERS[i][1]()));
+    /* the same ten again with both arms hanging, for the select cards */
+    ARMS_DOWN = true;
+    cache.riderIdle = RIDER_PICK.map(i => surface(48, 64, -16, -14, () => RIDERS[i][1]()));
+    ARMS_DOWN = false;
     cache.bird = BIRD_PICK.map(i =>
       Array.from({length:BF_N},
                  (_,f) => surface(48, 34, 5, 6, () => drawBird(BIRDS[i][2], f))));
@@ -4127,7 +4142,8 @@ const SPR = (function(){
     cache.pickup = [0,1,2].map(k =>
       Array.from({ length: PK_FRAMES },
                  (_, f) => surface(70, 70, 1, 1, () => pickup(k, f))));
-    let n = cache.car.length + cache.debris.length + cache.rider.length + 1;
+    let n = cache.car.length + cache.debris.length + cache.rider.length
+          + cache.riderIdle.length + 1;
     cache.bird.forEach(a => n += a.length);
     cache.heli.forEach(a => n += a.length);
     cache.plane.forEach(a => a.forEach(b => n += b.length));
@@ -4150,6 +4166,7 @@ const SPR = (function(){
       if (edgeTouched(cv)){ clipped++; where[tag] = (where[tag]||0)+1; } };
     cache.car.forEach(add('car')); add('car')(cache.carEmpty);
     cache.rider.forEach(add('rider'));
+    cache.riderIdle.forEach(add('riderIdle'));
     cache.debris.forEach(add('debris'));
     cache.bird.forEach((a,i) => a.forEach(add('bird'+i)));
     cache.heli.forEach((a,i) => a.forEach(add('heli'+i)));
@@ -4276,7 +4293,7 @@ const SPR = (function(){
         }
         return -1;
       };
-      const rows = cache.rider.map(eyeRow);
+      const rows = cache.riderIdle.map(eyeRow);
       const h = PORTRAIT_UP + PORTRAIT_DOWN + 1;
       /* the sides are measured INSIDE the band rather than taken from the
          standing box: the button arm reaches eight pixels past the
@@ -4284,7 +4301,7 @@ const SPR = (function(){
          neither is in the portrait - carrying their width would only
          push every head off centre. */
       let x0 = 1e9, x1 = -1;
-      cache.rider.forEach((cv, k) => {
+      cache.riderIdle.forEach((cv, k) => {
         const top = rows[k] - PORTRAIT_UP;
         const d = cv.getContext('2d').getImageData(0,0,cv.width,cv.height).data;
         for (let y = Math.max(0, top); y < Math.min(cv.height, top + h); y++)
@@ -4347,6 +4364,7 @@ const SPR = (function(){
     birdCv:   i => cache.bird[i][1],
     debrisCv: i => cache.debris[i],
     riderCv: i => cache.rider[i],
+    riderIdleCv: i => cache.riderIdle[i],
     riderCrop: () => boxes.riderAll,
     riderHead: i => boxes.riderHead[i],
     carCvOf: i => cache.car[i],
