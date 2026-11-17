@@ -223,7 +223,9 @@
     color:var(--brass);margin-bottom:calc(var(--u)*14);
   }
   #selCar{
-    width:calc(var(--u)*150);height:auto;
+    /* 228 = twice the car's own 114, so the zoom is 2x--u: a whole number
+       at the kiosk, where --u is exactly 2, and never a downscale */
+    width:calc(var(--u)*228);height:auto;
     image-rendering:pixelated;
     filter:drop-shadow(0 calc(var(--u)*6) calc(var(--u)*18) rgba(0,0,0,.55));
   }
@@ -244,7 +246,8 @@
     cursor:pointer;display:flex;flex-direction:column;align-items:center;
     gap:calc(var(--u)*2);
   }
-  .rider canvas{width:calc(var(--u)*44);height:auto;image-rendering:pixelated}
+  /* width is set per card from the measured crop; see buildSelect */
+  .rider canvas{height:auto;image-rendering:pixelated}
   .rider span{
     font-size:calc(var(--u)*9);letter-spacing:calc(var(--u)*.5);
     text-transform:uppercase;color:var(--dim);
@@ -314,7 +317,7 @@
     display:flex;align-items:center;gap:calc(var(--u)*26);
     margin:calc(var(--u)*20) 0 calc(var(--u)*6);
   }
-  #readyCar{width:calc(var(--u)*150);height:auto;image-rendering:pixelated;
+  #readyCar{width:calc(var(--u)*228);height:auto;image-rendering:pixelated;
             filter:drop-shadow(0 calc(var(--u)*6) calc(var(--u)*18) rgba(0,0,0,.55))}
   .readyMeta{display:grid;grid-template-columns:auto;gap:calc(var(--u)*2);text-align:left}
   .readyLbl{font-size:calc(var(--u)*12);letter-spacing:calc(var(--u)*2);
@@ -1696,13 +1699,19 @@ function buildSelect(){
     b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', 'false');
     b.setAttribute('aria-label', name);
     const cv = document.createElement('canvas');
-    const src = SPR.riderCv(i), Z = 3;        /* a whole-number zoom, so the
-                                                 portrait is the same art as
-                                                 the figure in the glass */
-    cv.width = src.width * Z; cv.height = src.height * Z;
+    /* 1:1 into the canvas and let CSS do the zoom. Baking a zoom in here
+       and then having the layout scale the result is what produced a
+       0.61x downscale - pixel art with rows missing. Cropped to the ink,
+       at its own size, the browser only ever enlarges it. */
+    const src = SPR.riderCv(i), cr = SPR.riderCrop();
+    cv.width = cr.w; cv.height = cr.h;
     const c = cv.getContext('2d');
     c.imageSmoothingEnabled = false;
-    c.drawImage(src, 0, 0, src.width, src.height, 0, 0, cv.width, cv.height);
+    c.drawImage(src, cr.x, cr.y, cr.w, cr.h, 0, 0, cr.w, cr.h);
+    /* the displayed width comes from the MEASURED crop, so the zoom is
+       exactly 2x--u whatever the art turns out to measure - a constant in
+       the stylesheet would only be right for one set of drawings */
+    cv.style.width = 'calc(var(--u) * ' + (cr.w * 2) + ')';
     const nm = document.createElement('span');
     nm.textContent = name;
     b.appendChild(cv); b.appendChild(nm);
@@ -4187,6 +4196,21 @@ const SPR = (function(){
     bands.birdPerch = cache.bird.map((a,k) =>
       maskBands(a[BF_PERCH], anchors.bird[k][0], anchors.bird[k][1]));
     boxes.birdPerch = cache.bird.map(a => boxOf(a[BF_PERCH]));
+    /* The union of every rider's ink. A rider is 25x44 of drawing inside
+       a 48x56 surface, so a card that shows the whole surface is more
+       than half empty padding - and then the layout shrank it to fit,
+       which resampled the one thing that must never be resampled. The
+       thumbnail crops to this instead. Taking the UNION rather than each
+       rider's own box keeps all ten standing on the same line. */
+    boxes.riderAll = (() => {
+      let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1;
+      for (const cv of cache.rider){
+        const b = boxOf(cv);
+        x0 = Math.min(x0, b.x);       y0 = Math.min(y0, b.y);
+        x1 = Math.max(x1, b.x + b.w); y1 = Math.max(y1, b.y + b.h);
+      }
+      return { x: x0 - 1, y: y0 - 1, w: x1 - x0 + 2, h: y1 - y0 + 2 };
+    })();
     /* The row the feet actually land on, measured rather than typed:
        each kind is drawn at its own scale, so it is not the same number
        twice. The spawner hangs the bird off this so the feet meet the
@@ -4240,6 +4264,7 @@ const SPR = (function(){
     birdCv:   i => cache.bird[i][1],
     debrisCv: i => cache.debris[i],
     riderCv: i => cache.rider[i],
+    riderCrop: () => boxes.riderAll,
     carCvOf: i => cache.car[i],
     drawCar:    (ctx,i,x,y,rot,a)   => put(ctx, cache.car[i], anchors.car[i], x, y, 1, rot||0, a),
     drawCarEmpty:(ctx,x,y,rot)      => put(ctx, cache.carEmpty, anchors.car[0], x, y, 1, rot||0),
