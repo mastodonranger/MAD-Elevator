@@ -8208,121 +8208,71 @@ function padGantry(cl,lamp){
   chevrons(22,PADW-22,DECK_Y+7,6);
 }
 
-/* ---- the rider ---- cell 40 x 54, facing +x -------------------------
-   Measured off person(), not estimated. The cabin figure spends its rows
-   like this, with bot the sole line:
+/* ---- the rider, in profile ---- cell 40 x 60, facing +x -----------
+   Rebuilt to the cabin figure as it is now, measured off person(), and
+   with the nose-block head that was picked off the sheet:
 
-     hair   bot-38 .. bot-34   5
-     head   bot-33 .. bot-26   8
-     neck   bot-25             1
-     coat   bot-24 .. bot-11  14
-     leg    bot-11 .. bot-2   10
-     shoe   bot-1  .. bot      2
+     head   ub-42 .. ub-26  17  (outline, 4 of hair, 11 of face, outline)
+     coat   ub-25 .. ub-12  14
+     legs   bot-11 .. bot   12  (thigh 5, shin 5, shoe 1 + its outline)
 
-   39 rows, and the hatted riders reach bot-44. Every row below is one of
-   those, and the eye, nose and mouth sit on the cabin's own rows too.
-
-   Widths are a ratio, not a copy, because a person is narrower
-   front-to-back than across: the cabin's 16-wide torso becomes 13 deep,
-   its 6-wide legs stay 6, and the head stays 10. What matters is that
-   the head keeps its share of the body - at 11 against an 11-deep torso
-   the profile read as a bobble-head next to the cabin's 10 against 16. */
-const TW=13;                          /* torso, front to back */
-const LEGF=[ [[7,9,10],[5,3,2]],      /* contact - reaching / trailing */
-             [[6,6,6],[7,7,7]],       /* passing - both under the hip   */
-             [[5,3,2],[7,9,10]],      /* contact - swapped              */
-             [[7,7,7],[6,6,6]] ];     /* passing                        */
-/* the shoulder barely moves and the forearm swings, counter to the legs */
+   ub is the sole line for everyone but the Youngin, whose upper body
+   sits six rows lower exactly as it does in the cabin. Every part is
+   its own outlined block, laid with box(), so the outline is closed all
+   the way round - the same rule the cabin figure now keeps. */
+const W_SK='#F5CEA6', W_SK2='#D9A97E', W_CHK='#E8B294', W_EYE='#17110C';
+const TW=13, WBOT=54;
+/* a filled block with a closed one-pixel outline */
+const box=(x,y,w,h,c)=>{ px(x-1,y-1,w+2,h+2,N_O); px(x,y,w,h,c); };
+/* one outline round several blocks, so a limb is one part with no seam
+   at the knee or the elbow: every outline first, then every fill */
+const limb=rs=>{ for(const r of rs) px(r[0]-1,r[1]-1,r[2]+2,r[3]+2,N_O);
+                 for(const r of rs) px(r[0],r[1],r[2],r[3],r[4]); };
+const LEGF=[ [[7,9,10],[5,3,2]], [[6,6,6],[7,7,7]],
+             [[5,3,2],[7,9,10]], [[7,7,7],[6,6,6]] ];
 const ARMF=[ [6,4],[6,6],[6,9],[6,6] ];
 const BOB =[0,-1,0,-1];
-/* thigh and shin are 5 each, which is the cabin's 10-row leg with a knee
-   put in it. chk swaps the flat fill for the cabin's own checker, which
-   is how the chef gets check trousers without a texture. */
-function leg(bot,x,pts,w,c,cl,c2,cl2,chk){
+function legPair(bot,x,pts,c,cl,shoeC,shoeL,n){
   const [a,b,d]=pts;
-  if(chk) band(x+a,bot-11,w,5,chk[0],chk[1]); else px(x+a,bot-11,w,5,c);
-  px(x+a,bot-11,1,5,cl); px(x+a+w-1,bot-11,1,5,N_O);
-  const lc=c2||c, ll=cl2||cl;
-  if(chk&&!c2) band(x+b,bot-6,w,5,chk[0],chk[1]); else px(x+b,bot-6,w,5,lc);
-  px(x+b,bot-6,1,5,ll); px(x+b+w-1,bot-6,1,5,N_O);
-  return x+d;
+  if(n>=12) limb([[x+a,bot-11,6,5,c],[x+b,bot-6,6,4,c],[x+d-1,bot-1,8,1,shoeL],
+                   [x+a,bot-11,1,5,cl],[x+b,bot-6,1,4,cl]]);
+  else      limb([[x+b,bot-n+1,6,n-3,c],[x+d-1,bot-1,8,1,shoeL],[x+b,bot-n+1,1,n-3,cl]]);
 }
-/* 8 wide, 2 tall, lit along the top - the cabin's shoe exactly */
-function shoe(x,bot,c,cl){ px(x-1,bot-1,8,2,c); px(x-1,bot-1,8,1,cl); }
-
-/* the profile head, 8 rows and 10 wide like the cabin's, as a row table -
-   the silhouette has to step at the brow, the nose and the chin or it
-   reads as a ball */
-const HEADR=[[0,1,8],[1,0,9],[2,0,9],[3,0,9],[4,0,10],[5,0,9],[6,1,8],[7,2,7]];
-function face(hx,ht,sk,sk2){
-  for(const [r,a,b] of HEADR) px(hx+a,ht+r,b-a+1,1,sk);
-  px(hx+1,ht,8,1,sk2);
-  px(hx+6,ht+2,2,2,'#2A1C10');       /* eye,   the cabin's bot-31 */
-  px(hx+9,ht+4,1,2,sk2);             /* nose,  the cabin's bot-29 */
-  px(hx+3,ht+3,2,3,sk2);             /* ear */
-  px(hx+4,ht+6,4,1,'#B07A5E');       /* mouth, the cabin's bot-26 */
-  px(hx+4,ht+7,4,1,sk2);
+/* the head: 14 deep, a 4-row hair cap, one eye on the cabin's row, a
+   cheek, and the nose as its own part on the front edge */
+function wHead(p,hx,ub){
+  const hair=p.hair||HR, cap=p.capH||4;
+  box(hx,ub-41,14,15,W_SK);
+  if(!p.bald){ px(hx,ub-41,14,cap,hair); px(hx,ub-41,14,1,p.hair2||hair); }
+  /* the nose: two wide, three tall, opening the head's own outline */
+  px(hx+14,ub-33,2,1,N_O); px(hx+14,ub-29,2,1,N_O); px(hx+16,ub-32,1,3,N_O);
+  px(hx+14,ub-32,2,3,W_SK); px(hx+14,ub-32,2,1,W_SK2);
+  px(hx+9,ub-34,2,3,W_EYE);
+  if(p.cheek!==null) px(hx+11,ub-30,2,4,W_CHK);
 }
-
 function walker(p,f){
-  if(p.kid) return walkKid(p,f);
-  const sk=p.skin||SK, sk2=p.skin2||SK2, bot=48+BOB[f], x=11;
+  const sh=p.short||0, bot=WBOT+BOB[f], ub=bot+sh, x=11, hx=x+3;
   const [fr,bk]=LEGF[f], ar=ARMF[f];
-  const TRC=p.trou||TR, TRL2=p.trouL||TRL, CO=p.coat||CT, COL=p.coatL||CTL, COD=p.coatD||CTD;
-  const CH=p.coatH||14, longCoat=CH>14;
-  const far =()=>shoe(leg(bot,x,bk,6,COD,COD,p.bare?sk2:COD,p.bare?sk2:COD),bot,'#0A0C14','#141824');
-  const near=()=>shoe(leg(bot,x,fr,6,TRC,TRL2,p.bare?sk:null,p.bare?sk2:null,p.legCheck),
-                      bot,p.shoe||SHO,p.shoeL||SHOL);
-  far();
-  if(longCoat) near();
-  /* they face +x and the light is upper left, so the lit side is their
-     back - the highlight goes on the left */
-  px(x+2,bot-24,TW,CH,CO); px(x+2,bot-24,3,CH,COL);
-  px(x+2,bot-24,TW,1,COD); px(x+1+TW,bot-24,1,CH,COD);
-  px(x+1,bot-24,1,CH,N_O); px(x+2+TW,bot-24,1,CH,N_O);
-  px(x+2,bot-26+CH,TW,1,COD);
-  if(p.shirt){ px(x+TW-1,bot-24,2,5,p.shirt); px(x+TW-2,bot-24,1,6,COD); }
-  if(!longCoat) near();
-  if(p.chest) p.chest(x,bot,sk,sk2);
-  const hx=x+4, ht=bot-33;
-  face(hx,ht,sk,sk2);
-  if(!p.bald){ px(hx,ht-5,10,5,p.hair||HR); px(hx+1,ht-5,4,2,p.hair2||HR2);
-               px(hx,ht,2,4,p.hair||HR); }
-  if(p.long) px(hx-1,ht,3,10,p.hair||HR);
-  if(p.hat) p.hat(hx,ht,sk,sk2);
+  const CO=p.coat||CT, COL=p.coatL||CTL, COD=p.coatD||CTD;
+  const CH=(p.coatH||14)-sh, n=12-sh;
+  if(p.back) p.back(x,ub);
+  legPair(bot,x,bk,COD,COD,'#0A0C14','#141824',n);           /* far leg */
+  const near=()=>legPair(bot,x,fr,p.trou||TR,p.trouL||TRL,p.shoe||SHO,p.shoeL||SHOL,n);
+  if(CH>14) near();
+  /* the coat: lit along the top and down the back, which is the side
+     the light is on when they face +x */
+  box(x+2,ub-25,TW,CH,CO); px(x+2,ub-25,TW,1,COL); px(x+2,ub-25,3,CH,COL);
+  if(p.shirt) px(x+TW-1,ub-25,2,5,p.shirt);
+  if(p.tie)   px(x+TW-1,ub-20,2,7,p.tie);
+  if(CH<=14) near();
+  if(p.chest) p.chest(x,ub);
+  if(p.behind) p.behind(hx,ub);
+  wHead(p,hx,ub);
+  if(p.hat) p.hat(hx,ub);
   /* the near arm: shoulder held, forearm swinging against the legs */
-  px(x+ar[0],bot-23,5,6,CO); px(x+ar[0],bot-23,1,6,COL);
-  px(x+ar[1],bot-17,5,6,CO); px(x+ar[1],bot-17,1,6,COD);
-  px(x+ar[1],bot-11,5,3,p.glove||sk);
-  if(p.prop) p.prop(x+ar[1],bot,x,sk,sk2);
-}
-
-/* The kid is the one rider the cabin does not build from the skeleton -
-   shorter, own proportions - so the walker is not either. His rows,
-   measured the same way: 5 cap, 8 head, 1 neck, 10 body, 4 leg, 2 shoe,
-   30 from the cap down to the sole. His legs are one block with no knee,
-   as they are in the cabin, and the pack sits behind him rather than
-   being two straps seen from the front. */
-const KLEG=[ [7,4],[6,6],[4,7],[6,6] ];
-function walkKid(p,f){
-  const sk=SK, sk2=SK2, bot=48+BOB[f], x=11;
-  const [nr,fa]=KLEG[f], ar=ARMF[f];
-  px(x+fa,bot-5,5,4,'#1E3562'); px(x+fa,bot-5,1,4,'#2A4A8A');
-  px(x+fa-1,bot-1,7,2,'#D8DCE4');
-  px(x,bot-15,4,9,'#3A7A4A'); px(x,bot-15,4,1,'#4E9E60');    /* pack, on his back */
-  px(x-1,bot-15,1,9,N_O); px(x,bot-7,4,1,'#2A5A36');
-  px(x+4,bot-15,11,10,'#C8443A'); px(x+4,bot-15,3,10,'#E05A4E');
-  px(x+4,bot-15,11,1,'#8E2A24'); px(x+14,bot-15,1,10,'#8E2A24');
-  px(x+3,bot-15,1,10,N_O); px(x+15,bot-15,1,10,N_O);
-  px(x+5,bot-15,2,10,'#3A7A4A');                             /* the strap, over the shoulder */
-  px(x+nr,bot-5,5,4,'#2A4A8A'); px(x+nr,bot-5,1,4,'#3E63A8');
-  px(x+nr,bot-2,5,1,sk); px(x+nr-1,bot-1,7,2,'#F4F6FA');
-  const hx=x+5, ht=bot-24;
-  face(hx,ht,sk,sk2);
-  px(hx,ht-5,10,5,'#8A5A2A'); px(hx+1,ht-5,4,2,'#A87240');
-  px(hx+9,ht-3,5,2,'#8A5A2A');                               /* peak, forward */
-  px(x+ar[0],bot-14,4,5,'#C8443A'); px(x+ar[0],bot-14,1,5,'#E05A4E');
-  px(x+ar[1],bot-9,4,4,'#C8443A'); px(x+ar[1],bot-5,4,3,sk);
+  limb([[x+ar[0],ub-24,5,5,CO],[x+ar[1],ub-19,5,5,CO],[x+ar[1],ub-14,5,3,p.glove||W_SK],
+        [x+ar[0],ub-24,5,1,COL],[x+ar[0],ub-24,1,5,COL]]);
+  if(p.prop) p.prop(x+ar[1],bot,x,ub);
 }
 
 /* ---- the doors ---- cell 76 x 76, aperture 60 x 58 ------------------
@@ -8390,90 +8340,74 @@ const DOORCV=[0,1,2,3,4,5].map(s=>surf(76,76,()=>doorRetract(s)));
 const HELM=[[-6,2,10],[-5,1,11],[-4,0,12],[-3,-1,13],[-2,-2,13],[-1,-3,13],
             [0,-3,13],[1,-3,13],[2,-3,13],[3,-3,13],[4,-3,13],[5,-3,13],
             [6,-2,13],[7,-1,12],[8,0,11]];
-/* Ten walkers, one per rider, in RIDERS order. Each is the palette the
-   cabin figure uses plus a profile version of its headgear and whatever
-   it carries - and every hat sits on the same row the cabin puts it on,
-   so the two views line up feature for feature. ht is bot-33, so the
-   cabin's bot-42 is ht-9, its bot-38 is ht-5, and so on. */
+/* Ten walkers, one per rider, in RIDERS order: the cabin figure's
+   palette, its headgear seen side on, and whatever it carries. Hats sit
+   on the cabin's own rows - ub-42 is the head's top outline in both. */
 const WPAL=[
  /* 0 Sales Rep */
- {hair:HR,hair2:HR2,coat:CT,coatL:CTL,coatD:CTD,shirt:SHT,trou:TR,trouL:TRL,shoe:SHO,shoeL:SHOL,
-  prop:(hx,bot)=>{ px(hx-1,bot-10,11,8,D); px(hx-1,bot-10,11,1,M);
-                   px(hx-1,bot-10,1,8,M); px(hx+3,bot-12,4,2,M); px(hx-1,bot-3,11,1,O); }},
- /* 1 Lawyer */
- {hair:'#6B3A1E',hair2:'#8A5030',long:true,coat:'#4A2E52',coatL:'#68466E',coatD:'#2E1C34',
+ {hair:HR,hair2:HR2,coat:CT,coatL:CTL,coatD:CTD,shirt:SHT,tie:'#8A4A2A',trou:TR,trouL:TRL,
+  shoe:SHO,shoeL:SHOL,
+  prop:(ax,bot)=>{ box(ax-2,bot-10,10,7,D); px(ax-2,bot-10,10,1,M);
+                   px(ax+1,bot-12,4,1,M); px(ax+1,bot-12,1,2,M); px(ax+4,bot-12,1,2,M); }},
+ /* 1 Lawyer - the hair falls down the back, behind the head */
+ {hair:'#6B3A1E',hair2:'#8A5030',coat:'#4A2E52',coatL:'#68466E',coatD:'#2E1C34',
   shirt:'#F2E4EC',trou:'#33213A',trouL:'#4A3252',shoe:SHO,shoeL:SHOL,
-  chest:(x,bot)=>{ px(x+5,bot-24,2,11,D); px(x+5,bot-24,1,11,M); },   /* the strap, across */
-  /* the bag is tan, not another purple - one in the coat's own family
-     disappears into it, and this is her one colour beat */
-  prop:(hx,bot,x)=>{ px(x+1,bot-15,9,7,D); px(x+1,bot-15,9,1,M);
-                     px(x+1,bot-15,1,7,M); px(x+4,bot-16,3,2,M); px(x+1,bot-9,9,1,O); }},
+  behind:(hx,ub)=>{ box(hx-2,ub-39,4,15,'#6B3A1E'); },
+  chest:(x,ub)=>{ px(x+6,ub-24,2,11,D); px(x+6,ub-24,1,11,M); },
+  /* the bag is tan, not another purple: her one colour beat */
+  prop:(ax,bot,x,ub)=>{ box(x+2,ub-14,8,6,D); px(x+2,ub-14,8,1,M); }},
  /* 2 Bellhop */
  {hair:'#2A1C10',hair2:'#3E2C1C',coat:'#B0242C',coatL:'#D4383E',coatD:'#6E1218',shirt:'#F4E2C0',
   trou:'#8E1C22',trouL:'#B0242C',shoe:'#0E1220',shoeL:'#1C2438',glove:'#F4F6FA',
-  hat:(hx,ht)=>{ px(hx,ht-9,9,4,'#B0242C'); px(hx+1,ht-9,4,1,'#D4383E');
-                 px(hx-1,ht-5,11,2,L); px(hx-1,ht-5,11,1,S); dot(hx+4,ht-10,L); },
-  chest:(x,bot)=>{ px(x+13,bot-24,1,13,L); px(x+3,bot-14,11,1,L); }},
- /* 3 Youngin - their own build, as in the cabin */
- {kid:true},
+  hat:(hx,ub)=>{ box(hx+1,ub-46,11,4,'#B0242C'); px(hx+1,ub-46,11,1,'#D4383E'); },
+  chest:(x,ub)=>{ for(let i=0;i<4;i++) px(x+12,ub-22+i*3,1,1,L); }},
+ /* 3 Youngin - their own build: shorter, the pack on the back */
+ {short:6,hair:'#8A5A2A',hair2:'#A87240',coat:'#C8443A',coatL:'#E05A4E',coatD:'#8E2A24',
+  trou:'#2A4A8A',trouL:'#3E63A8',shoe:'#D8DCE4',shoeL:'#F4F6FA',
+  back:(x,ub)=>{ box(x-2,ub-23,4,12,'#3A7A4A'); px(x-2,ub-23,4,1,'#4E9E60'); },
+  chest:(x,ub)=>{ px(x+4,ub-25,2,14,'#3A7A4A'); }},
  /* 4 Technician */
- {bald:true,coat:'#2E5E8A',coatL:'#4078A8',coatD:'#1A3A58',trou:'#2E5E8A',trouL:'#4078A8',
+ {hair:HR,hair2:HR2,coat:'#2E5E8A',coatL:'#4078A8',coatD:'#1A3A58',trou:'#2E5E8A',trouL:'#4078A8',
   shoe:'#2A1C10',shoeL:'#3E2C1C',glove:'#C87A2E',
-  hat:(hx,ht)=>{ px(hx,ht-6,10,5,'#F2C43A'); px(hx+1,ht-6,4,2,'#FFE47A');
-                 px(hx-1,ht-2,12,2,'#D9A81E'); px(hx+10,ht-2,4,2,'#D9A81E');
-                 px(hx+4,ht-8,3,2,'#F2C43A'); },
-  chest:(x,bot)=>{ px(x+2,bot-14,13,3,'#5A3A1A'); px(x+2,bot-14,13,1,'#7A522A');
-                   px(x+11,bot-13,3,4,'#9AA2B0'); px(x+8,bot-24,3,11,'#3E7098'); }},
+  hat:(hx,ub)=>{ box(hx,ub-45,14,3,'#F2C43A'); px(hx,ub-45,14,1,'#FFE47A');
+                 box(hx-1,ub-42,18,2,'#D9A81E'); px(hx-1,ub-42,18,1,'#F2C43A'); },
+  chest:(x,ub)=>{ px(x+2,ub-15,TW,2,'#5A3A1A'); px(x+2,ub-15,TW,1,'#7A522A');
+                  px(x+11,ub-15,2,2,'#9AA2B0'); px(x+12,ub-25,2,10,'#3E7098'); }},
  /* 5 Tourist */
  {hair:'#4A3626',hair2:'#664A34',coat:'#3FA8A0',coatL:'#5FC8BE',coatD:'#2A7A74',
-  trou:'#D8CEAE',trouL:'#EDE3C2',shoe:'#F4F6FA',shoeL:'#FFFFFF',bare:true,
-  hat:(hx,ht)=>{ px(hx+1,ht-10,8,5,'#E8D89A'); px(hx+2,ht-10,3,1,'#F6EAC0');
-                 px(hx+1,ht-7,8,1,'#C8A85E');
-                 px(hx-3,ht-5,17,2,'#E8D89A'); px(hx-3,ht-5,17,1,'#F6EAC0'); },
-  chest:(x,bot)=>{ px(x+5,bot-24,9,1,'#3A3A44');
-                   px(x+8,bot-21,7,5,'#2A2A32'); px(x+9,bot-20,3,3,'#7CC8E8'); dot(x+13,bot-20,S);
-                   for(let i=0;i<4;i++) dot(x+4+i*2,bot-22+(i&1)*4,'#FFE47A'); }},
+  trou:'#D8CEAE',trouL:'#EDE3C2',shoe:'#F4F6FA',shoeL:'#FFFFFF',
+  hat:(hx,ub)=>{ box(hx+2,ub-47,10,3,'#E8D89A'); px(hx+2,ub-47,10,1,'#F6EAC0');
+                 box(hx-3,ub-43,21,2,'#E8D89A'); px(hx-3,ub-43,21,1,'#F6EAC0'); },
+  chest:(x,ub)=>{ box(x+10,ub-21,4,4,'#2A2A32'); px(x+11,ub-20,2,2,'#7CC8E8');
+                  px(x+7,ub-25,1,4,'#2A2A32'); }},
  /* 6 Chef */
- {bald:true,coat:'#F2F4F8',coatL:'#FFFFFF',coatD:'#C8CEDA',trou:'#5A6070',trouL:'#787E8E',
-  shoe:'#1A1A20',shoeL:'#2E2E38',legCheck:['#5A6070','#3E4450'],
-  hat:(hx,ht)=>{ px(hx,ht-10,10,7,'#FAFCFF'); px(hx+1,ht-10,4,3,'#FFFFFF');
-                 px(hx+9,ht-8,1,5,'#D8DCE4');
-                 px(hx-1,ht-3,11,3,'#E2E6EE'); px(hx-1,ht-3,11,1,'#FFFFFF'); },
-  chest:(x,bot)=>{ px(x+11,bot-24,1,12,'#C8CEDA'); px(x+7,bot-25,7,2,'#F2F4F8'); }},
- /* 7 Astronaut */
- {bald:true,coat:'#E4E8F0',coatL:'#FFFFFF',coatD:'#A8B0C0',trou:'#D4DAE6',trouL:'#EEF2F8',
-  shoe:'#8A92A4',shoeL:'#A8B0C0',glove:'#FFFFFF',
-  /* the helmet is a shell AROUND the head, so the face is redrawn inside
-     it and only the visor sits in front - the cabin builds it the same way */
-  hat:(hx,ht,sk,sk2)=>{
-    for(const [r,a,b] of HELM) px(hx+a,ht+r,b-a+1,1,'#E4E8F0');
-    px(hx+1,ht-5,9,2,'#FFFFFF'); px(hx-3,ht-1,2,9,'#FFFFFF');
-    for(const [r,a,b] of HELM){ px(hx+a,ht+r,1,1,N_O); px(hx+b,ht+r,1,1,N_O); }
-    face(hx,ht,sk,sk2);
-    px(hx+10,ht-2,4,11,'#BEE2F5'); px(hx+10,ht-2,4,2,'#FFFFFF');
-    px(hx+9,ht-2,1,11,'#A8B0C0'); px(hx+13,ht-2,1,11,N_O);
-    px(hx-2,ht+9,16,2,'#9AA2B0'); },
-  chest:(x,bot)=>{ px(x+5,bot-21,9,6,'#B8C0D0'); px(x+5,bot-21,9,1,'#D4DAE6');
-                   dot(x+6,bot-20,'#7CFF9A'); dot(x+8,bot-20,'#FF8A5A'); dot(x+10,bot-20,'#7CC8E8');
-                   px(x+2,bot-22,2,6,'#C84A3A'); px(x+2,bot-22,2,1,'#E06A54'); }},
+ {hair:'#E2E6EE',hair2:'#FFFFFF',coat:'#F2F4F8',coatL:'#FFFFFF',coatD:'#C8CEDA',
+  trou:'#5A6070',trouL:'#787E8E',shoe:'#1A1A20',shoeL:'#2E2E38',
+  hat:(hx,ub)=>{ box(hx+1,ub-50,12,8,'#FAFCFF'); px(hx+1,ub-50,12,1,'#FFFFFF'); },
+  chest:(x,ub)=>{ for(let i=0;i<3;i++){ px(x+11,ub-22+i*4,1,1,'#A8B0C0');
+                                        px(x+13,ub-22+i*4,1,1,'#A8B0C0'); } }},
+ /* 7 Astronaut - the helmet is the cap: a visor band over the head and a
+    ring at the neck, as the cabin draws it */
+ {hair:'#BEE2F5',hair2:'#FFFFFF',capH:6,cheek:null,coat:'#E4E8F0',coatL:'#FFFFFF',coatD:'#A8B0C0',
+  trou:'#D4DAE6',trouL:'#EEF2F8',shoe:'#8A92A4',shoeL:'#A8B0C0',glove:'#FFFFFF',
+  hat:(hx,ub)=>{ box(hx,ub-27,14,1,'#9AA2B0'); },
+  chest:(x,ub)=>{ box(x+7,ub-21,6,4,'#B8C0D0');
+                  px(x+8,ub-20,1,1,'#7CFF9A'); px(x+10,ub-20,1,1,'#FF8A5A'); }},
  /* 8 Senior - the long coat runs to bot-4, exactly as the cabin's does */
  {hair:'#B8BCC6',hair2:'#D6DAE2',coat:'#3A3A48',coatL:'#52525E',coatD:'#22222C',shirt:'#E6ECF6',
-  trou:'#2E2E38',trouL:'#44444E',shoe:'#1A1A20',shoeL:'#2E2E38',coatH:21,
-  hat:(hx,ht)=>{ px(hx,ht-11,10,6,'#2A2A32'); px(hx+1,ht-11,4,1,'#3E3E48');
-                 px(hx,ht-7,10,2,'#8A5A2A');
-                 px(hx-3,ht-5,17,2,'#2A2A32'); px(hx-3,ht-5,17,1,'#3E3E48'); },
-  prop:(hx,bot)=>{ px(hx+2,bot-14,2,14,'#8A5A2A'); px(hx+2,bot-14,1,14,'#A87240');
-                   px(hx+1,bot-15,4,2,'#D6DAE2'); px(hx+1,bot-1,4,1,O); }},
+  tie:'#5A2A2E',trou:'#2E2E38',trouL:'#44444E',shoe:'#1A1A20',shoeL:'#2E2E38',coatH:21,
+  hat:(hx,ub)=>{ box(hx+2,ub-48,10,5,'#2A2A32'); px(hx+2,ub-48,10,1,'#3E3E48');
+                 px(hx+2,ub-44,10,1,'#8A5A2A');
+                 box(hx-2,ub-43,18,1,'#2A2A32'); },
+  prop:(ax,bot)=>{ box(ax+2,bot-13,2,13,'#8A5A2A'); px(ax+2,bot-13,1,13,'#A87240');
+                   box(ax+1,bot-14,4,1,'#D6DAE2'); }},
  /* 9 Courier */
  {hair:'#2A1C10',hair2:'#3E2C1C',coat:'#C8621E',coatL:'#E8823A',coatD:'#8E4010',
   trou:'#3A4450',trouL:'#525E6E',shoe:'#1A1A20',shoeL:'#2E2E38',
-  hat:(hx,ht)=>{ px(hx,ht-9,10,4,'#2E3A4A'); px(hx+1,ht-9,4,2,'#44526A');
-                 px(hx-1,ht-5,11,2,'#2E3A4A'); px(hx+10,ht-5,5,2,'#2E3A4A');
-                 px(hx+10,ht-5,5,1,'#44526A'); },
-  chest:(x,bot)=>{ px(x+2,bot-23,13,2,'#8E4010'); px(x+2,bot-23,13,1,'#B05A20'); },
-  prop:(hx,bot)=>{ px(hx-2,bot-19,10,10,'#B08248'); px(hx-2,bot-19,10,1,'#C89A60');
-                   px(hx-2,bot-19,1,10,'#C89A60'); px(hx-2,bot-15,10,1,'#7A5A30');
-                   px(hx+2,bot-19,2,10,'#7A5A30'); px(hx-2,bot-10,10,1,O); }}
+  hat:(hx,ub)=>{ box(hx,ub-45,14,3,'#2E3A4A'); px(hx,ub-45,14,1,'#44526A');
+                 box(hx+14,ub-43,5,1,'#2E3A4A'); },
+  prop:(ax,bot,x,ub)=>{ box(ax-2,ub-19,10,9,'#B08248'); px(ax-2,ub-19,10,1,'#C89A60');
+                        px(ax+2,ub-19,2,9,'#7A5A30'); }}
 ];
 /* walk frames are cached on demand, the way the crane booms are - a run
    uses one rider, so baking all ten at boot would be 36 surfaces spent
@@ -8481,7 +8415,7 @@ const WPAL=[
 const WCACHE=new Map();
 function walkFor(i){
   let a=WCACHE.get(i);
-  if(!a){ a=[0,1,2,3].map(f=>surf(40,54,()=>walker(WPAL[i],f))); WCACHE.set(i,a); }
+  if(!a){ a=[0,1,2,3].map(f=>surf(40,60,()=>walker(WPAL[i],f))); WCACHE.set(i,a); }
   return a;
 }
 const BAKE={ms:+(performance.now()-t0).toFixed(2), surfaces:8+6};
@@ -8503,7 +8437,7 @@ return {
     if(alpha<=0.01) return;
     ctx.save(); if(alpha<1) ctx.globalAlpha=alpha;
     ctx.imageSmoothingEnabled=false;
-    ctx.drawImage(walkFor(i)[f&3], Math.round(x)-R_(20), Math.round(y)-R_(48));
+    ctx.drawImage(walkFor(i)[f&3], Math.round(x)-R_(20), Math.round(y)-R_(WBOT));
     ctx.restore();
   }
 };
