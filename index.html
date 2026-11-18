@@ -537,7 +537,7 @@
   <div class="screen rescue" id="rescue" hidden>
     <div class="rcard">
       <div class="ricon" id="rIcon"></div>
-      <div class="rtag">VMS3 Monitoring</div>
+      <div class="rtag" id="rTag">VMS3 Monitoring</div>
       <div class="rchat">
         <div class="rmsg them" id="rPass" hidden><div class="box"><div class="in">The elevator is stuck.</div></div></div>
         <div class="rmsg us" id="rAgent" hidden><div class="box"><div class="in">We have you covered. A technician is correcting the issue now.</div></div></div>
@@ -1238,7 +1238,13 @@ const Music = (() => {
   const SRC = {
     title:  { file:'audio/title.mp3',  vol:0.55, loop:true  },
     select: { file:'audio/select.mp3', vol:0.55, loop:true  },
-    game:   { file:'audio/game.mp3',   vol:0.42, loop:true  },
+    /* the gameplay track runs once from the top, then loops 32 bars of
+       its middle for as long as the run lasts - never the fade-out at the
+       end. Points measured off the track: 99.4 bpm, the song repeats on
+       16 bars, and 9.68s -> 86.99s is the longest stretch whose two ends
+       line up, with the jump back aligned on the drum hits. */
+    game:   { file:'audio/game.mp3',   vol:0.42, loop:true,
+              loopStart:9.6812, loopEnd:86.9876 },
     over:   { file:'audio/over.mp3',   vol:0.60, loop:false }
   };
   const RAMP = 1 / 0.45;                 /* nought to full in 0.45s */
@@ -1273,7 +1279,40 @@ const Music = (() => {
   function newDeck(){
     const a = new Audio();
     a.preload = 'auto';
-    return { a, want: 0, lvl: 0, key: null, gain: null, wired: false };
+    return { a, want: 0, lvl: 0, key: null, gain: null, wired: false,
+             buf: null, node: null };
+  }
+
+  /* A sub-section loop cannot be done on an <audio> element: it only
+     loops the whole file, and an mp3 adds a gap at the wrap anyway. So a
+     track with loop points is also decoded once into an AudioBuffer and
+     played through a buffer source, which loops between two sample
+     positions with no gap at all. The last 25 ms before the loop end are
+     blended into the audio just before the loop start, so the wrap lands
+     in exactly the sound the start expects - no click.
+
+     The decode needs a fetch, which a page opened as a local file is not
+     allowed; then the element plays the whole track the old way. */
+  const BUF = {};
+  function decode(k){
+    const ac = Sound.ctx(), c = SRC[k];
+    if (!ac || !c.loopEnd || BUF[k] !== undefined) return;
+    BUF[k] = null;                                   /* in flight */
+    fetch(c.file).then(r => r.arrayBuffer())
+      .then(ab => new Promise((ok, no) => ac.decodeAudioData(ab, ok, no)))
+      .then(b => {
+        const sr = b.sampleRate, F = Math.round(0.025 * sr);
+        const s = Math.round(c.loopStart * sr), e = Math.round(c.loopEnd * sr);
+        if (e > b.length || s < F) return;
+        for (let ch = 0; ch < b.numberOfChannels; ch++){
+          const d = b.getChannelData(ch);
+          for (let i = 0; i < F; i++){
+            const t = i / F * Math.PI / 2;
+            d[e - F + i] = d[e - F + i] * Math.cos(t) + d[s - F + i] * Math.sin(t);
+          }
+        }
+        BUF[k] = b;
+      }).catch(() => {});
   }
   /* Route the element through a gain node and fade THAT.
 
@@ -1307,8 +1346,14 @@ const Music = (() => {
   }
   const idle = () => decks[0] === active ? decks[1] : decks[0];
 
+  function stopNode(d){
+    if (d.node){ try { d.node.stop(); } catch(e){} try { d.node.disconnect(); } catch(e){} }
+    d.node = null;
+  }
   function load(d, k){
+    stopNode(d);
     d.key = k;
+    d.buf = (d.gain && BUF[k]) || null;  /* decoded and routable: loop it */
     level(d, 0);                        /* always fade up from silence */
     d.a.loop = SRC[k].loop;
     d.a.src  = SRC[k].file;
@@ -1316,6 +1361,17 @@ const Music = (() => {
   }
   function go(d){
     if (!armed || !Sound.on || !d.key) return;
+    if (d.buf){
+      if (d.node) return;
+      const ac = Sound.ctx(), c = SRC[d.key];
+      const n = ac.createBufferSource();
+      n.buffer = d.buf; n.loop = true;
+      n.loopStart = c.loopStart; n.loopEnd = c.loopEnd;
+      n.connect(d.gain); n.start(0);
+      d.node = n;
+      try { d.a.pause(); } catch(e){}
+      return;
+    }
     const r = d.a.play();
     if (r && r.catch) r.catch(() => {});   /* refused: stay quiet, not broken */
   }
@@ -1346,6 +1402,7 @@ const Music = (() => {
          inside a gesture, and once an element is routed through one a
          suspended context means silence */
       for (const d of decks) wire(d);
+      for (const k in SRC) decode(k);        /* the gameplay loop, ahead of time */
       for (const d of decks){
         if (d.key){ go(d); continue; }       /* already has a track: start it */
         d.a.src = SILENT;
@@ -1362,14 +1419,18 @@ const Music = (() => {
         if (d.lvl < want)      level(d, Math.min(want, d.lvl + step));
         else if (d.lvl > want) level(d, Math.max(want, d.lvl - step));
         if (d.want > 0) go(d);
-        else if (!d.a.paused && d.lvl === 0) d.a.pause();
+        else if (d.lvl === 0){
+          if (d.node) stopNode(d);
+          else if (!d.a.paused) d.a.pause();
+        }
       }
     },
     _live: () => { const o = {};
       decks.forEach((d, i) => { o['deck'+i] = d.key
         ? { key:d.key, want:d.want, v:+d.lvl.toFixed(2), gain:!!d.gain,
+            loop: d.node ? [d.node.loopStart, d.node.loopEnd] : null,
             elVol:+d.a.volume.toFixed(2),
-            playing:!d.a.paused, rs:d.a.readyState }
+            playing: !!d.node || !d.a.paused, rs:d.a.readyState }
         : null; });
       return o; },
     _cur: () => cur
@@ -1578,6 +1639,7 @@ const el = {
   rPass:    document.getElementById('rPass'),
   rAgent:   document.getElementById('rAgent'),
   rCount:   document.getElementById('rCount'),
+  rTag:     document.getElementById('rTag'),
   f1:       document.getElementById('f1Label'),
   title:    document.getElementById('title'),
   select:   document.getElementById('select'),
@@ -2552,6 +2614,7 @@ function crash(x, y, o){
     el.rescue.className = 'screen rescue ringing';
     el.rPass.hidden = true; el.rAgent.hidden = true;
     el.rCount.textContent = '';
+    el.rTag.textContent = 'VMS3 Monitoring';
     /* the call takes the floor: the music goes out, and what is left is
        the phone and the two of you */
     Music.play(null);
@@ -2889,6 +2952,9 @@ function update(dt){
     if (rescueT >= R_OK && !el.rescue.classList.contains('fixed')){
       el.rescue.classList.add('fixed');
       Sound.shield();
+      /* the conversation is over: the caption turns into the lead-in
+         for the count that follows it */
+      el.rTag.textContent = 'Back up and running in...';
     }
     if (rescueT >= R_COUNT){
       const n = Math.max(1, 3 - Math.floor(rescueT - R_COUNT));
