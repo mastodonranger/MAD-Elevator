@@ -190,12 +190,15 @@
   .rmsg.us .in{background:#1E7A46;--lt:#36C06A;color:#EAFFF3}
   .rmsg.us canvas.tail{right:calc(var(--c)*4);transform:scaleX(-1)}
   @keyframes msgIn{from{opacity:0}to{opacity:1}}
+  /* the count is set in MADpx like every other line of text. It used
+     to pop in on a scale, which resampled it soft; now it arrives on
+     hard opacity steps and stays on the pixel grid. */
   .rcount{
-    font-size:max(10px,round(calc(var(--u)*78),10px));font-weight:800;line-height:1;
+    font-size:max(10px,round(calc(var(--u)*80),10px));line-height:1;
     color:#FFF3D6;min-height:calc(var(--u)*80);
   }
-  .rcount.tick{animation:countPop .5s ease-out}
-  @keyframes countPop{0%{transform:scale(1.5);opacity:.2}100%{transform:scale(1);opacity:1}}
+  .rcount.tick{animation:countPop .3s steps(3,end)}
+  @keyframes countPop{0%{opacity:0}100%{opacity:1}}
   @media (prefers-reduced-motion:reduce){
     #rescue.ringing .ricon,#rescue.fixed .ricon,.rcount.tick,.rmsg{animation:none}
   }
