@@ -283,6 +283,25 @@
     background:var(--brass);color:#2A1A02;cursor:pointer;
   }
   .launch:active{transform:translateY(calc(var(--u)*2))}
+  /* On the last step the button is the whole point of the screen - on a
+     kiosk it is the thing a stranger's thumb has to find - so it takes
+     the empty space under the summary instead of sitting in it. */
+  .launch.go{
+    width:calc(var(--u)*480);margin-top:calc(var(--u)*30);
+    padding:calc(var(--u)*120) 0;
+    font-size:max(10px,round(calc(var(--u)*80),10px));
+    letter-spacing:round(calc(var(--u)*14),1px);
+    border-width:calc(var(--u)*4);border-radius:calc(var(--u)*6);
+    box-shadow:0 calc(var(--u)*6) 0 #8A6410, 0 0 calc(var(--u)*30) rgba(244,195,74,.35);
+    animation:launchPulse 1.6s ease-in-out infinite;
+  }
+  .launch.go:active{transform:translateY(calc(var(--u)*4));
+    box-shadow:0 calc(var(--u)*2) 0 #8A6410, 0 0 calc(var(--u)*30) rgba(244,195,74,.35)}
+  .launch.go + .selHint{margin-top:calc(var(--u)*24)}
+  @keyframes launchPulse{
+    0%,100%{box-shadow:0 calc(var(--u)*6) 0 #8A6410, 0 0 calc(var(--u)*18) rgba(244,195,74,.22)}
+    50%    {box-shadow:0 calc(var(--u)*6) 0 #8A6410, 0 0 calc(var(--u)*44) rgba(244,195,74,.55)}
+  }
   .selHint{
     margin-top:calc(var(--u)*12);
     font-size:max(10px,round(calc(var(--u)*11),10px));letter-spacing:round(calc(var(--u)*1.5),1px);
@@ -1697,6 +1716,7 @@ function setStep(i){
     sp.classList.toggle('done', k < selStep);
   });
   el.launch.textContent = now === 'ready' ? 'Launch' : 'Select';
+  el.launch.classList.toggle('go', now === 'ready');
   el.selHint.innerHTML = now === 'ready'
     ? 'SPACE when ready &middot; BACKSPACE to go back'
     : '&#9664; &#9654; to choose &middot; SPACE to confirm &middot; BACKSPACE to go back';
