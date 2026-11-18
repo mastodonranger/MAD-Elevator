@@ -2354,9 +2354,10 @@ function popup(text, color){
    ================================================================ */
 /* 0 -> 1 -> 0 over the life of a boost: a quick ramp in, a hold, a slower
    ease back down to station */
-function boostEnv(){
-  if (player.boost <= 0) return 0;
-  const t = 1 - player.boost / F1_TIME;
+function boostEnv(){ return boostEnvOf(player.boost); }
+function boostEnvOf(left){
+  if (left <= 0) return 0;
+  const t = 1 - left / F1_TIME;
   if (t < 0.15) return easeOut(t / 0.15);
   if (t < 0.62) return 1;
   return 1 - easeOut((t - 0.62) / 0.38);
@@ -2935,6 +2936,9 @@ const SPR = (function(){
 
      x is the left edge of the head block. The hand ends at 52 whatever
      the rider, which is where the panel is. */
+  /* one pixel of near-black, closed all the way round every part -
+     corners included, which is what the hand-rolled top and side runs
+     kept leaving open */
   const INK='#090C14', EYE='#17110C';
   function head(p,x,bot,h){
     const sk=p.skin||SK, hh=h===undefined?4:h;
@@ -2944,7 +2948,7 @@ const SPR = (function(){
                         px(x+12,bot-30,2,4,p.cheek||'#E8B294'); }
     px(x+3,bot-34,2,3,EYE); px(x+9,bot-34,2,3,EYE);
     px(x-1,bot-41,1,15,INK); px(x+14,bot-41,1,15,INK);
-    px(x,bot-42,14,1,INK); px(x,bot-26,14,1,INK);
+    px(x-1,bot-42,16,1,INK); px(x-1,bot-26,16,1,INK);
   }
   /* The cabin pose has the near arm hanging and the far arm out on the
      button. ARMS_DOWN swaps the reaching arm for the hanging one
@@ -2955,15 +2959,16 @@ const SPR = (function(){
   function arms(p,x,bot){
     const sk=p.skin||SK, gl=p.glove||sk;
     px(x-3,bot-24,3,9,p.coat); px(x-3,bot-15,3,3,gl);
-    px(x-4,bot-24,1,12,INK); px(x-3,bot-12,3,1,INK);
+    px(x-4,bot-25,4,1,INK); px(x-4,bot-25,1,14,INK); px(x-3,bot-12,3,1,INK);
     if (ARMS_DOWN){
       px(x+14,bot-24,3,9,p.coat); px(x+14,bot-15,3,3,gl);
-      px(x+17,bot-24,1,12,INK); px(x+14,bot-12,3,1,INK);
+      px(x+14,bot-25,4,1,INK); px(x+17,bot-25,1,14,INK); px(x+14,bot-12,3,1,INK);
       return;
     }
     px(x+14,bot-24,3,3,p.coat);
     px(x+17,bot-22,7,3,p.coat);
     px(x+24,bot-22,3,3,gl);
+    px(x+14,bot-25,4,1,INK); px(x+17,bot-24,1,1,INK); px(x+14,bot-21,3,1,INK);
     px(x+17,bot-23,10,1,INK); px(x+17,bot-19,10,1,INK); px(x+27,bot-22,1,3,INK);
   }
   function legs(p,x,bot,n){
@@ -2971,6 +2976,7 @@ const SPR = (function(){
     px(x+1,bot-k+1,5,k,t); px(x+8,bot-k+1,5,k,t);
     px(x,bot-k+1,1,k,INK); px(x+6,bot-k+1,1,k,INK);
     px(x+7,bot-k+1,1,k,INK); px(x+13,bot-k+1,1,k,INK);
+    px(x,bot,7,1,INK); px(x+7,bot,7,1,INK);
   }
   function torso(p,x,bot,h){
     const k=h===undefined?14:h;
@@ -3009,7 +3015,7 @@ const SPR = (function(){
     shirt:'#F4E2C0', tie:null, trou:'#8E1C22', glove:'#F4F6FA',
     extra:(x,bot)=>{ px(x+1,bot-46,12,5,'#B0242C'); px(x+1,bot-46,12,1,'#D4383E');
                      px(x,bot-46,1,5,INK); px(x+13,bot-46,1,5,INK);
-                     px(x+1,bot-47,12,1,INK);
+                     px(x,bot-47,14,1,INK);
                      px(x+6,bot-22,2,9,'#F4E2C0');
                      px(x+5,bot-20,1,1,L); px(x+8,bot-20,1,1,L);
                      px(x+5,bot-16,1,1,L); px(x+8,bot-16,1,1,L); }})]);
@@ -3024,7 +3030,8 @@ const SPR = (function(){
     shirt:null, tie:'#3E7098', trou:'#2E5E8A', glove:'#C87A2E',
     extra:(x,bot)=>{ px(x,bot-45,14,4,'#F2C43A'); px(x,bot-45,14,1,'#FFE47A');
                      px(x-1,bot-45,1,4,INK); px(x+14,bot-45,1,4,INK);
-                     px(x,bot-46,14,1,INK); px(x-2,bot-42,18,2,'#D9A81E');
+                     px(x-1,bot-46,16,1,INK); px(x-2,bot-42,18,2,'#D9A81E');
+                     px(x-3,bot-43,20,1,INK); px(x-3,bot-40,20,1,INK);
                      px(x-3,bot-42,1,2,INK); px(x+16,bot-42,1,2,INK);
                      px(x,bot-14,14,3,'#5A3A1A'); px(x,bot-14,14,1,'#7A522A');
                      px(x+3,bot-13,2,2,'#9AA2B0'); px(x+9,bot-13,2,2,'#9AA2B0'); }})]);
@@ -3033,9 +3040,10 @@ const SPR = (function(){
     shirt:null, tie:null, trou:'#D8CEAE',
     extra:(x,bot)=>{ px(x-3,bot-43,20,2,'#E8D89A'); px(x-4,bot-43,1,2,INK);
                      px(x+17,bot-43,1,2,INK);
+                     px(x-4,bot-44,22,1,INK); px(x-4,bot-41,22,1,INK);
                      px(x+2,bot-47,10,4,'#E8D89A'); px(x+2,bot-47,10,1,'#F6EAC0');
                      px(x+1,bot-47,1,4,INK); px(x+12,bot-47,1,4,INK);
-                     px(x+2,bot-48,10,1,INK);
+                     px(x+1,bot-48,12,1,INK);
                      px(x+4,bot-21,6,5,'#2A2A32'); px(x+5,bot-20,3,3,'#7CC8E8');
                      px(x+3,bot-21,1,5,INK); px(x+10,bot-21,1,5,INK); }})]);
 
@@ -3044,14 +3052,14 @@ const SPR = (function(){
     cheek:'#E8B294',
     extra:(x,bot)=>{ px(x+1,bot-50,12,9,'#FAFCFF'); px(x+1,bot-50,12,1,'#FFFFFF');
                      px(x,bot-50,1,9,INK); px(x+13,bot-50,1,9,INK);
-                     px(x+1,bot-51,12,1,INK);
+                     px(x,bot-51,14,1,INK);
                      for(let j=0;j<6;j++) for(let i=0;i<7;i++)
                        if((i+j)%2) px(x+1+i*2,bot-11+j*2,1,1,'#3E4450'); }})]);
 
   RIDERS.push(['Astronaut', ()=>person({hair:'#BEE2F5', coat:'#E4E8F0',
     shirt:null, tie:null, trou:'#D4DAE6', glove:'#FFFFFF', cheek:null,
     extra:(x,bot)=>{ px(x,bot-41,14,6,'#BEE2F5'); px(x+1,bot-40,3,2,'#FFFFFF');
-                     px(x,bot-42,14,1,INK); px(x-1,bot-41,1,6,INK); px(x+14,bot-41,1,6,INK);
+                     px(x-1,bot-42,16,1,INK); px(x-1,bot-41,1,6,INK); px(x+14,bot-41,1,6,INK);
                      px(x+3,bot-34,2,3,EYE); px(x+9,bot-34,2,3,EYE);
                      px(x,bot-27,14,2,'#9AA2B0');
                      px(x+3,bot-22,8,6,'#B8C0D0'); px(x+4,bot-21,2,2,'#7CFF9A');
@@ -3061,11 +3069,11 @@ const SPR = (function(){
   RIDERS.push(['Senior', ()=>person({hair:'#B8BCC6', hair2:'#D6DAE2',
     coat:'#3A3A48', shirt:'#E6ECF6', tie:'#5A2A2E', trou:'#2E2E38',
     extra:(x,bot)=>{ px(x-2,bot-42,18,2,'#2A2A32'); px(x-3,bot-42,1,2,INK);
-                     px(x+16,bot-42,1,2,INK);
+                     px(x+16,bot-42,1,2,INK); px(x-3,bot-43,20,1,INK);
                      px(x+2,bot-48,10,6,'#2A2A32'); px(x+2,bot-48,10,1,'#3E3E48');
                      px(x+2,bot-44,10,1,'#8A5A2A');
                      px(x+1,bot-48,1,6,INK); px(x+12,bot-48,1,6,INK);
-                     px(x+2,bot-49,10,1,INK);
+                     px(x+1,bot-49,12,1,INK);
                      px(x-6,bot-14,2,15,'#8A5A2A'); px(x-6,bot-14,1,15,'#A87240');
                      px(x-7,bot-14,1,15,INK); px(x-4,bot-14,1,15,INK);
                      px(x-7,bot-15,4,1,INK); }})]);
@@ -3074,7 +3082,7 @@ const SPR = (function(){
     shirt:null, tie:null, trou:'#3A4450',
     extra:(x,bot)=>{ px(x,bot-45,14,4,'#2E3A4A'); px(x,bot-45,14,1,'#44526A');
                      px(x-1,bot-45,1,4,INK); px(x+14,bot-45,1,4,INK);
-                     px(x,bot-46,14,1,INK);
+                     px(x-1,bot-46,16,1,INK);
                      px(x+14,bot-42,5,2,'#2E3A4A'); px(x+19,bot-42,1,2,INK);
                      px(x+14,bot-43,5,1,INK); px(x+14,bot-40,5,1,INK);
                      px(x-6,bot-22,8,8,'#B08248'); px(x-6,bot-22,8,1,'#C89A60');
@@ -9166,6 +9174,11 @@ const ATTRACT = (function(){
      a real run at that altitude over a real city, played full frame -
      the montage is the game playing itself, not footage of it. */
   const STAGE = [320, 1500, 2600, 3900, 5200, 6500, 8200, 10400];
+  /* ...but not evenly. The low looks carry the city, the cranes, the
+     birds and the helicopters, and that is what a passer-by should
+     see; the long dark is the promise, not the pitch. */
+  const WEIGHT = [3, 3, 3, 3, 2, 2, 1, 1];
+  const WSUM = WEIGHT.reduce((a, b) => a + b, 0);
   const FRAMES = Math.round(CLIP * 60);  /* a clip is this many frames */
   const ROLL   = 200;                    /* ...after this many run in */
   /* How many goes at a clip before the least-bad one is shown anyway.
@@ -9178,11 +9191,29 @@ const ATTRACT = (function(){
      the next one in. 14 steps is about 0.6ms a frame, and eight full
      attempts still fit inside one clip. */
   const CHUNK  = 14;
+  /* The montage is an advert, not a run. A real climb at 10,000 feet
+     is mostly empty sky on purpose - that is the pacing - but five
+     seconds of empty sky on the title screen sells nothing, so the
+     attract spawner is run tighter than the game's own gap. */
+  const DENSITY = 0.6;
+  /* ...and a clip has to EARN its slot: so many hazards past the car
+     and so much steering, or it is thrown back and another is seeded.
+     Measured over the shown frames only, never the run-in. */
+  const MIN_PASS = 4, MIN_TRAVEL = 110;
+  /* Now and then a clip is about a power-up rather than a dodge: one is
+     dropped into the car's lane a second into the shot, the autopilot
+     goes and gets it, and the rest of the clip is the shield riding on
+     the car or the F1 burn. Rare on purpose - it is the game's treat,
+     and a montage that hands one out every cut cheapens it. A clip that
+     sets this up and then misses the pickup is thrown back like a dull
+     one, so the odds shown are a little under these. */
+  const FEATURE_ODDS = 0.18;
+  const FEAT_LEAD = 1.0;       /* s into the shown frames it reaches the car */
 
   let s = null;                 /* the clip being SIMULATED */
   let play = null, t = 0, last = -1;
   let oven = null, ready = null, best = null, tries = 0, held = false;
-  let stats = { baked: 0, tries: 0, dirty: 0 };
+  let stats = { baked: 0, tries: 0, dirty: 0, dull: 0 };
 
   const speedAt = ft =>
     lerp(SPEED_MIN, SPEED_MAX, Math.pow(clamp(ft / RAMP_FEET, 0, 1), 1.15));
@@ -9204,7 +9235,10 @@ const ATTRACT = (function(){
      not up, and the baking fills the idle time of the clip in front. */
   function seed(){
     let i = last;
-    while (STAGE.length > 1 && i === last) i = rndi(0, STAGE.length - 1);
+    for (let guard = 0; guard < 24 && i === last; guard++){
+      let r = rnd(0, WSUM);
+      for (i = 0; i < WEIGHT.length - 1 && r >= WEIGHT[i]; i++) r -= WEIGHT[i];
+    }
     last = i;
     const ft = Math.max(120, STAGE[i] + rnd(-140, 140));
     s = { feet: ft, px: ft / FEET_PER_PX, obs: [],
@@ -9214,10 +9248,14 @@ const ATTRACT = (function(){
           win: null, replan: 0,
           nextSpawn: ft / FEET_PER_PX + rnd(40, 300),
           corridor: [[HALF_CAR, W - HALF_CAR]], lastSpawn: ft / FEET_PER_PX,
-          lastBlocker: -1e9, lastCrane: null };
+          lastBlocker: -1e9, lastCrane: null,
+          feat: rnd(0, 1) < FEATURE_ODDS ? (rnd(0, 1) < 0.5 ? 'shield' : 'f1') : null,
+          got: false, shield: false, bubble: 0, boost: 0, env: 0, lift: 0, spd: 0 };
   }
   /* one displayed frame of a clip, which is everything draw() reads */
   const snap = () => ({ x: s.x, tilt: s.tilt, feet: s.feet, px: s.px,
+                        env: s.env, lift: s.lift, spd: s.spd,
+                        shield: s.shield, bubble: s.bubble,
                         obs: s.obs.map(o => Object.assign({}, o)) });
 
   /* Advance the clip in the oven by a chunk. Called once per displayed
@@ -9225,25 +9263,45 @@ const ATTRACT = (function(){
      run would. */
   function bake(){
     if (ready) return;
-    if (!oven){ seed(); oven = { k: 0, rec: [], touch: 0,
-                                 city: s.city, rider: s.rider }; }
+    if (!oven){ seed(); oven = { k: 0, rec: [], touch: 0, pass: 0, travel: 0,
+                                 city: s.city, rider: s.rider,
+                                 feat: s.feat, gotK: -1 }; }
     for (let n = 0; n < CHUNK; n++){
       if (oven.k >= ROLL + FRAMES) break;
+      if (s.feat && oven.k === ROLL) dropPickup();
       sim(1/60);
       oven.k++;
+      if (s.got && oven.gotK < 0) oven.gotK = oven.k;
       /* the run-in is not shown, so a graze in it does not count - it is
          only there so the clip opens mid-action rather than on empty sky */
       if (oven.k > ROLL){
         if (painted()) oven.touch++;
+        /* a hazard counts once, the frame it draws level with the car -
+           which is the moment the montage is there to show */
+        for (const o of s.obs)
+          if (!o._pass && o.y >= PLAYER_Y &&
+              o.t !== 'shield' && o.t !== 'vms3' && o.t !== 'f1'){
+            o._pass = 1; oven.pass++; }
+        const prev = oven.rec[oven.rec.length - 1];
+        if (prev) oven.travel += Math.abs(s.x - prev.x);
         oven.rec.push(snap());
       }
     }
     if (oven.k < ROLL + FRAMES) return;
     const done = oven; oven = null; tries++;
     stats.tries++;
-    if (!done.touch){ ready = done; best = null; tries = 0; return; }
-    if (!best || done.touch < best.touch) best = done;
-    if (tries >= TRIES){ ready = best; best = null; tries = 0; stats.dirty++; }
+    const missed = done.feat && done.gotK <= ROLL;
+    const dull = done.pass < MIN_PASS || done.travel < MIN_TRAVEL || missed;
+    if (!done.touch && !dull){ ready = done; best = null; tries = 0; return; }
+    /* a graze still beats a dull clip by a mile, so touch dominates the
+       ranking and interest only separates clips that are equally clean */
+    const rank = c => c.touch * 1000
+                    + (c.feat && c.gotK <= ROLL ? 400 : 0)
+                    - Math.min(c.pass, 14) * 6
+                    - Math.min(c.travel, 420) / 30;
+    if (!best || rank(done) < rank(best)) best = done;
+    if (tries >= TRIES){ ready = best; best = null; tries = 0;
+                         if (ready.touch) stats.dirty++; else stats.dull++; }
   }
   /* Put the next clip up. If the oven has nothing clean yet - only at
      boot, or after a freak run of eight dirty clips - finish one here
@@ -9268,8 +9326,9 @@ const ATTRACT = (function(){
     const ls0 = lastSpawnPx, lb0 = lastBlockerPx, lc0 = lastCrane;
     const keep = obstacles.splice(0, obstacles.length);
     for (const o of sc.obs) obstacles.push(o);
-    feet = sc.feet; px = sc.px; player.x = sc.x; carY = PLAYER_Y; state = S.PLAY;
-    speed = speedAt(sc.feet);
+    feet = sc.feet; px = sc.px; player.x = sc.x; carY = PLAYER_Y - (sc.lift || 0);
+    state = S.PLAY;
+    speed = sc.spd || speedAt(sc.feet);
     hazDiff = Math.pow(clamp(sc.feet / RAMP_FEET, 0, 1), 0.58);
     /* a recorded frame carries no spawner bookkeeping - it is a replay,
        and nothing it is handed to will spawn anything */
@@ -9484,8 +9543,24 @@ const ATTRACT = (function(){
      late, which is the one thing the montage must not look like. */
   let REPLAN = 0.05;
 
+  /* one pickup, straight down the car's own lane, timed to arrive
+     FEAT_LEAD seconds into the shot */
+  function dropPickup(){
+    withScene(() => {
+      spawnPickup(s.feat);
+      const o = obstacles[obstacles.length - 1];
+      o.x = o.base = clamp(s.x + rnd(-50, 50), 78, W - 78);
+      o.y = carY - (speed + o.vy) * FEAT_LEAD;
+      o.feat = 1;
+    });
+  }
   function sim(dt){
-    const sp = speedAt(s.feet);
+    if (s.boost > 0) s.boost = Math.max(0, s.boost - dt);
+    if (s.bubble > 0) s.bubble = Math.max(0, s.bubble - dt * 1.6);
+    s.env = boostEnvOf(s.boost);
+    s.lift = s.env * F1_RISE;
+    const sp = speedAt(s.feet) * (1 + (F1_MULT - 1) * s.env);
+    s.spd = sp;
     s.px += sp * dt; s.feet = s.px * FEET_PER_PX;
     withScene(() => {
       for (let i = obstacles.length - 1; i >= 0; i--){
@@ -9494,15 +9569,32 @@ const ATTRACT = (function(){
         o.y += (sp + (o.vy || 0)) * dt;
         if (o.y - o.h > H) obstacles.splice(i, 1);
       }
+      if (s.feat && !s.got){
+        const pr = playerRect();
+        for (let i = obstacles.length - 1; i >= 0; i--){
+          const o = obstacles[i];
+          if (!o.feat || !rectsOf(o).some(r => overlap(pr, r))) continue;
+          obstacles.splice(i, 1); s.got = true;
+          if (s.feat === 'shield'){ s.shield = true; s.bubble = 1; }
+          else s.boost = F1_TIME;
+        }
+      }
       s.replan -= dt;
       if (s.replan <= 0){ s.replan = REPLAN; s.win = aim();
-                          s.aimAt = (s.win[0] + s.win[1]) / 2; }
+                          s.aimAt = (s.win[0] + s.win[1]) / 2;
+        /* go and get it - but only where the plan already says the car
+           can be, so the pickup never outranks staying alive */
+        const pk = !s.got && obstacles.find(o => o.feat && o.y < carY);
+        if (pk && pk.x > s.win[0] - 30 && pk.x < s.win[1] + 30){
+          const a = Math.max(s.win[0], pk.x - 8), b = Math.min(s.win[1], pk.x + 8);
+          s.win = a <= b ? [a, b] : [pk.x - 4, pk.x + 4];
+        } }
       /* the spawner's own gate, so the montage is handed the same
          clearable traffic a run is - and at the same density */
       if (px >= s.nextSpawn){
         spawnOne();
         s.nextSpawn = px + lerp(SPAWN_GAP_EASY, SPAWN_GAP_HARD, hazDiff)
-                           * rnd(0.82, 1.28);
+                           * rnd(0.82, 1.28) * DENSITY;
       }
     });
     /* steered with the car's own acceleration and top speed, braking into
@@ -9651,6 +9743,7 @@ const ATTRACT = (function(){
       for (let i = 1; i < play.rec.length; i++)
         travel += Math.abs(play.rec[i].x - play.rec[i-1].x);
       return { frames: play.rec.length, city: play.city, rider: play.rider,
+               feat: play.feat || null, got: play.gotK > ROLL,
                feet: Math.round(play.rec[0].feet),
                travel: Math.round(travel),
                span: Math.round(Math.max(...play.rec.map(f=>f.x)) -
@@ -9735,9 +9828,15 @@ const ATTRACT = (function(){
         BD.limb(ctx, W, H, feet);
         BD.clouds(ctx, W, H, feet, px, runTime, false);
         drawCity();
-        for (const o of obstacles) drawObstacle(o);
-        FX.jets(ctx, 0, player.x, carY - PLAYER_H/2 + CAR_H, runTime);
+        const env = f.env || 0;
+        if (env > 0.02) FX.speed(ctx, px * 0.0024, W, H);
+        for (const o of obstacles){
+          if (env > 0.02) smearPass(() => drawObstacle(o), env);
+          drawObstacle(o);
+        }
+        FX.jets(ctx, env, player.x, carY - PLAYER_H/2 + CAR_H, runTime);
         SPR.drawCar(ctx, play.rider, player.x, carY, tilt, 1);
+        if (f.shield || f.bubble > 0) drawBubble(player.x, carY);
         BD.clouds(ctx, W, H, feet, px, runTime, true);
       }, f);
       if (t < FADE){
