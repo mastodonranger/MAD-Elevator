@@ -102,7 +102,11 @@ which parts are extrapolated rather than measured.
 
 ## Conventions
 
-- Develop and push only to the branch named in the session prompt.
+- Develop on the branch named in the session prompt.
+- **Every commit goes to `main` too.** When asked to commit, commit on the
+  working branch, push it, then fast-forward `main` to the same commit and
+  push `main` - `main` is what the phone test link serves. Never rewrite
+  `main`; if it cannot fast-forward, stop and ask.
 - Never put model identifiers in commit messages, code comments, or anything
   else pushed to the repo.
 - Do not create pull requests unless asked.
