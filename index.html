@@ -107,6 +107,7 @@
   }
   .chip canvas,#pauseBtn canvas{width:100%;height:100%;display:block;
     image-rendering:pixelated}
+
   .chip[hidden]{display:none}
   @keyframes chipPulse{0%,100%{opacity:1}50%{opacity:.7}}
   @media (prefers-reduced-motion:reduce){ .chip{animation:none} }
@@ -524,6 +525,7 @@
         <div class="label">Best</div>
         <div id="best" class="mono">0 FT</div>
         <div id="held">
+          <div class="chip" id="f1Charge" hidden title="F1 charge" aria-label="F1 charge"></div>
           <div class="chip shield" id="shieldLabel" hidden title="MAD Support" aria-label="MAD Support held"></div>
           <div class="chip vms" id="vmsLabel" hidden title="VMS3" aria-label="VMS3 extra life held"></div>
         </div>
@@ -677,6 +679,11 @@ const SHIELD_AT     = 450;    // ft: first bubble, guaranteed
 const F1_AT         = 700;    // ft: first rocket, guaranteed
 const SHIELD_MERCY  = 1.3;    // s of grace after the bubble pops
 const F1_TIME       = 3.0;    // s of boost
+/* near misses bank charge for the next F1: each CLOSE! adds one, up to
+   five, and the next rocket spends them all - its own three seconds,
+   then a second more of burn for every charge */
+const F1_CHARGE_MAX = 5;
+const F1_PER_CHARGE = 1.0;    // s of extra boost a charge buys
 const F1_RISE       = 190;    // px the car climbs up the screen
 const F1_MULT       = 2.4;    // climb speed multiplier while boosting
 const F1_GRACE      = 1.0;    // s of immunity once it drops you back off
@@ -1515,7 +1522,7 @@ let px        = 0;    // pixels climbed this run
 let feet      = 0;
 let speed     = SPEED_MIN;
 let topSpeed  = 0;
-let nearMiss  = 0;
+let nearMiss  = 0, f1Charge = 0;
 let diff      = 0;   // drives climb speed
 let hazDiff   = 0;   // drives how much is in the way
 let runTime   = 0;
@@ -1790,7 +1797,10 @@ function crashLine(key){
   return pick(pool.length ? pool : CRASH_LINES.default);
 }
 
-if (matchMedia('(hover:none)').matches){
+/* a phone has no keyboard, so every prompt that names a key is swapped
+   for the tap that does the same thing */
+const TOUCH = matchMedia('(hover:none)').matches;
+if (TOUCH){
   el.titleCta.textContent = 'Tap to Start';
   document.getElementById('overCta').textContent = 'Tap for Title Screen';
 } else {
@@ -1903,7 +1913,10 @@ function setStep(i){
   });
   el.launch.textContent = now === 'ready' ? 'Launch' : 'Select';
   el.launch.classList.toggle('go', now === 'ready');
-  el.selHint.innerHTML = now === 'ready'
+  el.selHint.innerHTML = TOUCH
+    ? (now === 'ready' ? 'Tap LAUNCH when ready'
+       : now === 'city' ? 'Tap a location, then SELECT' : 'Tap a rider, then SELECT')
+    : now === 'ready'
     ? 'SPACE when ready &middot; BACKSPACE to go back'
     : '&#9664; &#9654; to choose &middot; SPACE to confirm &middot; BACKSPACE to go back';
   if (now === 'city'){ if (!el.cityGrid.children.length) buildCityGrid(); chooseCity(citySel); }
@@ -1968,7 +1981,7 @@ function showSelect(){
 
 function start(){
   obstacles.length = 0; bits.length = 0; popups.length = 0;
-  px = 0; feet = 0; speed = SPEED_MIN; topSpeed = 0; nearMiss = 0;
+  px = 0; feet = 0; speed = SPEED_MIN; topSpeed = 0; nearMiss = 0; f1Charge = 0;
   diff = 0; hazDiff = 0; runTime = 0; shake = 0; flash = 0; rescueT = 0;
   killedBy = ''; cleared = 0;
   el.rescue.hidden = true;
@@ -2560,15 +2573,56 @@ function popup(text, color){
    ================================================================ */
 /* 0 -> 1 -> 0 over the life of a boost: a quick ramp in, a hold, a slower
    ease back down to station */
-function boostEnv(){ return boostEnvOf(player.boost); }
-function boostEnvOf(left){
+function boostEnv(){ return boostEnvOf(player.boost, player.boostLen || F1_TIME); }
+/* the ramp in and the ease back down keep their lengths (0.45s and
+   1.14s, what they were on a three-second boost); a charged boost is a
+   longer hold at full burn between them */
+const F1_IN = 0.45, F1_OUT = 1.14;
+function boostEnvOf(left, len){
   if (left <= 0) return 0;
-  const t = 1 - left / F1_TIME;
-  if (t < 0.15) return easeOut(t / 0.15);
-  if (t < 0.62) return 1;
-  return 1 - easeOut((t - 0.62) / 0.38);
+  const L = len || F1_TIME, done = L - left;
+  if (done < F1_IN) return easeOut(done / F1_IN);
+  if (left > F1_OUT) return 1;
+  return 1 - easeOut(1 - left / F1_OUT);
 }
+/* F1 charge: a disc the size of the held icons, cut into five slices
+   that fill clockwise from the top - one for each near miss banked.
+   Same rules as the other discs: stepped edge, closed outline, light
+   rim along the top. Baked once for every count 0..5. */
+const F1PIPS = (() => {
+  const INK = '#0A0E16', out = [], N = 20, R = 10, TAU = Math.PI * 2;
+  const inD = (x, y) => { const dx = x + .5 - R, dy = y + .5 - R; return dx*dx + dy*dy <= R*R; };
+  const edge = (x, y) => inD(x, y) && (!inD(x-1,y) || !inD(x+1,y) || !inD(x,y-1) || !inD(x,y+1));
+  for (let n = 0; n <= F1_CHARGE_MAX; n++){
+    const cv = document.createElement('canvas'); cv.width = cv.height = N;
+    const g = cv.getContext('2d'), f = (x, y, c) => { g.fillStyle = c; g.fillRect(x, y, 1, 1); };
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++){
+      if (!inD(x, y)) continue;
+      if (edge(x, y)){ f(x, y, INK); continue; }
+      const dx = x + .5 - R, dy = y + .5 - R;
+      const a = (Math.atan2(dx, -dy) + TAU) % TAU;          /* 0 at the top, clockwise */
+      const k = Math.floor(a / TAU * F1_CHARGE_MAX);
+      /* the cut between slices: within half a cell of a slice boundary */
+      const r = Math.hypot(dx, dy), rem = a - k * TAU / F1_CHARGE_MAX;
+      const near = Math.min(rem, TAU / F1_CHARGE_MAX - rem) * r;
+      const lit = dy < -3;
+      if (near < 0.6 || r < 1.6) f(x, y, INK);
+      else if (k < n) f(x, y, lit ? '#F08AE4' : '#D036C0');
+      else            f(x, y, lit ? '#3A1838' : '#2A1028');
+    }
+    out.push(cv);
+  }
+  return out;
+})();
+let shownCharge = -1;
 function setLabels(){
+  if (f1Charge !== shownCharge){
+    shownCharge = f1Charge;
+    const box = document.getElementById('f1Charge');
+    box.replaceChildren(F1PIPS[f1Charge]);
+    box.title = 'F1 charge ' + f1Charge + ' of ' + F1_CHARGE_MAX;
+  }
+  document.getElementById('f1Charge').hidden = f1Charge <= 0 || state === S.RESCUE;
   el.shieldLbl.hidden = !player.shield;
   el.vms.hidden       = !player.vms3;
   el.f1.hidden        = player.boost <= 0;
@@ -2590,7 +2644,7 @@ function crash(x, y, o){
   if (player.mercy > 0 || player.boost > 0) return;
   /* going out to the very first thing in the shaft has its own line */
   killedBy = cleared === 0 ? 'first' : o ? hazardKey(o) : '';
-  el.shieldLbl.hidden = true; el.vms.hidden = true; el.f1.hidden = true;
+  el.shieldLbl.hidden = true; el.vms.hidden = true; el.f1.hidden = true; document.getElementById('f1Charge').hidden = true;
   if (player.shield){                      /* the shield absorbs it */
     player.shield = false;
     player.mercy = SHIELD_MERCY;
@@ -2609,7 +2663,7 @@ function crash(x, y, o){
     player.crashRot = 0; player.vx = 0;
     shake = 18; flash = 0.55;
     burst(x, y, 30, ['#FFE9A8','#FFB13B','#FF4D2A','#FFFFFF'], 480);
-    el.shieldLbl.hidden = true; el.vms.hidden = true; el.f1.hidden = true;
+    el.shieldLbl.hidden = true; el.vms.hidden = true; el.f1.hidden = true; document.getElementById('f1Charge').hidden = true;
     el.rescue.hidden = false;
     el.rescue.className = 'screen rescue ringing';
     el.rPass.hidden = true; el.rAgent.hidden = true;
@@ -2770,8 +2824,11 @@ function updateObstacles(dt, scroll){
             burst(o.x, o.y, 24, ['#7CE8A8','#D8FFE8','#FFFFFF'], 340);
             Sound.shield(); obstacles.splice(i, 1);
           } else if (o.t === 'f1'){
-            player.boost = F1_TIME;
+            player.boostLen = F1_TIME + f1Charge * F1_PER_CHARGE;
+            player.boost = player.boostLen;
+            const spent = f1Charge; f1Charge = 0;
             setLabels(); popup('F1 SYSTEM SPEED', '#F08AE4');
+            if (spent) popup('CHARGED +' + (spent * F1_PER_CHARGE) + 's', '#F08AE4');
             burst(o.x, o.y, 26, ['#FFE9A8','#FFB13B','#FFFFFF'], 420);
             Sound.boost(); obstacles.splice(i, 1);
           } else {
@@ -2795,6 +2852,9 @@ function updateObstacles(dt, scroll){
         }
         if (gap < 42){
           nearMiss++;
+          /* banked for the next rocket - not while one is burning, which
+             is spending them */
+          if (player.boost <= 0 && f1Charge < F1_CHARGE_MAX){ f1Charge++; setLabels(); }
           px += 55;                       /* about 40 ft of bonus */
           popup('CLOSE!', '#9AD8FF');
           Sound.near();
@@ -5352,7 +5412,8 @@ const CITY = (function(){
   CITIES.push({
     name: 'Toronto', tag: '553.3m to the CN Tower tip',
     far: () => farRow(3, 145, 356),
-    near(){
+    back(){ cnTower(206, 1200); },
+    mid(){
       commerceCourt(292, 44, 268);
       fcp(348, 56, 334);
       scotiaPlaza(408, 50, 309);
@@ -5360,7 +5421,6 @@ const CITY = (function(){
       tdTower(506, 38, 249);
       slab(246, 42, 395, '#232C3C', '#38445C', '#4E5C78', 4.4);   /* SkyTower */
       rogersCentre(96, 451, 187);
-      cnTower(206, 1200);
     },
     front(){
       /* The rail lands, in front of the foot of the tower. The CN Tower
@@ -5381,13 +5441,27 @@ const CITY = (function(){
   CITIES.push({
     name: 'New York', tag: '472.4m to the top of Central Park Tower',
     far: () => farRow(11, 171, 396),
-    near(){
+    back(){
+      empireState(126, 2.540);
+      chrysler(322, 2.540);
+    },
+    mid(){
       vanderbilt(392, 48, 434);
       park432(444, 26, 432);
       steinway(476, 18, 442);
       centralParkTower(500, 54, 480);
-      empireState(126, 2.540);
-      chrysler(322, 2.540);
+    },
+    /* the street wall: brownstones to mid-blocks, nearest so darkest */
+    front(){
+      const D = '#141B26', M = '#232D3D', L = '#323E52';
+      slab(  0, 70, 150, D, M, L, 3.1);
+      slab( 74, 56, 240, D, M, L, 6.4);
+      slab(134, 82, 118, D, M, L, 2.2);
+      slab(220, 60, 286, D, M, L, 8.8);
+      slab(284, 74, 172, D, M, L, 5.5);
+      slab(362, 58, 228, D, M, L, 1.9);
+      slab(424, 66, 136, D, M, L, 7.3);
+      slab(494, 46, 204, D, M, L, 4.6);
     }
   });
 
@@ -5398,7 +5472,8 @@ const CITY = (function(){
   CITIES.push({
     name: 'St Louis', tag: '192m to the crown of the Arch',
     far: () => farRow(23, 118, 276),
-    near(){
+    back(){ gatewayArch(270, 620, 620); },
+    mid(){
       slab(0, 52, 330, SL_D, SL_M, SL_L, 1.3);
       metSquare(56, 66, 583);
       attCenter(130, 70, 578);
@@ -5410,12 +5485,21 @@ const CITY = (function(){
       slab(494, 46, 274, SL_D, SL_M, SL_L, 9.8);
     },
     front(){
+      const D = '#141B26', M = '#232D3D', L = '#323E52';
+      slab(  0, 64, 168, D, M, L, 2.7);
+      slab( 68, 74, 112, D, M, L, 6.1);
+      slab(146, 50, 232, D, M, L, 9.4);
       oldCourthouse(270, 129, 187);
-      gatewayArch(270, 620, 620);
+      slab(340, 60, 144, D, M, L, 3.8);
+      slab(404, 72, 256, D, M, L, 7.7);
+      slab(480, 60, 120, D, M, L, 1.4);
     }
   });
 
-  const FAR_H = 410, NEAR_H = 1240;
+  /* three layers, each on its own surface so each can move at its own
+     speed: the landmarks at the back, high-rises in the middle, and the
+     street at the front. All share the street line, GND, at the bottom. */
+  const FAR_H = 410, NEAR_H = 1240, MID_H = 720, FRONT_H = 440;
   function surf(h, draw){
     const cv = document.createElement('canvas');
     cv.width = SKY_W; cv.height = h;
@@ -5427,8 +5511,12 @@ const CITY = (function(){
   function build(i){
     const c = CITIES[i];
     cache = { name: c.name, i,
-              far:  surf(FAR_H,  c.far),
-              near: surf(NEAR_H, () => { c.near(); if (c.front) c.front(); }) };
+              far:   surf(FAR_H,   c.far),
+              back:  surf(NEAR_H,  c.back),
+              mid:   surf(MID_H,   c.mid),
+              front: surf(FRONT_H, () => { if (c.front) c.front(); }),
+              /* all three at rest, for the select screen's crop */
+              near:  surf(NEAR_H,  () => { c.back(); c.mid(); if (c.front) c.front(); }) };
     return cache;
   }
   return {
@@ -5436,7 +5524,7 @@ const CITY = (function(){
     names: () => CITIES.map(c => c.name),
     tags:  () => CITIES.map(c => c.tag),
     current: () => cache,
-    FAR_H, NEAR_H
+    FAR_H, NEAR_H, MID_H, FRONT_H
   };
 })();
 
@@ -8840,13 +8928,19 @@ function drawEarthLimb(){
   BD.limb(ctx, W, H, feet);
 }
 
+/* city parallax, as a share of the climb (the obstacles move at 1) */
+const CITY_PAR = { far: 0.016, back: 0.04, mid: 0.12, front: 0.30 };
 function drawCity(){
   /* parallax is per pixel of climb, set against the altitude scale: the
      skyline sinks away over the first 2,800ft and is gone once we are
      above everything built */
-  const farY  = snapDev(H * 0.88 + px * 0.016);
-  const nearY = snapDev(H * 0.94 + px * 0.028);
-  if (farY - 520 > H) return;
+  /* Each layer sinks at its own share of the climb: the landmarks are
+     far off and go slowly, the street is close and drops away fast. */
+  const farY   = snapDev(H * 0.88 + px * CITY_PAR.far);
+  const backY  = snapDev(H * 0.94 + px * CITY_PAR.back);
+  const midY   = snapDev(H * 0.94 + px * CITY_PAR.mid);
+  const frontY = snapDev(H * 0.94 + px * CITY_PAR.front);
+  if (farY - 520 > H && backY - CITY.NEAR_H > H) return;
   const haze = clamp(1 - feet / 3000, 0, 1);
   const c = CITY.current();
   if (!c) return;
@@ -8860,12 +8954,16 @@ function drawCity(){
   ctx.drawImage(c.far, 0, snapDev(farY - CITY.FAR_H));
 
   ctx.globalAlpha = haze;
-  ctx.drawImage(c.near, 0, snapDev(nearY - CITY.NEAR_H));
-  if (window.DBG) DBG._pan = { far: snapDev(farY - CITY.FAR_H),
-                               near: snapDev(nearY - CITY.NEAR_H),
-                               scale: scale };
+  /* each layer is cut off at the street, so the ground under it is
+     filled as it rises - the next layer forward covers the seam */
   ctx.fillStyle = '#1D2532';
-  ctx.fillRect(0, nearY, W, H - nearY + 60);
+  for (const [cv, y] of [[c.back, backY], [c.mid, midY], [c.front, frontY]]){
+    if (y - cv.height > H) continue;
+    ctx.drawImage(cv, 0, y - cv.height);
+    ctx.fillRect(0, y, W, H - y + 60);
+  }
+  if (window.DBG) DBG._pan = { far: snapDev(farY - CITY.FAR_H),
+                               back: backY, mid: midY, front: frontY, scale: scale };
   ctx.restore();
 }
 
@@ -10165,7 +10263,8 @@ window.DBG = {
   introAt: () => +introT.toFixed(2),
   bits: () => bits.length,
   /* light the F1 boost, so the wake and the chevrons can be looked at */
-  boost: () => { player.boost = F1_TIME; setLabels(); },
+  boost: () => { player.boostLen = player.boost = F1_TIME; setLabels(); },
+  charge: n => { f1Charge = Math.max(0, Math.min(F1_CHARGE_MAX, n)); setLabels(); return f1Charge; },
   boxesOn: false,
   showBoxes: v => { DBG.boxesOn = v !== false; return DBG.boxesOn; },
   /* run the real crash path against the last parked hazard */
