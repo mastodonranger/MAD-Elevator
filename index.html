@@ -137,27 +137,24 @@
     display:flex;flex-direction:column;align-items:center;
     gap:calc(var(--u)*16);
   }
-  .ricon{
-    width:calc(var(--u)*86);height:calc(var(--u)*86);
-    border-radius:50%;display:grid;place-items:center;
-    background:rgba(255,59,48,.16);
-    border:calc(var(--u)*3) solid var(--alarm);
-    color:var(--alarm);
-  }
-  .ricon .glyph{width:calc(var(--u)*40);height:calc(var(--u)*40)}
-  .ricon .tick{display:none}
-  #rescue.ringing .ricon{animation:ringShake .32s ease-in-out infinite}
-  @keyframes ringShake{
-    0%,100%{transform:rotate(-9deg) translateX(calc(var(--u)*-3))}
-    50%    {transform:rotate(9deg)  translateX(calc(var(--u)*3))}
-  }
-  #rescue.fixed .ricon{
-    background:rgba(60,220,130,.18);border-color:#4FD98A;color:#4FD98A;
-    animation:tickPop .4s ease-out;
-  }
-  #rescue.fixed .phone{display:none}
-  #rescue.fixed .tick{display:block}
-  @keyframes tickPop{0%{transform:scale(.6)}60%{transform:scale(1.12)}100%{transform:scale(1)}}
+  /* the call icon is four baked pixel frames (see HUDPX.call): two
+     ringing frames swapped on a hard step, the phone at rest once it
+     is answered, then the connected tick.
+     No rotate and no scale - either would resample the pixels. */
+  .ricon{width:calc(var(--u)*120);height:calc(var(--u)*84);position:relative}
+  .ricon canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;
+    visibility:hidden}
+  .ricon .rs{visibility:visible}
+  #rescue.ringing .ricon .rs{visibility:hidden}
+  #rescue.ringing .ricon .ra{animation:ringA .25s steps(1,end) infinite}
+  #rescue.ringing .ricon .rb{animation:ringB .25s steps(1,end) infinite}
+  @keyframes ringA{0%{visibility:visible}50%{visibility:hidden}}
+  @keyframes ringB{0%{visibility:hidden}50%{visibility:visible}}
+  #rescue.fixed .ricon .ra,#rescue.fixed .ricon .rb,#rescue.fixed .ricon .rs{visibility:hidden;animation:none}
+  #rescue.fixed .ricon .rt{visibility:visible}
+  /* the caption sits under the conversation, the countdown under that */
+  .rtag{order:2}
+  .rcount{order:3}
   .rtag{
     font-size:max(10px,round(calc(var(--u)*13),10px));letter-spacing:round(calc(var(--u)*3),1px);
     text-transform:uppercase;color:var(--dim);font-weight:700;
@@ -166,18 +163,33 @@
     width:100%;display:flex;flex-direction:column;gap:calc(var(--u)*10);
     min-height:calc(var(--u)*150);justify-content:flex-start;
   }
+  /* Notched panel: the corners step one art pixel in, a closed
+     near-black outline, a light line along the top, and a stepped tail.
+     --c is one art pixel - u x 2, so it lands on whole pixels on the
+     kiosk. */
   .rmsg{
-    max-width:86%;padding:calc(var(--u)*12) calc(var(--u)*15);
-    border-radius:calc(var(--u)*14);
+    --c:calc(var(--u)*2);--ink:#0A0E16;
+    position:relative;max-width:86%;margin-bottom:calc(var(--c)*4);
     font-size:max(10px,round(calc(var(--u)*16),10px));line-height:1.45;text-align:left;
-    animation:msgIn .26s ease-out;
+    animation:msgIn .26s steps(3,end);
   }
+  .rmsg .box{background:var(--ink);padding:var(--c);
+    clip-path:polygon(var(--c) 0,calc(100% - var(--c)) 0,calc(100% - var(--c)) var(--c),
+      100% var(--c),100% calc(100% - var(--c)),calc(100% - var(--c)) calc(100% - var(--c)),
+      calc(100% - var(--c)) 100%,var(--c) 100%,var(--c) calc(100% - var(--c)),
+      0 calc(100% - var(--c)),0 var(--c),var(--c) var(--c))}
+  .rmsg .in{padding:calc(var(--c)*3) calc(var(--c)*4) calc(var(--c)*2);
+    box-shadow:inset 0 var(--c) 0 var(--lt)}
+  .rmsg canvas.tail{position:absolute;bottom:calc(var(--c)*-4);
+    width:calc(var(--c)*5);height:calc(var(--c)*5);image-rendering:pixelated}
   .rmsg[hidden]{display:none}
-  .rmsg.them{align-self:flex-start;background:rgba(232,238,248,.92);color:#10141E;
-             border-bottom-left-radius:calc(var(--u)*4)}
-  .rmsg.us{align-self:flex-end;background:#12724A;color:#EAFFF3;
-           border-bottom-right-radius:calc(var(--u)*4)}
-  @keyframes msgIn{from{opacity:0;transform:translateY(calc(var(--u)*8))}to{opacity:1;transform:none}}
+  .rmsg.them{align-self:flex-start}
+  .rmsg.them .in{background:#E8EEF8;--lt:#FFFFFF;color:#10141E}
+  .rmsg.them canvas.tail{left:calc(var(--c)*4)}
+  .rmsg.us{align-self:flex-end}
+  .rmsg.us .in{background:#1E7A46;--lt:#36C06A;color:#EAFFF3}
+  .rmsg.us canvas.tail{right:calc(var(--c)*4);transform:scaleX(-1)}
+  @keyframes msgIn{from{opacity:0}to{opacity:1}}
   .rcount{
     font-size:max(10px,round(calc(var(--u)*78),10px));font-weight:800;line-height:1;
     color:#FFF3D6;min-height:calc(var(--u)*80);
@@ -521,20 +533,11 @@
 
   <div class="screen rescue" id="rescue" hidden>
     <div class="rcard">
-      <div class="ricon">
-        <svg class="glyph phone" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M6.6 2.9l2.4 3.4-2 1.7a12 12 0 0 0 5.5 5.5l1.7-2 3.4 2.4-.7 3a1.6 1.6 0 0 1-1.8 1.2A16.6 16.6 0 0 1 3.3 5.4 1.6 1.6 0 0 1 4.5 3.6z"></path>
-        </svg>
-        <svg class="glyph tick" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M4 12.5l5.2 5.2L20 6.8"></path>
-        </svg>
-      </div>
+      <div class="ricon" id="rIcon"></div>
       <div class="rtag">VMS3 Monitoring</div>
       <div class="rchat">
-        <div class="rmsg them" id="rPass" hidden>The elevator is stuck.</div>
-        <div class="rmsg us" id="rAgent" hidden>We have you covered. A technician is correcting the issue now.</div>
+        <div class="rmsg them" id="rPass" hidden><div class="box"><div class="in">The elevator is stuck.</div></div></div>
+        <div class="rmsg us" id="rAgent" hidden><div class="box"><div class="in">We have you covered. A technician is correcting the issue now.</div></div></div>
       </div>
       <div class="rcount" id="rCount"></div>
     </div>
@@ -1067,6 +1070,25 @@ const HUDPX = (() => {
              '.###..###.',
              '.###..###.',
              '.########.'],
+    deskL:  ['..##########..',
+             '.############.',
+             '###........###',
+             '###........###',
+             '....######....',
+             '...########...',
+             '..####..####..',
+             '..####..####..',
+             '.############.',
+             '.############.'],
+    tick:   ['..........##',
+             '.........###',
+             '........###.',
+             '##.....###..',
+             '###...###...',
+             '.###.###....',
+             '..#####.....',
+             '...###......',
+             '....#.......'],
     pause:  ['##..##',
              '##..##',
              '##..##',
@@ -1112,7 +1134,62 @@ const HUDPX = (() => {
       if (on(x, y)) px(ox + x, oy + y, 1, 1, col);
     return cv;
   }
+  /* the rescue call: a 28-cell disc on a 40-wide surface, so the ring
+     marks and the one-pixel jog have room either side */
+  function call(glyph, panel, light, col, jog, waves){
+    const N = 28, cv = document.createElement('canvas');
+    cv.width = N + 12; cv.height = N;
+    const g = cv.getContext('2d');
+    const px = (x, y, w, h, c) => { g.fillStyle = c; g.fillRect(x, y, w, h); };
+    const R = N / 2, X0 = 6 + jog;
+    const inD = (x, y) => { const dx = x + .5 - R, dy = y + .5 - R; return dx*dx + dy*dy <= R*R; };
+    const edge = (x, y) => inD(x, y) &&
+      (!inD(x-1,y) || !inD(x+1,y) || !inD(x,y-1) || !inD(x,y+1));
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++)
+      if (inD(x, y)) px(X0 + x, y, 1, 1, edge(x, y) ? INK : panel);
+    for (let x = 0; x < N; x++){
+      let t = -1, b = -1;
+      for (let y = 0; y < N; y++) if (inD(x, y) && !edge(x, y)){ if (t < 0) t = y; b = y; }
+      if (t < 0) continue;
+      if (t < N * .35) px(X0 + x, t, 1, 2, light);
+      if (b > N * .62) px(X0 + x, b - 1, 1, 2, INK + 'AA');
+    }
+    const G = GLYPH[glyph], gw = G[0].length, gh = G.length;
+    const ox = X0 + ((N - gw) >> 1), oy = (N - gh) >> 1;
+    const on = (x, y) => y >= 0 && y < gh && x >= 0 && x < gw && G[y][x] === '#';
+    for (let y = -1; y <= gh; y++) for (let x = -1; x <= gw; x++)
+      if (!on(x, y) && (on(x-1,y) || on(x+1,y) || on(x,y-1) || on(x,y+1)))
+        px(ox + x, oy + y, 1, 1, INK);
+    for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++)
+      if (on(x, y)) px(ox + x, oy + y, 1, 1, col);
+    if (waves){
+      const arc = (cx, d) => {
+        for (const [dy, dx] of [[-5,0],[-4,1],[-3,1],[-2,2],[-1,2],[0,2],[1,2],[2,2],[3,1],[4,1],[5,0]])
+          px(cx + d * dx, R + dy, 1, 1, light);
+      };
+      arc(X0 - 3, -1); arc(X0 + N + 2, 1);
+    }
+    return cv;
+  }
+  /* the speech tail, five cells, stepping down and in */
+  function tail(c){
+    const cv = document.createElement('canvas'); cv.width = cv.height = 5;
+    const g = cv.getContext('2d'), f = (x, y, w, h, k) => { g.fillStyle = k; g.fillRect(x, y, w, h); };
+    f(0,0,5,1,INK); f(1,0,3,1,c); f(0,1,4,1,INK); f(1,1,2,1,c);
+    f(0,2,3,1,INK); f(1,2,1,1,c); f(0,3,2,1,INK); f(0,4,1,1,INK);
+    cv.className = 'tail';
+    return cv;
+  }
   return {
+    callFrames: () => {
+      const a = call('deskL', '#7A1410', '#E8483C', '#FFE3DE', 0, true),
+            b = call('deskL', '#7A1410', '#E8483C', '#FFE3DE', 1, false),
+            r = call('deskL', '#7A1410', '#E8483C', '#FFE3DE', 0, false),
+            t = call('tick',  '#1E7A46', '#36C06A', '#DFFFE8', 0, false);
+      a.className = 'ra'; b.className = 'rb'; r.className = 'rs'; t.className = 'rt';
+      return [a, b, r, t];
+    },
+    tail,
     /* the pickup palettes: panel, light line, glyph */
     shield: () => tile('#1E7C96', '#36BEDC', 'shield', '#DFFBFF'),
     vms:    () => tile('#1E7A46', '#36C06A', 'phone',  '#DFFFE8'),
@@ -1122,6 +1199,9 @@ const HUDPX = (() => {
 document.getElementById('shieldLabel').appendChild(HUDPX.shield());
 document.getElementById('vmsLabel').appendChild(HUDPX.vms());
 document.getElementById('pauseBtn').appendChild(HUDPX.pause());
+document.getElementById('rIcon').append(...HUDPX.callFrames());
+document.getElementById('rPass').appendChild(HUDPX.tail('#E8EEF8'));
+document.getElementById('rAgent').appendChild(HUDPX.tail('#1E7A46'));
 
 const pauseBtn = document.getElementById('pauseBtn');
 pauseBtn.addEventListener('pointerdown', e => e.stopPropagation());
@@ -4035,33 +4115,27 @@ const SPR = (function(){
         '......##########......',
         '........######........',
         '..........##..........' ],
+      /* the desk telephone the held icon and the rescue call use - one
+         VMS3 glyph everywhere - laid at the orb's own 2px stroke */
       phone: [
-        '.#######..................',
-        '########..................',
-        '########..................',
-        '########..................',
-        '#########.................',
-        '.########.................',
-        '.########.................',
-        '.########.................',
-        '.#######..................',
-        '..#####...................',
-        '..####....................',
-        '..#####...................',
-        '...####...................',
-        '...#####..................',
-        '....#####.................',
-        '.....#####................',
-        '.....######...............',
-        '......######......####....',
-        '.......######....#########',
-        '........#######.##########',
-        '.........#################',
-        '...........###############',
-        '............##############',
-        '..............############',
-        '.................#########',
-        '.....................####.' ],
+        '..####################..',
+        '..####################..',
+        '########################',
+        '########################',
+        '####................####',
+        '####................####',
+        '......############......',
+        '......############......',
+        '....################....',
+        '....################....',
+        '..########....########..',
+        '..########....########..',
+        '..########....########..',
+        '..########....########..',
+        '..####################..',
+        '..####################..',
+        '..####################..',
+        '..####################..' ],
       arrow: [
         '........##........',
         '.......####.......',
