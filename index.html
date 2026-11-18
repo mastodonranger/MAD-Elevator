@@ -3045,6 +3045,7 @@ const SPR = (function(){
      neighbouring rects still share an exact boundary - no seams, no gaps,
      nothing antialiased. At P = 1 this is identical to a plain fillRect. */
   const px  = (x,y,w,h,col) => {
+    if (!col) return;
     const x0 = Math.round(OX + x*P),     y0 = Math.round(OY + y*P);
     const x1 = Math.round(OX + (x+w)*P), y1 = Math.round(OY + (y+h)*P);
     _g.fillStyle = col; _g.fillRect(x0, y0, x1-x0, y1-y0);
@@ -3146,10 +3147,14 @@ const SPR = (function(){
 
      x is the left edge of the head block. The hand ends at 52 whatever
      the rider, which is where the panel is. */
-  /* one pixel of near-black, closed all the way round every part -
-     corners included, which is what the hand-rolled top and side runs
-     kept leaving open */
-  const INK='#090C14', EYE='#17110C';
+  /* No outline. The riders were drawn with a one-pixel near-black line
+     round every part, and the car is baked at 1.5x, so that line came
+     out a mix of one and two device pixels - the only thin dark line in
+     the car - and broke into a ragged staircase whenever the car banked.
+     The cabin and the riders before it never had one: parts are told
+     apart by their own tones. INK stays in the drawing calls as a marker
+     of where the outline was, and px() skips it. */
+  const INK=null, EYE='#17110C';
   function head(p,x,bot,h){
     const sk=p.skin||SK, hh=h===undefined?4:h;
     px(x,bot-41,14,hh,p.hair); px(x,bot-41-0,14,1,p.hair2||p.hair);
@@ -3266,12 +3271,15 @@ const SPR = (function(){
                      for(let j=0;j<6;j++) for(let i=0;i<7;i++)
                        if((i+j)%2) px(x+1+i*2,bot-11+j*2,1,1,'#3E4450'); }})]);
 
-  RIDERS.push(['Astronaut', ()=>person({hair:'#BEE2F5', coat:'#E4E8F0',
+  RIDERS.push(['Astronaut', ()=>person({hair:'#E4E8F0', coat:'#E4E8F0',
     shirt:null, tie:null, trou:'#D4DAE6', glove:'#FFFFFF', cheek:null,
-    extra:(x,bot)=>{ px(x,bot-41,14,6,'#BEE2F5'); px(x+1,bot-40,3,2,'#FFFFFF');
-                     px(x-1,bot-42,16,1,INK); px(x-1,bot-41,1,6,INK); px(x+14,bot-41,1,6,INK);
-                     px(x+3,bot-34,2,3,EYE); px(x+9,bot-34,2,3,EYE);
-                     px(x,bot-27,14,2,'#9AA2B0');
+    /* a helmet, not a face: a white shell one pixel bigger than the head
+       all round, lit along the top, with a dark visor that shows nothing
+       behind it but a single reflection */
+    extra:(x,bot)=>{ px(x-1,bot-42,16,16,'#E4E8F0'); px(x-1,bot-42,16,2,'#FFFFFF');
+                     px(x+1,bot-38,12,9,'#1E2E46'); px(x+1,bot-38,12,1,'#2E4466');
+                     px(x+2,bot-37,4,1,'#9FD4F0'); px(x+2,bot-36,1,2,'#9FD4F0');
+                     px(x-1,bot-27,16,2,'#9AA2B0');
                      px(x+3,bot-22,8,6,'#B8C0D0'); px(x+4,bot-21,2,2,'#7CFF9A');
                      px(x+8,bot-21,2,2,'#FF8A5A');
                      px(x+2,bot-22,1,6,INK); px(x+11,bot-22,1,6,INK); }})]);
@@ -4506,6 +4514,11 @@ const SPR = (function(){
         return -1;
       };
       const rows = cache.riderIdle.map(eyeRow);
+      /* the astronaut has a visor, not eyes: hang its window off the row
+         the rest share, which is the same row in every rider's skeleton */
+      const seen = rows.filter(r => r >= 0).sort((a, b) => a - b);
+      const usual = seen[seen.length >> 1];
+      for (let k = 0; k < rows.length; k++) if (rows[k] < 0) rows[k] = usual;
       const h = PORTRAIT_UP + PORTRAIT_DOWN + 1;
       /* the sides are measured INSIDE the band rather than taken from the
          standing box: the button arm reaches eight pixels past the
@@ -8291,11 +8304,14 @@ function padGantry(cl,lamp){
    the way round - the same rule the cabin figure now keeps. */
 const W_SK='#F5CEA6', W_SK2='#D9A97E', W_CHK='#E8B294', W_EYE='#17110C';
 const TW=13, WBOT=54;
-/* a filled block with a closed one-pixel outline */
-const box=(x,y,w,h,c)=>{ px(x-1,y-1,w+2,h+2,N_O); px(x,y,w,h,c); };
-/* one outline round several blocks, so a limb is one part with no seam
-   at the knee or the elbow: every outline first, then every fill */
-const limb=rs=>{ for(const r of rs) px(r[0]-1,r[1]-1,r[2]+2,r[3]+2,N_O);
+/* a filled block, a pixel bigger all round than its fill. The rim used
+   to be a near-black outline; it is now the part's own colour, so the
+   silhouette - and where every hat sits on every head - is unchanged
+   with the outline gone, as it is from the riders in the car */
+const box=(x,y,w,h,c)=>{ px(x-1,y-1,w+2,h+2,c); px(x,y,w,h,c); };
+/* several blocks as one part - every rim first, then every fill - so a
+   limb has no seam at the knee or the elbow */
+const limb=rs=>{ for(const r of rs) if(r[2]>1&&r[3]>1) px(r[0]-1,r[1]-1,r[2]+2,r[3]+2,r[4]);
                  for(const r of rs) px(r[0],r[1],r[2],r[3],r[4]); };
 const LEGF=[ [[7,9,10],[5,3,2]], [[6,6,6],[7,7,7]],
              [[5,3,2],[7,9,10]], [[7,7,7],[6,6,6]] ];
@@ -8310,11 +8326,16 @@ function legPair(bot,x,pts,c,cl,shoeC,shoeL,n){
 /* the head: 14 deep, a 4-row hair cap, one eye on the cabin's row, a
    cheek, and the nose as its own part on the front edge */
 function wHead(p,hx,ub){
+  if(p.helmet){
+    box(hx,ub-41,15,15,'#E4E8F0'); px(hx-1,ub-42,17,2,'#FFFFFF');
+    px(hx+7,ub-38,9,9,'#1E2E46'); px(hx+7,ub-38,9,1,'#2E4466');
+    px(hx+12,ub-37,3,1,'#9FD4F0'); px(hx+14,ub-36,1,2,'#9FD4F0');
+    return;
+  }
   const hair=p.hair||HR, cap=p.capH||4;
   box(hx,ub-41,14,15,W_SK);
-  if(!p.bald){ px(hx,ub-41,14,cap,hair); px(hx,ub-41,14,1,p.hair2||hair); }
+  if(!p.bald){ px(hx-1,ub-42,16,cap+1,hair); px(hx-1,ub-42,16,1,p.hair2||hair); }
   /* the nose: two wide, three tall, opening the head's own outline */
-  px(hx+14,ub-33,2,1,N_O); px(hx+14,ub-29,2,1,N_O); px(hx+16,ub-32,1,3,N_O);
   px(hx+14,ub-32,2,3,W_SK); px(hx+14,ub-32,2,1,W_SK2);
   px(hx+9,ub-34,2,3,W_EYE);
   if(p.cheek!==null) px(hx+11,ub-30,2,4,W_CHK);
@@ -8455,9 +8476,9 @@ const WPAL=[
   hat:(hx,ub)=>{ box(hx+1,ub-50,12,8,'#FAFCFF'); px(hx+1,ub-50,12,1,'#FFFFFF'); },
   chest:(x,ub)=>{ for(let i=0;i<3;i++){ px(x+11,ub-22+i*4,1,1,'#A8B0C0');
                                         px(x+13,ub-22+i*4,1,1,'#A8B0C0'); } }},
- /* 7 Astronaut - the helmet is the cap: a visor band over the head and a
-    ring at the neck, as the cabin draws it */
- {hair:'#BEE2F5',hair2:'#FFFFFF',capH:6,cheek:null,coat:'#E4E8F0',coatL:'#FFFFFF',coatD:'#A8B0C0',
+ /* 7 Astronaut - a helmet, not a face: the shell over the head, the visor
+    on the front, a ring at the neck, as the cabin draws it */
+ {helmet:true,coat:'#E4E8F0',coatL:'#FFFFFF',coatD:'#A8B0C0',
   trou:'#D4DAE6',trouL:'#EEF2F8',shoe:'#8A92A4',shoeL:'#A8B0C0',glove:'#FFFFFF',
   hat:(hx,ub)=>{ box(hx,ub-27,14,1,'#9AA2B0'); },
   chest:(x,ub)=>{ box(x+7,ub-21,6,4,'#B8C0D0');
